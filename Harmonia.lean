@@ -1,0 +1,18 @@
+/-
+  Harmonia: Formalizing the Foundations of Distributed Systems
+  Root module aggregating core semantics, protocols, and theorem mechanizations.
+-/
+
+import Harmonia.Core.Event
+import Harmonia.Core.Network
+import Harmonia.Core.SmallStep
+import Harmonia.Protocols.TwoPhaseCommit
+
+namespace Harmonia
+
+def version : String := "0.1.0-alpha"
+
+def welcomeBanner : String :=
+  s!"Harmonia {version} - Formal Foundations of Distributed Systems (Lean 4)"
+
+end Harmonia

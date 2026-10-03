@@ -1,0 +1,22 @@
+# Lake build artifacts
+.lake/
+lake-packages/
+
+# System / OS
+.DS_Store
+Thumbs.db
+
+# Lean / Editor
+.lake.lock
+build/
+*.olean
+*.ilean
+*.c
+*.o
+*.dylib
+*.so
+*.a
+
+# IDE
+.vscode/
+.idea/
