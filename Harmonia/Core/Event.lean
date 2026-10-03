@@ -6,8 +6,7 @@
 namespace Harmonia.Core
 
 /-- Unique identifier for a participating node / replica. -/
-def NodeId := Nat
-deriving DecidableEq, Repr
+abbrev NodeId := Nat
 
 /-- Logical timestamp (Lamport clock scalar or sequence). -/
 structure LogicalTime where

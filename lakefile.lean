@@ -11,3 +11,4 @@ lean_lib «Harmonia» where
 @[default_target]
 lean_exe "harmonia" where
   root := `Main
+  moreLinkArgs := #["-fuse-ld=/usr/bin/ld"]

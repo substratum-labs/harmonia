@@ -31,11 +31,11 @@ def send {Payload : Type} (net : NetworkState Payload) (msg : Message Payload) :
   { inFlight := msg :: net.inFlight }
 
 /-- Non-deterministic packet drop (network omission failure). -/
-def drop {Payload : Type} (net : NetworkState Payload) (msg : Message Payload) : NetworkState Payload :=
+def drop {Payload : Type} [DecidableEq Payload] (net : NetworkState Payload) (msg : Message Payload) : NetworkState Payload :=
   { inFlight := net.inFlight.erase msg }
 
 /-- Consume a delivered message from the flight pool. -/
-def deliver {Payload : Type} (net : NetworkState Payload) (msg : Message Payload) : NetworkState Payload :=
+def deliver {Payload : Type} [DecidableEq Payload] (net : NetworkState Payload) (msg : Message Payload) : NetworkState Payload :=
   { inFlight := net.inFlight.erase msg }
 
 end NetworkState

@@ -23,33 +23,50 @@ structure GlobalState (NodeState Payload : Type) where
   nodes   : NodeId → NodeState
   network : NetworkState Payload
 
-inductive GlobalStep {NodeState Payload : Type} (spec : ProtocolSpec NodeState Payload) :
+def applyReceive {NodeState Payload : Type} [DecidableEq Payload]
+    (spec : ProtocolSpec NodeState Payload) (s : GlobalState NodeState Payload) (m : Message Payload) :
+    GlobalState NodeState Payload :=
+  let res := spec.stepReceive m.dst (s.nodes m.dst) m
+  {
+    nodes := fun n => if n = m.dst then res.nextState else s.nodes n,
+    network := { inFlight := (s.network.deliver m).inFlight ++ res.outMsgs }
+  }
+
+def applyTimeout {NodeState Payload : Type}
+    (s : GlobalState NodeState Payload) (nid : NodeId) (res : StepResult NodeState Payload) :
+    GlobalState NodeState Payload :=
+  {
+    nodes := fun n => if n = nid then res.nextState else s.nodes n,
+    network := { inFlight := s.network.inFlight ++ res.outMsgs }
+  }
+
+def applyDrop {NodeState Payload : Type} [DecidableEq Payload]
+    (s : GlobalState NodeState Payload) (m : Message Payload) :
+    GlobalState NodeState Payload :=
+  { nodes := s.nodes, network := s.network.drop m }
+
+inductive GlobalStep {NodeState Payload : Type} [DecidableEq Payload] (spec : ProtocolSpec NodeState Payload) :
     GlobalState NodeState Payload → GlobalState NodeState Payload → Prop where
-  | deliverMsg (m : Message Payload) (hIn : m ∈ s.network.inFlight) :
-      let res := spec.stepReceive m.dst (s.nodes m.dst) m
-      let newNodes := fun n => if n = m.dst then res.nextState else s.nodes n
-      let newNet := (s.network.deliver m).inFlight ++ res.outMsgs
-      GlobalStep spec s { nodes := newNodes, network := { inFlight := newNet } }
+  | deliverMsg (s : GlobalState NodeState Payload) (m : Message Payload) (hIn : m ∈ s.network.inFlight) :
+      GlobalStep spec s (applyReceive spec s m)
 
-  | triggerTimeout (nid : NodeId) (res : StepResult NodeState Payload)
+  | triggerTimeout (s : GlobalState NodeState Payload) (nid : NodeId) (res : StepResult NodeState Payload)
       (hTimeout : spec.stepTimeout nid (s.nodes nid) = some res) :
-      let newNodes := fun n => if n = nid then res.nextState else s.nodes n
-      let newNet := s.network.inFlight ++ res.outMsgs
-      GlobalStep spec s { nodes := newNodes, network := { inFlight := newNet } }
+      GlobalStep spec s (applyTimeout s nid res)
 
-  | dropMsg (m : Message Payload) (hIn : m ∈ s.network.inFlight) :
-      GlobalStep spec s { nodes := s.nodes, network := s.network.drop m }
+  | dropMsg (s : GlobalState NodeState Payload) (m : Message Payload) (hIn : m ∈ s.network.inFlight) :
+      GlobalStep spec s (applyDrop s m)
 
 /-- Inductive reachability of a global system configuration. -/
-inductive Reachable {NodeState Payload : Type} (spec : ProtocolSpec NodeState Payload) :
+inductive Reachable {NodeState Payload : Type} [DecidableEq Payload] (spec : ProtocolSpec NodeState Payload) :
     GlobalState NodeState Payload → Prop where
   | init : Reachable spec { nodes := spec.init, network := NetworkState.empty }
   | step {s1 s2 : GlobalState NodeState Payload} :
       Reachable spec s1 → GlobalStep spec s1 s2 → Reachable spec s2
 
 /-- An invariant holds if it is satisfied in every reachable state. -/
-def HoldsInvariant {NodeState Payload : Type} (spec : ProtocolSpec NodeState Payload)
-    (inv : GlobalState NodeState Payload → Prop) : Prop :=
-  ∀ s, Reachable spec s → inv s
+def HoldsInvariant (NodeState : Type) (Payload : Type) [DecidableEq Payload]
+    (spec : ProtocolSpec NodeState Payload) (inv : GlobalState NodeState Payload → Prop) : Prop :=
+  ∀ (s : GlobalState NodeState Payload), Reachable spec s → inv s
 
 end Harmonia.Core
