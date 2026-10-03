@@ -7,6 +7,9 @@ import Harmonia.Core.Event
 import Harmonia.Core.Network
 import Harmonia.Core.SmallStep
 import Harmonia.Protocols.TwoPhaseCommit
+import Harmonia.SMT.AST
+import Harmonia.SMT.Solver
+import Harmonia.SMT.TwoPhaseCommitVC
 
 namespace Harmonia
 
