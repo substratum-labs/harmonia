@@ -1,0 +1,1 @@
+/Users/yong/projects/substratum/harmonia/examples/rust_node/target/debug/rust_node: /Users/yong/projects/substratum/harmonia/examples/rust_node/build.rs /Users/yong/projects/substratum/harmonia/examples/rust_node/src/main.rs

@@ -12,6 +12,7 @@ import Harmonia.SMT.AST
 import Harmonia.SMT.Solver
 import Harmonia.SMT.TwoPhaseCommitVC
 import Harmonia.DSL.Syntax
+import Harmonia.Gatekeeper.CExport
 
 namespace Harmonia
 
