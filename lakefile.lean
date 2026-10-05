@@ -11,4 +11,12 @@ lean_lib «Harmonia» where
 @[default_target]
 lean_exe "harmonia" where
   root := `Main
-  moreLinkArgs := #["-fuse-ld=/usr/bin/ld"]
+  moreLinkArgs := if System.Platform.isOSX then #["-fuse-ld=/usr/bin/ld"] else #[]
+
+-- Proof elaboration targets; adversarial audit fixtures remain isolated.
+lean_lib foundationsTest where
+  roots := #[`HarmoniaTests.Foundations, `HarmoniaTests.InvariantProbes,
+    `HarmoniaTests.RefinementProbes]
+
+lean_lib foundationsAudit where
+  roots := #[`HarmoniaTests.AuditPolicy, `HarmoniaTests.AxiomAudit, `HarmoniaTests.AuditRejection]

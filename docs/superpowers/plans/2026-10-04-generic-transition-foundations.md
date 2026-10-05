@@ -42,11 +42,11 @@ Public names may be adapted to Lean 4.16.0 during planning preflight; record eac
 
 ## Task 1 System and finite execution
 
-- [ ] Write theorem probes before production definitions; run them and record the expected missing-foundation failure.
-- [ ] Implement the generic relational system, zero-step execution, labeled step extension and concatenation.
-- [ ] Prove endpoint/observation behavior, valid prefixes and execution/reachability correspondence.
-- [ ] Demonstrate one initial state, a disabled action, two legal successors, and impossible wrong-label traces.
-- [ ] Run the test target and `lake build`; commit the independently usable deliverable.
+- [x] Write theorem probes before production definitions; run them and record the expected missing-foundation failure.
+- [x] Implement the generic relational system, zero-step execution, labeled step extension and concatenation.
+- [x] Prove endpoint/observation behavior, valid prefixes and execution/reachability correspondence.
+- [x] Demonstrate one initial state, a disabled action, two legal successors, and impossible wrong-label traces.
+- [x] Run the test target and `lake build`; commit the independently usable deliverable.
 
 Suggested contract shape:
 
@@ -60,30 +60,30 @@ Trace test: initial 0 has actions inc and fork; inc emits 1 and reaches 1; fork 
 
 ## Task 2 Invariant principles
 
-- [ ] State initialization and all-successor preservation obligations in tests; observe RED before adding the theorem.
-- [ ] Prove reachable-state invariant preservation by induction.
-- [ ] Prove the bounded-counter instance with explicit initial witness.
-- [ ] Include an unsafe successor and prove the preservation obligation fails, so a mutant cannot pass by vacuity.
-- [ ] Run all foundation tests and build; commit.
+- [x] State initialization and all-successor preservation obligations in tests; observe RED before adding the theorem.
+- [x] Prove reachable-state invariant preservation by induction.
+- [x] Prove the bounded-counter instance with explicit initial witness.
+- [x] Include an unsafe successor and prove the preservation obligation fails, so a mutant cannot pass by vacuity.
+- [x] Run all foundation tests and build; commit.
 
 Expected safety theorem: initialization and step preservation imply `∀ s, Reachable system s → invariant s`.
 
 ## Task 3 Forward refinement
 
-- [ ] Test state correspondence and observation mapping for one concrete step and concatenated execution; observe RED.
-- [ ] Define one-step forward simulation preserving mapped observations.
-- [ ] Prove execution lifting and abstract invariant transfer.
-- [ ] Demonstrate a concrete state carrying an extra field and an abstract counter; wrong observation mappings cannot meet the simulation obligation.
-- [ ] Run all tests and build; commit.
+- [x] Test state correspondence and observation mapping for one concrete step and concatenated execution; observe RED.
+- [x] Define one-step forward simulation preserving mapped observations.
+- [x] Prove execution lifting and abstract invariant transfer.
+- [x] Demonstrate a concrete state carrying an extra field and an abstract counter; wrong observation mappings cannot meet the simulation obligation.
+- [x] Run all tests and build; commit.
 
 ## Task 4 Verification and delivery
 
-- [ ] Add an axiom audit over all new named public theorems and examples; prove its failure detection covers sorryAx and a synthetic protocol axiom.
-- [ ] Add Linux CI using the pinned toolchain and dedicated build/test/audit commands.
-- [ ] Update README and architecture status without claiming FLP/CAP/quorum, distributed recovery or compiler correctness.
-- [ ] Run physical Mac build, tests and axiom audit; run CI on the exact candidate commit.
-- [ ] Produce `docs/verification/2026-10-04-foundations-stage-one.md` with RED/GREEN evidence, final commands, assumptions, API tour and deferred scopes.
-- [ ] Obtain independent physical Grok review; fix supported important findings within scope, rerun verification, then deliver a clean feature branch for managed integration.
+- [x] Add an axiom audit over all new named public theorems and examples; prove its failure detection covers sorryAx and a synthetic protocol axiom.
+- [x] Add Linux CI using the pinned toolchain and dedicated build/test/audit commands.
+- [x] Update README and architecture status without claiming FLP/CAP/quorum, distributed recovery or compiler correctness.
+- [x] Run physical Mac build, tests and axiom audit; run CI commands locally; hosted Linux CI awaits coordinator execution.
+- [x] Produce `docs/verification/2026-10-04-foundations-stage-one.md` with RED/GREEN evidence, final commands, assumptions, API tour and deferred scopes.
+- [x] Deliver a clean committed feature branch for coordinator independent review and managed integration; no external review, push or merge in this invocation.
 
 ## Acceptance and next stage
 
@@ -142,13 +142,13 @@ Audit acceptance uses an automatic environment theorem enumeration and an exact
 standard axiom whitelist, plus isolated detection tests for a synthetic axiom
 and `sorryAx` (neither admitted to the certified foundation).
 
-- [ ] Task 1: run `lake env lean HarmoniaTests/Foundations.lean` RED; implement;
+- [x] Task 1: run `lake env lean HarmoniaTests/Foundations.lean` RED; implement;
   `lake build Harmonia && lake env lean HarmoniaTests/Foundations.lean` GREEN; commit.
-- [ ] Task 2: run `lake env lean HarmoniaTests/InvariantProbes.lean` RED; implement;
+- [x] Task 2: run `lake env lean HarmoniaTests/InvariantProbes.lean` RED; implement;
   build and both probes GREEN; commit.
-- [ ] Task 3: run `lake env lean HarmoniaTests/RefinementProbes.lean` RED; implement;
+- [x] Task 3: run `lake env lean HarmoniaTests/RefinementProbes.lean` RED; implement;
   build and all probes GREEN; commit.
-- [ ] Task 4: run audit policy detection tests RED/GREEN; expose
+- [x] Task 4: run audit policy detection tests RED/GREEN; expose
   `lake build foundationsTest` and `lake build foundationsAudit`; add pinned CI;
   document evidence and boundaries; run `lake build`, both targets, diff checks;
   commit delivery for coordinator review.
