@@ -1,3 +1,4 @@
+import Harmonia.Core.Execution
 /-
   Harmonia: Formalizing the Foundations of Distributed Systems
   Root module aggregating core semantics, protocols, and theorem mechanizations.

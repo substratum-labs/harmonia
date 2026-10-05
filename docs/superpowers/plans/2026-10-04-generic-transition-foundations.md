@@ -88,3 +88,67 @@ Expected safety theorem: initialization and step preservation imply `∀ s, Reac
 ## Acceptance and next stage
 
 All new theorem proofs must be kernel checked. No state machine test alone substitutes for a proof. CI, source imports and audit must show the new Core has no Kadmos/Veil/solver dependencies. The next stage is minimal distributed semantics; do not start it in this delivery.
+
+## T-391 physical preflight (2026-10-04)
+
+Execution is authorized inline, within this invocation's native worktree. The
+coordinator performs independent review and integration: replace the old Grok
+review step with delivery for coordinator review. No push means hosted CI cannot
+be triggered here; commit the workflow and run its three commands locally.
+
+Exact interfaces (namespace `Harmonia.Foundation`, universe-polymorphic types):
+```lean
+structure TransitionSystem (S : Type u) (A : Type v) (O : Type w) where
+  init : S → Prop
+  step : S → A → O → S → Prop
+-- Execution T s labels t : Prop; labels : List (A × O).
+-- nil : Execution T s [] s
+-- cons : T.step s a o m → Execution T m labels t →
+--        Execution T s ((a,o)::labels) t
+-- Reachable T s : Prop; constructors init and step.
+-- observations labels := labels.map Prod.snd
+-- Execution.append : Execution T s xs m → Execution T m ys t →
+--                    Execution T s (xs ++ ys) t
+-- Execution.split : Execution T s (xs ++ ys) t →
+--                   ∃ m, Execution T s xs m ∧ Execution T m ys t
+-- reachable_iff_execution : Reachable T t ↔
+--                   ∃ s labels, T.init s ∧ Execution T s labels t
+-- Initially T I := ∀ s, T.init s → I s
+-- Preserved T I := ∀ s a o t, I s → T.step s a o t → I t
+-- invariant : Initially T I → Preserved T I → ∀ s, Reachable T s → I s
+-- ForwardSimulation C B R obsMap : Prop has initial and matchStep fields:
+-- initial : ∀ c, C.init c → ∃ b, B.init b ∧ R c b
+-- matchStep : ∀ c a o c' b, R c b → C.step c a o c' →
+--             ∃ ba b', B.step b ba (obsMap o) b' ∧ R c' b'
+-- lift : simulation → R c b → Execution C c labels c' →
+--        ∃ b' bs, Execution B b bs b' ∧ R c' b' ∧
+--                  observations bs = (observations labels).map obsMap
+-- reachable and invariant transfer derived from initial and lift.
+```
+
+Dependency preflight: Task 1 produces Execution/Reachable used by Tasks 2/3;
+Task 2 produces invariant used by Task 3; Task 4 audits every theorem from Tasks
+1–3 and regression modules. Signatures above settle all consumer names.
+Use proof-indexed label lists (no executable interpreter promised), separate
+initial-state evidence, and exact one-step matching; no silent-step erasure.
+
+Actual task probes are committed in `HarmoniaTests/Foundations.lean`,
+`InvariantProbes.lean` and `RefinementProbes.lean`. Each is run before its
+production module exists, then unchanged on GREEN. Zero-step endpoints,
+append observation order, prefix splitting, reachability correspondence,
+unsafe preservation failure, missing initial states, nondeterministic choices,
+wrong action/observation, and mapped execution lifting are explicit propositions.
+Audit acceptance uses an automatic environment theorem enumeration and an exact
+standard axiom whitelist, plus isolated detection tests for a synthetic axiom
+and `sorryAx` (neither admitted to the certified foundation).
+
+- [ ] Task 1: run `lake env lean HarmoniaTests/Foundations.lean` RED; implement;
+  `lake build Harmonia && lake env lean HarmoniaTests/Foundations.lean` GREEN; commit.
+- [ ] Task 2: run `lake env lean HarmoniaTests/InvariantProbes.lean` RED; implement;
+  build and both probes GREEN; commit.
+- [ ] Task 3: run `lake env lean HarmoniaTests/RefinementProbes.lean` RED; implement;
+  build and all probes GREEN; commit.
+- [ ] Task 4: run audit policy detection tests RED/GREEN; expose
+  `lake build foundationsTest` and `lake build foundationsAudit`; add pinned CI;
+  document evidence and boundaries; run `lake build`, both targets, diff checks;
+  commit delivery for coordinator review.
