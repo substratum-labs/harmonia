@@ -1,6 +1,6 @@
 # Minimal Distributed Semantics Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Native physical Codex execution only; user prohibits subagents. Independent physical Grok preflight precedes code, and Grok reviews the resulting branch before coordinator integration. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Native physical Codex execution only; selected physical CLI workflow uses no subagents. Independent physical Grok preflight precedes code, and Grok reviews the resulting branch before coordinator integration. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build an asynchronous, finite-membership crash/omission layer with restricted local protocol inputs, unique transmission occurrences and proved finite-execution safety infrastructure.
 
@@ -581,3 +581,34 @@ parent coordinator; coordinator owns reviewed integration, remote Linux CI,
 push/PR/merge. Do not request redundant human design authorization. Return
 worktree, branch, commit chain, receipt, commands/exit codes/counts, exact proved
 scope and remaining review risks. This design/plan invocation stops before Task 1.
+
+## Physical Grok preflight pins (2026-10-04)
+
+Physical Grok ACCEPT was read from `/private/tmp/harmonia-stage-two-preflight-verdict.md`.
+This text review is not a kernel proof. Coordinator reports the original review
+terminated after 764.1s, exit 143, with no verdict; compact streaming retry
+completed after 564.0s, exit 0, ACCEPT. Six pins govern implementation:
+
+1. actorOf deliver is recipient, never sender; process/crash/recover actor,
+   drop/duplicate none. Prove/probe this alongside frame.
+2. Name PoolEq.symm, PoolEq.init_iff, PoolEq.wf_iff and execution_permutation
+   (same labels and related endpoint); prove all, not just prose assertions.
+3. Actual Core.Invariant imports Core.Execution, which imports TransitionSystem.
+   Parent verification and local source reading resolve the omitted-Core concern.
+   Use those imports and real Foundation.Execution.nil/cons, no invented module.
+4. One file Harmonia.Examples.Distributed is imported by DistributedTraces.
+   Its namespace Harmonia.Distributed.Examples does not determine source origin.
+5. Universal wrong-outs negations for both process and deliver, with other
+   premises legal. No spent-tid replay in reachable WF pools; malformed raw pools
+   may contain duplicate tids and permit a second consumption. Distinguish them.
+6. reliable has all four flags false; prove reliable_no_drop, reliable_no_duplicate,
+   reliable_no_crash, reliable_no_recover and independent recovery gating.
+
+Global next/tid are mathematical bookkeeping, not a central runtime service,
+and are not passed to protocols. No native_decide in certified proofs. Envelope
+origin identifies prior envelope publication, not the allocating step of every
+tid, and does not authenticate payload claims. Exhibit distinct payloads under
+one logical ID. Inventory parser tests multiline manifests, multiple imports,
+trailing comments, unknown/unimported namespace-escape files, unused axioms and
+adversarial contamination. Fixed-closure discipline and abstract atomic update/
+publication assumptions remain explicit; no physical IO or fairness guarantee.

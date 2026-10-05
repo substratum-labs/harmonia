@@ -1,7 +1,7 @@
 # T-392 design/plan and physical baseline receipt
 
 Date: 2026-10-04. Owner: physical Codex. Independent reviewer: physical Grok,
-next through parent coordinator; review has not occurred in this invocation.
+next through parent coordinator; preflight ACCEPT read on implementation resume; final review pending.
 Worktree: `/Users/yong/.codex/worktrees/991b/harmonia`.
 Branch: `feat/t392-minimal-distributed-semantics`.
 Baseline source: `d0b2fa497f69eb702733d3ef87c989c7e31e40db`.
@@ -9,8 +9,8 @@ Toolchain pin: `leanprover/lean4:v4.16.0`.
 
 ## Authority and boundary
 
-User explicitly requested design/plan only, with managed authorization covering
-normal design and planning. Brainstorming architectural path and writing-plans
+Coordinator scoped the first invocation to design/plan only; the user requested
+the full next stage, with managed authorization covering implementation and review. Brainstorming architectural path and writing-plans
 used; repeated human approval replaced by the supplied authorization. Native
 linked worktree reused according to using-git-worktrees. No subagents, internal
 ledger/Kadmos edits, product/test edits, push, PR or merge. Parent coordinator
@@ -154,3 +154,46 @@ Fresh audit confirms the baseline summary independently of Lake replay.
 Final Git staged whitespace/scope checks and commit identity are supplied in
 the executor handoff. Product, tests, Foundation contracts, CI and toolchain
 are unchanged in this design-only delivery. No background process remains.
+
+## Physical Grok preflight pins (2026-10-04)
+
+Physical Grok ACCEPT was read from `/private/tmp/harmonia-stage-two-preflight-verdict.md`.
+This text review is not a kernel proof. Coordinator reports the original review
+terminated after 764.1s, exit 143, with no verdict; compact streaming retry
+completed after 564.0s, exit 0, ACCEPT. Six pins govern implementation:
+
+1. actorOf deliver is recipient, never sender; process/crash/recover actor,
+   drop/duplicate none. Prove/probe this alongside frame.
+2. Name PoolEq.symm, PoolEq.init_iff, PoolEq.wf_iff and execution_permutation
+   (same labels and related endpoint); prove all, not just prose assertions.
+3. Actual Core.Invariant imports Core.Execution, which imports TransitionSystem.
+   Parent verification and local source reading resolve the omitted-Core concern.
+   Use those imports and real Foundation.Execution.nil/cons, no invented module.
+4. One file Harmonia.Examples.Distributed is imported by DistributedTraces.
+   Its namespace Harmonia.Distributed.Examples does not determine source origin.
+5. Universal wrong-outs negations for both process and deliver, with other
+   premises legal. No spent-tid replay in reachable WF pools; malformed raw pools
+   may contain duplicate tids and permit a second consumption. Distinguish them.
+6. reliable has all four flags false; prove reliable_no_drop, reliable_no_duplicate,
+   reliable_no_crash, reliable_no_recover and independent recovery gating.
+
+Global next/tid are mathematical bookkeeping, not a central runtime service,
+and are not passed to protocols. No native_decide in certified proofs. Envelope
+origin identifies prior envelope publication, not the allocating step of every
+tid, and does not authenticate payload claims. Exhibit distinct payloads under
+one logical ID. Inventory parser tests multiline manifests, multiple imports,
+trailing comments, unknown/unimported namespace-escape files, unused axioms and
+adversarial contamination. Fixed-closure discipline and abstract atomic update/
+publication assumptions remain explicit; no physical IO or fairness guarantee.
+
+## Implementation progress ledger
+
+Plan: docs/superpowers/plans/2026-10-04-minimal-distributed-semantics.md
+Native worktree and branch unchanged; clean at resume from 3afc183.
+Ruling: committed receipt is the durable ledger instead of ephemeral skill
+workspace — coordinator explicitly requires persistent task progress — no loss
+of task identity/evidence across compaction.
+Interfaces checked: Task 1 types → 2 network → 3 Step/system → 4 proofs → 5
+fixtures → 6 audit. Actual Foundation imports/constructors match the plan.
+Task 1: pending. Task 2: pending. Task 3: pending. Task 4: pending.
+Task 5: pending. Task 6: pending.
