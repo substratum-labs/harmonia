@@ -1,6 +1,6 @@
 # Minimal Distributed Semantics Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Native physical Codex execution only; selected physical CLI workflow uses no subagents. Independent physical Grok preflight precedes code, and Grok reviews the resulting branch before coordinator integration. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Native physical Codex execution only; selected physical CLI workflow uses no subagents. Independent physical Grok preflight precedes code, and Grok reviews the resulting branch before coordinator integration. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Build an asynchronous, finite-membership crash/omission layer with restricted local protocol inputs, unique transmission occurrences and proved finite-execution safety infrastructure.
 
@@ -33,7 +33,7 @@ These supplement the explicit hostile requirements, all mapped below.
 
 ## Workspace, inputs and evidence
 
-This plan is written, not executed. Read AGENTS.md, the spec, ARCHITECTURE.md,
+This plan was executed natively; see the committed receipt for task evidence. Read AGENTS.md, the spec, ARCHITECTURE.md,
 Core/{TransitionSystem,Execution,Invariant,Refinement}.lean and all existing
 HarmoniaTests audit sources before code. Existing linked worktree is
 `/Users/yong/.codex/worktrees/991b/harmonia`, branch
@@ -96,7 +96,7 @@ require DecidableEq N; Member membership is by subtype. Fault profiles are
 `crashRecovery := ⟨false,false,true,true⟩`,
 `omission := ⟨true,true,true,true⟩` in drop/duplicate/crash/recover field order.
 
-- [ ] Add decisive failing probes first:
+- [x] Add decisive failing probes first:
 
 ```lean
 import Harmonia.Distributed.Protocol
@@ -117,21 +117,21 @@ example (m : Member pair) : m.val ∈ pair.members := m.property
 Also prove no member with val 2 (`by intro h; have := m.property; ...` using
 finite-list simplification), and `∀ m : Member empty, False` by `m.property`.
 
-- [ ] Run `lake env lean HarmoniaTests/DistributedMembership.lean`; expect exit
+- [x] Run `lake env lean HarmoniaTests/DistributedMembership.lean`; expect exit
 1, missing imported module before implementation. Record it.
-- [ ] Implement Config exactly as spec and prove checked_rejects and
+- [x] Implement Config exactly as spec and prove checked_rejects and
 checked_preserves by `unfold Config.checked; split <;> simp_all` (adjust
 Option constructor injection as needed). Implement protocol structures with
 `react` exactly `M → D → V → Input M L P C K → D → V → List (Outgoing M L P) → Prop`.
 Add a `#check` that applies react to actor,D,V,input,d,v,outs. A `#check_fail`
 application supplying a function of global-state arguments must fail the type
 expected by Protocol.react; keep this distinct from behavioral locality.
-- [ ] Build `lake build Harmonia`; then run the membership probe and
+- [x] Build `lake build Harmonia`; then run the membership probe and
 `lake build foundationsTest foundationsAudit foundationsAuditRejection`
 serially. Require exit 0, no new certified warnings. Check Protocol source
 contains no State/network/profile parameter; read the full structure rather
 than relying solely on string matching.
-- [ ] Commit exact Task 1 paths with message `feat: define checked distributed membership and local protocol interface`.
+- [x] Commit exact Task 1 paths with message `feat: define checked distributed membership and local protocol interface`.
 
 ### Task 2: Unordered occurrence consumption and fresh publication
 
@@ -150,7 +150,7 @@ def Publish (actor : M) (n : Nat) (outs : List (Outgoing M L P))
 def freshCopy (e : T) (n : Nat) : T := ⟨n, e.envelope⟩
 ```
 
-- [ ] Add nonhead and multiplicity probes before Network exists:
+- [x] Add nonhead and multiplicity probes before Network exists:
 
 ```lean
 example (x y : T) : Take [x,y] y [x] := by
@@ -169,7 +169,7 @@ require Decidable equality for the proof-carrying Config result.
 Add a two-output example with IDs `[9,10]`, repeated logical 7, one self-send
 and one peer-send, all senders equal actor. No logical-ID uniqueness condition.
 
-- [ ] Run probe, record missing module exit 1. Implement the four definitions.
+- [x] Run probe, record missing module exit 1. Implement the four definitions.
 Prove these exact obligations with generic implicit binders:
 
 ```lean
@@ -192,12 +192,12 @@ For allocation use structural induction and Nat arithmetic; establish a helper
 induction: head ID n cannot occur among tail IDs ≥ n+1; use `Nat.not_lt_of_ge`
 and successor strictness. Take.length uses Perm.length_eq and simp.
 
-- [ ] Prove `Publish.perm_base` and `Publish.perm_result` by append/trans;
+- [x] Prove `Publish.perm_base` and `Publish.perm_result` by append/trans;
 run Network probe, `lake build distributedTest` and foundation targets. For a
 meaningful RED, temporarily change Take to `pool = e :: rest` and confirm the
 nonhead generic probe fails, restore; temporarily make tail start n and confirm
 the two-output ID probe fails, restore. Do not commit mutants.
-- [ ] Commit Task 2 paths and receipt with `feat: model unordered message occurrences and fresh allocation`.
+- [x] Commit Task 2 paths and receipt with `feat: model unordered message occurrences and fresh allocation`.
 
 ### Task 3: Six global rules and Foundation embedding
 
@@ -208,7 +208,7 @@ Produces State, Label, actorOf, setNode, Step, system, and rule-level lemmas.
 `actorOf process/crash/recover = some actor`, `actorOf deliver = some recipient`,
 `actorOf drop/duplicate = none`. Observation type equals Label.
 
-- [ ] Write a small protocol fixture in DistributedSteps with Nat durable and
+- [x] Write a small protocol fixture in DistributedSteps with Nat durable and
 volatile, Unit payload/timeout and typed-member local command, initial zeros,
 reset-zero and recovery-identity. Its react relation is precisely:
 
@@ -227,7 +227,7 @@ are `¬ Step c p f crashed (.process receiver (.timeout ()) []) t`, local analog
 Give receive a pool actually containing e so it tests status, not absence.
 Also negate each fault on an otherwise applicable state when its flag is false.
 
-- [ ] Run the probe, record missing module exit 1. Implement State/Label from
+- [x] Run the probe, record missing module exit 1. Implement State/Label from
 spec, `setNode` via member equality and prove setNode_other by simp.
 Define Step constructors with resulting state record and Publish premise.
 For example, under the declared parameters:
@@ -258,13 +258,13 @@ def system : Harmonia.Foundation.TransitionSystem S A A where
   step s a o t := Step c p f s a t ∧ o = a
 ```
 
-- [ ] Prove disabled-status and disabled-flag generic lemmas by cases on Step
+- [x] Prove disabled-status and disabled-flag generic lemmas by cases on Step
 and contradictory Bool/Status equality. Verify universal negative probes and
 positive witnesses. Add `system.step` wrong-observation negation and `init`
 nonempty-pool negation with actual concrete states. Add empty configuration
 initial witness (`nodes := fun m => False.elim (by exact m.property)` after
 simplifying membership in []) and no-step result from that initial state.
-- [ ] Run `lake build distributedTest` and foundation targets. Temporarily
+- [x] Run `lake build distributedTest` and foundation targets. Temporarily
 remove running premise from process and show timeout-negative proof fails;
 restore. Remove one profile guard and show its corresponding negation fails;
 restore. Commit Task 3 paths/receipt as `feat: instantiate foundation with local network and fault steps`.
@@ -299,10 +299,10 @@ t.nodes peer = s.nodes peer`.
 Durability statements bind the crash/recover actor and equate its post/pre D.
 Consumption/freshness statements are those in the spec.
 
-- [ ] Add probes applying each named theorem to generic hypotheses before
+- [x] Add probes applying each named theorem to generic hypotheses before
 Properties exists; require the missing import RED. Include a concrete malformed
 pool with duplicate tids so `¬ WF bad` proves the predicate is substantive.
-- [ ] Implement PoolEq/WF, frame and durability by cases on all constructors
+- [x] Implement PoolEq/WF, frame and durability by cases on all constructors
 and setNode_other. For Step congruence rewrite nodes/supply equalities; transport
 Take pre-pool, Publish base/result, and duplicate membership by Perm.mem_iff.
 Crash/recover preserve the exact input pool representation, so choose the lifted
@@ -322,7 +322,7 @@ congruence modulo PoolEq and still proves representation does not restrict
 receive/drop. `execution_permutation` inducts on Execution, applies this step
 lifting and then the tail induction. No semantic change to stage one.
 
-- [ ] Prove residual WF from Take using map Perm, nodup_cons and membership.
+- [x] Prove residual WF from Take using map Perm, nodup_cons and membership.
 Prove Publish preservation with allocation freshness/disjointness and append
 nodup (derive directly by induction if append lemma inconvenient). Establish
 WF preservation for all constructors and apply Foundation.invariant exactly:
@@ -339,7 +339,7 @@ by one. Prove `t.pending.length + 1 = s.pending.length + outs.length`.
 Duplicate freshness includes source retention, copied envelope equality and
 fresh tid n absence; no duplicate permission assumption hidden in WF.
 
-- [ ] Implement provenance with an Execution-indexed relation:
+- [x] Implement provenance with an Execution-indexed relation:
 
 ```lean
 inductive SentIn : {s t : S} → {labels : List (A × A)} →
@@ -361,7 +361,7 @@ Combine with init.pending = [] for provenance_history. Do not use uniqueness
 or an unproved authentication axiom. Binder/constructor details may be changed
 for Lean elaboration but proposition and empty-init consequence must stay exact.
 
-- [ ] Run theorem probes, `lake build distributedTest`, foundation targets.
+- [x] Run theorem probes, `lake build distributedTest`, foundation targets.
 Counterchecks: change freshCopy to tid = e.tid and see wf_preserved/freshness
 fail; restore. Change crash to overwrite D and see durability fail; restore.
 Create umbrella importing Properties only. Commit with `proof: establish distributed frames network invariants and provenance`.
@@ -382,7 +382,7 @@ SentState increments left D/V to 1 and contains e0 = left→right, logical 7,
 payload Unit, tid 0, next 1. Crash/recover states change right only. Delivered
 state increments right D/V to 1, empty pending, next 1.
 
-- [ ] Write the witness statements before example module:
+- [x] Write the witness statements before example module:
 
 ```lean
 example : ∃ s, (system pair counting FaultProfile.crashRecovery).init s :=
@@ -399,25 +399,25 @@ Run missing-module RED. Prove the trace with `.cons ⟨Step.process ...,rfl⟩`
 and subsequent constructors, finishing `.nil`; exhibit init separately and
 derive reachable endpoint with Foundation.execution_reachable.
 
-- [ ] Prove the nonzero durable trace: send/deliver, crash right, recover right;
+- [x] Prove the nonzero durable trace: send/deliver, crash right, recover right;
 state equalities explicitly show right `(D,V)` changes `(1,1)`→`(1,0)`→`(1,1)`.
 Prove pool/supply survive crash and recovery in the earlier inflight trace.
-- [ ] Prove duplicate trace under omission: send, duplicate e0 (e1.tid = 1,
+- [x] Prove duplicate trace under omission: send, duplicate e0 (e1.tid = 1,
 e1.envelope = e0.envelope), deliver e1 first then e0, final right D = 2.
 Prove a retry under reliable: two local sends logical 7 get tids 0 and 1, then
 two deliveries, same visible count 2. No duplication gate needed for retry.
-- [ ] Prove a second send/nonhead drop and receive witness, full reordered-start
+- [x] Prove a second send/nonhead drop and receive witness, full reordered-start
 step lifting via PoolEq, and absence of Step.deliver e0 once its only instance
 has been consumed. Prove timeout at left while right remains running. Prove
 three-node frame equality for third during send/deliver/crash/recover of first
 and second. Exercise setNode_other with actual distinct member proofs.
-- [ ] Retain all universal negative probes from Task 3, add disabled recover
+- [x] Retain all universal negative probes from Task 3, add disabled recover
 with allowCrash true and allowRecover false, and disabled crash with recover
 true. Add wrong observation, empty-init pool rejection, actor/endpoint lookup,
 self-send, zero and multiple outputs tests. Witness two different allowed react
 successors in a separate tiny protocol to ensure no determinism requirement
 was introduced; no claim counting itself is nondeterministic.
-- [ ] Run `lake build distributedTest` and all baseline commands serially.
+- [x] Run `lake build distributedTest` and all baseline commands serially.
 Inspect tests for negations proved only by missing messages; repair receive
 precondition tests to contain an actual transmission. Every behavioral theorem
 must state state/step/trace facts rather than True. Commit as
@@ -456,7 +456,7 @@ The generic scan must inspect selected source axioms even if they are unused;
 do that before empty-theorem check, then audit safe definitions and all theorem
 dependencies. Do not filter any theorem's collected dependency set.
 
-- [ ] Add `DistributedAxiomAudit.lean` imports of all four certified probes
+- [x] Add `DistributedAxiomAudit.lean` imports of all four certified probes
 and AuditPolicy with `#audit_distributed`. Add targets:
 
 ```lean
@@ -478,7 +478,7 @@ summary, union axioms from every checked selected declaration, including safe
 definitions, and report checked declaration count as well as theorem count;
 retain the original foundation summary contract.
 
-- [ ] Construct isolated source fixture `DistributedRejection/Unused.lean`
+- [x] Construct isolated source fixture `DistributedRejection/Unused.lean`
 with `namespace RenamedTrap; axiom unused : Nat; theorem clean : 0 = 0 := rfl`.
 In DistributedAuditRejection, #guard_msgs around
 `#audit_module HarmoniaTests.DistributedRejection.Unused` must reject unused
@@ -491,7 +491,7 @@ reject; put that test last to avoid contaminating earlier audit probes.
 Use exact expected Lean diagnostics after inspecting RED output. These modules
 contain intentional contaminants and are never certified imports.
 
-- [ ] Implement inventory script with standard pathlib/re/argparse/tempfile:
+- [x] Implement inventory script with standard pathlib/re/argparse/tempfile:
 convert root module to relative `.lean`; parse `^\s*import\s+(.+)$` lines and
 follow all repository-resident imports recursively. Discover certified source
 inventory from `Harmonia/Distributed/**/*.lean`, `Harmonia/Distributed.lean`,
@@ -519,7 +519,7 @@ Lean modules; missing Harmonia/HarmoniaTests imports fail. Exit nonzero for each
 violating synthetic tree and zero for a fully covered clean one. Run actual
 inventory separately. This tooling is a tested policy check, not a kernel theorem.
 
-- [ ] Extend Ubuntu CI, retaining all existing commands:
+- [x] Extend Ubuntu CI, retaining all existing commands:
 
 ```yaml
       - name: Verify running Lean version
@@ -538,13 +538,13 @@ Do not add distributed rejection to any certified root. AxiomAudit's four
 imports stay unchanged. Re-run original foundationsAuditRejection to catch
 shared-policy regressions; shared scanner must preserve unknown-name rejection.
 
-- [ ] Update ARCHITECTURE/README with actual implemented API and guarantees,
+- [x] Update ARCHITECTURE/README with actual implemented API and guarantees,
 explicit atomicity/knowledge/fault/fairness boundaries and dedicated commands.
 Update receipt with each model, assumption, observed theorem counts and axioms,
 red/green failures, preflight decisions and any unresolved risks. No claim that
 Hosted Linux CI or physical Grok final review ran until coordinator provides
 that evidence.
-- [ ] Run the final matrix serially and inspect each exit/output:
+- [x] Run the final matrix serially and inspect each exit/output:
 
 ```sh
 lake env lean --version
@@ -580,7 +580,8 @@ Implementation stops after local verification for physical Grok review through
 parent coordinator; coordinator owns reviewed integration, remote Linux CI,
 push/PR/merge. Do not request redundant human design authorization. Return
 worktree, branch, commit chain, receipt, commands/exit codes/counts, exact proved
-scope and remaining review risks. This design/plan invocation stops before Task 1.
+scope and remaining review risks. The first design invocation stopped before Task 1; all six implementation tasks
+are now locally verified. Final independent review remains coordinator-owned.
 
 ## Physical Grok preflight pins (2026-10-04)
 
@@ -612,3 +613,15 @@ one logical ID. Inventory parser tests multiline manifests, multiple imports,
 trailing comments, unknown/unimported namespace-escape files, unused axioms and
 adversarial contamination. Fixed-closure discipline and abstract atomic update/
 publication assumptions remain explicit; no physical IO or fairness guarantee.
+
+## Implemented policy rulings
+
+The auxiliary source-axiom scan uses Lean declaration ranges: unsafe compiler
+placeholders with no range are exempt, while ranged unsafe source axioms reject.
+No theorem dependency is filtered. Physical metadata probe distinguished these
+cases, and isolated normal/unsafe unused-axiom modules exercise the policy.
+Inventory tests live in scripts/test_distributed_audit.py and are invoked by
+--self-test; recursive discovery covers nested Distributed probe modules too.
+The rejection target explicitly lists both fixture modules to satisfy Lake's
+module ownership; neither is a certified import. Lean 4.16 type rejection uses
+fail_if_success instead of unavailable #check_fail. No semantic obligation changed.

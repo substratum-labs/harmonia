@@ -1,6 +1,6 @@
 # T-392 minimal distributed semantics design
 
-Status: design/plan handoff, physical Grok preflight ACCEPT; implementation authorized.
+Status: implemented and locally verified; final physical Grok review pending.
 Owner: physical Codex. Reviewer: physical Grok through parent coordinator.
 Date: 2026-10-04. Baseline: `d0b2fa497f69eb702733d3ef87c989c7e31e40db`.
 
@@ -14,8 +14,9 @@ It must include nonvacuous examples of behavior that exactly-once or FIFO
 assumptions would incorrectly exclude. This is architectural work, using
 brainstorming and writing-plans. The user's preserved managed authorization
 replaces repeated human design approval; physical Grok preflight precedes code.
-This invocation writes only spec, plan and baseline receipt. No product or test
-implementation, agents, ledger edits, push, PR or integration.
+The initial coordinator invocation wrote only spec, plan and baseline receipt.
+The resumed invocation implements the six tasks after preflight, with no agents,
+internal ledger edits, push, PR or integration.
 
 ## Global constraints
 
@@ -400,3 +401,15 @@ one logical ID. Inventory parser tests multiline manifests, multiple imports,
 trailing comments, unknown/unimported namespace-escape files, unused axioms and
 adversarial contamination. Fixed-closure discipline and abstract atomic update/
 publication assumptions remain explicit; no physical IO or fairness guarantee.
+
+## Implemented policy rulings
+
+The auxiliary source-axiom scan uses Lean declaration ranges: unsafe compiler
+placeholders with no range are exempt, while ranged unsafe source axioms reject.
+No theorem dependency is filtered. Physical metadata probe distinguished these
+cases, and isolated normal/unsafe unused-axiom modules exercise the policy.
+Inventory tests live in scripts/test_distributed_audit.py and are invoked by
+--self-test; recursive discovery covers nested Distributed probe modules too.
+The rejection target explicitly lists both fixture modules to satisfy Lake's
+module ownership; neither is a certified import. Lean 4.16 type rejection uses
+fail_if_success instead of unavailable #check_fail. No semantic obligation changed.

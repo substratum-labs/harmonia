@@ -1,13 +1,13 @@
-# T-392 design/plan and physical baseline receipt
+# T-392 minimal distributed semantics local implementation receipt
 
-Date: 2026-10-04. Owner: physical Codex. Independent reviewer: physical Grok,
-next through parent coordinator; preflight ACCEPT read on implementation resume; final review pending.
+Date: 2026-10-04. Owner: physical Codex. Independent reviewer: physical Grok through parent coordinator; preflight ACCEPT
+read on implementation resume, final branch review pending.
 Worktree: `/Users/yong/.codex/worktrees/991b/harmonia`.
 Branch: `feat/t392-minimal-distributed-semantics`.
 Baseline source: `d0b2fa497f69eb702733d3ef87c989c7e31e40db`.
 Toolchain pin: `leanprover/lean4:v4.16.0`.
 
-## Authority and boundary
+## First invocation authority and boundary
 
 Coordinator scoped the first invocation to design/plan only; the user requested
 the full next stage, with managed authorization covering implementation and review. Brainstorming architectural path and writing-plans
@@ -122,7 +122,7 @@ signatures, test cycles and final command matrix are in the plan. No mathlib,
 Veil, Kadmos, SMT, consensus, crypto, infinite execution, fairness/liveness,
 extraction or codegen. Legacy experiments remain unmodified and unconnected.
 
-## Review handoff and risks
+## Initial design handoff and risks
 
 Physical Grok should review subtype ergonomics, allocation/disjointness proof
 complexity, symmetric permutation lifting, publication label completeness,
@@ -136,7 +136,7 @@ Artifacts:
 [plan](../superpowers/plans/2026-10-04-minimal-distributed-semantics.md).
 The delivery commit hash is in the executor handoff; do not insert a self-
 referential hash into this receipt. Implementation begins only after coordinator
-supplies physical Grok preflight. This invocation stops at committed documents.
+supplies physical Grok preflight. That first invocation stopped at committed documents.
 
 ## Final design-only verification
 
@@ -260,3 +260,114 @@ reachable WF spent-tid replay is universally prohibited. Wrong-outs tests retain
 legal running/pool premises. Fixture refactor required unfolding counterProtocol
 in two negatives and specifying reliable in profile-independent frame conclusions;
 ordinary elaboration corrections, no proposition weakening.
+
+
+Task 6: verification in progress. Audit RED unknown command/missing isolated
+module exit 1; explicit Lake fixture ownership fixed the latter. Nonchecking
+stub RED exit 1: expected source/full-audit rejection messages missing. Shared
+scanner GREEN exit 0 for both certified audits and both rejection targets.
+Ruling: distinguish source axioms from compiler placeholders by unsafe flag and
+Lean declaration ranges — physical metadata probe found generated _elambda/mapTR
+axioms unsafe=true/range=false, source unused unsafe=false/range=true — cost if
+wrong is audit false rejection or a source-axiom gap, guarded by isolated unsafe
+source-axiom and lexical inventory probes. Every theorem dependency remains
+unfiltered. Original foundation output/52-theorem coverage retained.
+Ruling: explicit Lake roots for isolated Unused/Unsafe modules — Lake did not
+build unowned imported test modules — cost if wrong is target ownership only;
+certified closures exclude both. Ruling: separate Python policy test module,
+recursive nested-probe discovery — new nested probe RED initially passed inventory
+incorrectly; corrected discovery made 16/16 tests GREEN — cost if wrong is source
+coverage, protected by synthetic graph tests. No external dependency added.
+
+
+## Final observed local code tour
+
+All six tasks are complete. The ledger entries above are ordered history;
+initial pending/design-only entries are superseded by these completion records.
+
+| Source | Actual implemented responsibility and guarantee |
+| --- | --- |
+| Membership | Config.checked returns the unchanged distinct list or none; checked_rejects/preserves and member_configured; empty configuration permitted |
+| Protocol | D/V/status, typed logical envelopes/outgoings/transmissions and local input-only nondeterministic react; four fixed fault flags |
+| Network | Take = Perm to one removed instance; arbitrary position, residual permutation, allocation interval/nodup/bounds/sender; Publish transports |
+| Semantics | Six relational rules, recipient actorOf for delivery, exact crash/recover pool preservation, running/status/fault gates; system embeds unchanged Foundation |
+| Properties | PoolEq symmetry/init/WF transport; Step and finite Execution same-label lifting; frame/durability/consumption/next/freshness; WF via invariant; SentIn envelope-origin history and reachable spent-tid exclusion |
+| Examples/Distributed | Counting fixture and initialized histories, duplicate/retry distinctions, nonzero durable volatile loss/rebuild, triple-node and malformed-pool witnesses |
+| Four Distributed probes | Constructor/type rejection, occurrence IDs/nonhead/multiple payloads, universal hostile rule negations, real finite histories and frames |
+| Shared AuditPolicy | Namespace and source-origin coverage, current-module fallback, source axiom scan before empty-theorem check, all theorem dependencies; original foundation selector retained |
+| Distributed audit root | Explicit umbrella/four-probe imports; source closure includes single example module despite nested namespace |
+| Distributed rejection roots | Source-origin normal/unsafe unused axioms, transitive custom axiom/sorryAx, new-theorem enumeration, absent/empty selection diagnostics; separate from certified roots |
+| Inventory + policy tests | Exact disk/manifest/import closure, recursive probe discovery, robust comments/multiline/multiple-import parsing, forbidden-source/legacy and Protocol boundary checks; 16 synthetic tests |
+| Lake/Ubuntu CI | Dedicated distributedTest/Audit/AuditRejection; all foundation targets retained, inventory and toolchain pin/running-version checks |
+
+State is parameterized by arbitrary finite configured membership and protocol
+data. Members/endpoints are typed; transmissions use unbounded Nat supply,
+finite pending/output lists, and arbitrarily long finite Foundation executions.
+Local protocol knows only actor, own D/V and explicit input; static closure
+knowledge is allowed, changing external oracles are not. Timeout implies no peer
+fault. All local updates/publication are atomic abstract steps; physical IO,
+split durable-write/send crashes and runtime implementation require refinement.
+
+Logical ID reuse does not imply payload equality. Duplicate preserves the entire
+envelope, adds a new tid and retains the old occurrence. Envelope provenance
+identifies prior envelope publication in an initialized history, not each tid's
+allocating step, cryptographic authenticity or truth of payload claims. No
+application invariant is automatic. WF raw-state assumptions and initialized
+reachability are distinguished, including a malformed duplicate-tid counterexample.
+Reliable disables all faults, with no eventual-delivery/fairness/liveness promise.
+No consensus/crypto/Kadmos/SMT/codegen/extraction or legacy correspondence theorem.
+
+## Final physical verification matrix
+
+All commands ran serially on this Mac after the last semantic/tooling change.
+Fresh audits elaborate sources directly, independent of Lake replay.
+
+| Command/check | Exit | Observed result |
+| --- | --- | --- |
+| lake env lean --version | 0 | Lean 4.16.0 arm64-apple-darwin23.6.0, commit 128a1e6b0a82 |
+| lake build | 0 | Build completed successfully |
+| lake build Harmonia | 0 | Build completed successfully |
+| lake build foundationsTest foundationsAudit foundationsAuditRejection | 0 | Original audit PASS, 52 theorems; rejection fixtures pass |
+| python3 scripts/check_distributed_audit.py --self-test | 0 | 16 tests, OK |
+| python3 scripts/check_distributed_audit.py | 0 | 12 certified modules, distributed closure 16, foundation closure 10 |
+| lake build distributedTest distributedAudit distributedAuditRejection | 0 | Distributed audit PASS, 336 theorems, 594 checked declarations; rejection fixtures pass |
+| lake env lean HarmoniaTests/AxiomAudit.lean | 0 | Fresh original audit PASS, 52 theorems |
+| lake env lean HarmoniaTests/DistributedAxiomAudit.lean | 0 | Fresh distributed audit PASS, 336 theorems, 594 checked declarations |
+| lake env lean HarmoniaTests/AuditRejection.lean | 0 | All expected diagnostics matched, no output |
+| lake env lean HarmoniaTests/DistributedAuditRejection.lean | 0 | All expected diagnostics matched, no output |
+| git diff --check | 0 | No whitespace errors |
+| Final diagnostic scan | no matches | No warnings/errors in final command logs |
+| Core/legacy/toolchain diff from 3afc183 | empty | Core semantic files, legacy protocols/DSL/SMT/C exports/Main/umbrella/Foundation example and lean-toolchain unchanged |
+| Source/import inventory | 0 | No forbidden proof tokens/native_decide/source axioms or adversarial imports in certified inventory; restricted react signature intact |
+
+Observed foundation theorem axiom union: [propext, Quot.sound]. Observed distributed
+checked-declaration/theorem union: [propext, Quot.sound, Classical.choice]. No
+sorryAx/custom protocol axiom in certified dependencies. Counts include generated
+structure/inductive/equation theorems and proposition-valued projections, without
+a handpicked theorem list. Standard axioms are the explicit allowed boundary;
+audit/inventory implementation is tested tooling, not a kernel certification of
+itself. No solver, native_decide, external dependency or finite exploration used.
+Hosted Linux CI has been extended but is unobserved locally. Physical Grok
+preflight ACCEPT is text review; final Grok review has not run here.
+
+## Commits, rulings and handoff
+
+- 5781f4b: physical preflight pins and attribution corrections.
+- 8fe317f: Task 1 checked membership/local interface.
+- 1872f1d: Task 2 occurrence semantics and allocation.
+- 9bfab85: Task 3 six rules/Foundation embedding.
+- 0de3423: Task 4 structural invariants/lifting/provenance.
+- 79d6d6e: Task 5 actual traces/hostile regressions.
+- Task 6 delivery commit: final hash supplied in executor handoff.
+
+Task 6: complete with the matrix above. Rulings: committed receipt as durable
+ledger; fail_if_success for unsupported #check_fail; ranged source-axiom versus
+rangeless unsafe compiler-placeholder distinction; explicit isolated Lake fixture
+roots; separate Python test module and recursive nested inventory. Each keeps the
+specified propositions, with policy tests guarding the audit/coverage decisions.
+Review routing follows coordinator authority; no subagent or independent review
+is fabricated. Author source/scope/requirement self-check completed; no deferred
+minor or unresolved local finding recorded. Final independent physical Grok
+review and exact-head Linux CI remain coordinator responsibilities before
+integration. No push, PR, merge or internal/Kadmos edit. No background process
+remains. Final branch is committed clean; generated caches/logs are not staged.

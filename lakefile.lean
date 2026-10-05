@@ -27,3 +27,8 @@ lean_lib foundationsAuditRejection where
 
 lean_lib distributedTest where
   roots := #[`HarmoniaTests.DistributedMembership, `HarmoniaTests.DistributedNetwork, `HarmoniaTests.DistributedSteps, `HarmoniaTests.DistributedTraces]
+
+lean_lib distributedAudit where
+  roots := #[`HarmoniaTests.AuditPolicy, `HarmoniaTests.DistributedAxiomAudit]
+lean_lib distributedAuditRejection where
+  roots := #[`HarmoniaTests.DistributedRejection.Unused, `HarmoniaTests.DistributedRejection.Unsafe, `HarmoniaTests.DistributedAuditRejection]

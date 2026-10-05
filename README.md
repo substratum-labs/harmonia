@@ -38,7 +38,7 @@ Timestamp comparison in the legacy Event model does not establish message
 causality. No FLP/CAP theorem, distributed crash/recovery guarantee, verified
 runtime or solver proof reconstruction is claimed by stage one.
 
-Next stages are minimal distributed semantics, Kadmos application semantics,
+Stage two now supplies minimal distributed semantics. Remaining stages are Kadmos application semantics,
 and verification/codegen correspondence, followed by evidence-driven expansion.
 Forward simulation transfers the stated safety properties; it does not prove
 liveness or bisimulation.
@@ -54,3 +54,25 @@ Concrete and abstract internal action types may differ; current examples use
 identical `Unit` actions. Externally relevant inputs/actions must be represented
 in observations or constrained by an application refinement contract. Finite
 internal-step/weak matching remains deferred.
+
+## Minimal distributed semantics (T-392)
+
+Use `import Harmonia.Distributed` for the independent layer. It provides checked
+finite membership, restricted local protocol inputs, unordered message occurrences,
+and fixed crash/omission profiles. Kernel proofs cover network well-formedness,
+frames, durable preservation, fresh IDs, same-label representation lifting and
+initialized envelope origin. Concrete histories exhibit duplicate/retry delivery,
+crash/recovery and nonhead receive. Logical ID equality does not imply payload
+equality or exactly-once processing.
+
+```sh
+lake build distributedTest distributedAudit distributedAuditRejection
+python3 scripts/check_distributed_audit.py --self-test
+python3 scripts/check_distributed_audit.py
+```
+
+Reliable forbids drop, duplication, crash and recovery; it promises no eventual
+delivery. Abstract atomic local updates/publication require later physical IO
+refinement. Protocol safety is a separate obligation; no fairness/liveness or
+runtime correctness is claimed. See [architecture](ARCHITECTURE.md) and the
+[local receipt](docs/verification/2026-10-04-minimal-distributed-semantics.md).

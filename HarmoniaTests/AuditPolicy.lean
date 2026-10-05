@@ -34,6 +34,57 @@ def foundationDeclaration (env : Environment) (n : Name) : Bool := Id.run do
     ((`HarmoniaTests).isPrefixOf m &&
       m != `HarmoniaTests.AuditPolicy && m != `HarmoniaTests.AuditRejection)
 
+def sourceModule (env : Environment) (n : Name) : Name :=
+  match env.getModuleIdxFor? n with
+  | some idx => env.header.moduleNames[idx.toNat]!
+  | none => env.mainModule
+
+def distributedSourceModules : Array Name := #[
+  `Harmonia.Distributed, `Harmonia.Distributed.Membership,
+  `Harmonia.Distributed.Protocol, `Harmonia.Distributed.Network,
+  `Harmonia.Distributed.Semantics, `Harmonia.Distributed.Properties,
+  `Harmonia.Examples.Distributed, `HarmoniaTests.DistributedMembership,
+  `HarmoniaTests.DistributedNetwork, `HarmoniaTests.DistributedSteps,
+  `HarmoniaTests.DistributedTraces, `HarmoniaTests.DistributedAxiomAudit]
+
+def distributedDeclaration (env : Environment) (n : Name) : Bool :=
+  (`Harmonia.Distributed).isPrefixOf n ||
+  (`Harmonia.Distributed).isPrefixOf (sourceModule env n) ||
+  distributedSourceModules.contains (sourceModule env n)
+
+/-- Shared scan: source axioms first, even unused; unsafe compiler placeholders
+are exempt only from the auxiliary scan, never theorem dependency checks. -/
+def auditSelected (select : Name → Bool) (label : String) (allObserved : Bool := false) : CommandElabM Unit := do
+  let env ← getEnv
+  let declarations := env.constants.toList.toArray.qsort (fun a b => a.1.toString < b.1.toString)
+  for (n, info) in declarations do
+    if select n then
+      match info with
+      | .axiomInfo _ =>
+        let range ← findDeclarationRanges? n
+        unless info.isUnsafe && range.isNone do discard <| checkDeclaration n
+      | _ => pure ()
+  let names := theoremNames env select
+  if names.isEmpty then throwError "axiom audit found no {label} theorems"
+  let mut observed : Array Name := #[]
+  let mut count := 0
+  for (n, info) in declarations do
+    if select n && !info.isUnsafe then
+      let axioms ← checkDeclaration n
+      count := count + 1
+      if allObserved then
+        for ax in axioms do
+          if !observed.contains ax then observed := observed.push ax
+  for n in names do
+    let axioms ← checkDeclaration n
+    for ax in axioms do
+      if !observed.contains ax then observed := observed.push ax
+    logInfo m!"{n}: {axioms}"
+  if allObserved then
+    logInfo m!"DISTRIBUTED AUDIT PASS: {names.size} theorems; {count} declarations; observed axioms {observed}; whitelist [propext, Quot.sound, Classical.choice]"
+  else
+    logInfo m!"AUDIT PASS: {names.size} theorems; observed axioms {observed}; whitelist [propext, Quot.sound, Classical.choice]"
+
 end HarmoniaAudit
 
 elab "#audit_declaration " n:ident : command => do
@@ -47,18 +98,12 @@ elab "#audit_namespace " n:ident : command => do
 
 elab "#audit_foundations" : command => do
   let env ← getEnv
-  let select := HarmoniaAudit.foundationDeclaration env
-  let names := HarmoniaAudit.theoremNames env select
-  if names.isEmpty then throwError "axiom audit found no foundation theorems"
-  -- Check safe definitions and axioms too. Compiler-only unsafe
-  -- specializations are not logical declarations; theorem dependencies
-  -- are always checked without this filter.
-  for (n, info) in env.constants.toList do
-    if select n && !info.isUnsafe then discard <| HarmoniaAudit.checkDeclaration n
-  let mut observed : Array Name := #[]
-  for n in names do
-    let axioms ← HarmoniaAudit.checkDeclaration n
-    for ax in axioms do
-      if !observed.contains ax then observed := observed.push ax
-    logInfo m!"{n}: {axioms}"
-  logInfo m!"AUDIT PASS: {names.size} theorems; observed axioms {observed}; whitelist [propext, Quot.sound, Classical.choice]"
+  HarmoniaAudit.auditSelected (HarmoniaAudit.foundationDeclaration env) "foundation"
+
+elab "#audit_distributed" : command => do
+  let env ← getEnv
+  HarmoniaAudit.auditSelected (HarmoniaAudit.distributedDeclaration env) "distributed" true
+
+elab "#audit_module " n:ident : command => do
+  let env ← getEnv
+  HarmoniaAudit.auditSelected (fun name => HarmoniaAudit.sourceModule env name == n.getId) "source module" true
