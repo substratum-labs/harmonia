@@ -207,3 +207,14 @@ Lean syntax; cost if wrong is probe diagnostic ergonomics, not model behavior.
 Intermediate build exit 1 identified exactly that unsupported command; no
 semantic API change. Checked lists reject duplicates without deduplication;
 empty/two-member witnesses and nonmember actor/endpoint rejection pass.
+
+Task 2: complete. RED Network probe exit 1 (missing Network.olean). GREEN
+`lake build distributedTest foundationsTest foundationsAudit foundationsAuditRejection`
+exit 0. Proved Take length/position/permutation/residual uniqueness, allocation
+interval/nodup/bounds/sender and Publish transports. Probe shows logical 7 with
+false and true payloads: same logical ID implies no payload equality. Scratch
+head-pop and stale-supply mutants exit 1 with the nonhead/type and two-ID
+propositions failing; no mutants in source. Ordinary elaboration iterations
+resolved reserved `prefix`, core range arithmetic and composition reduction;
+core has no assumed nodup_append/map helper, freshness proved structurally.
+Omega is kernel-producing core arithmetic, not native_decide or a dependency.
