@@ -50,3 +50,13 @@ Task 2 GREEN: full `lake build`, Foundations and InvariantProbes commands exit
 witness. A shell invocation whose trailing diff check returned 0 still printed
 an elaboration error; it was not accepted as GREEN. The subsequent separate
 probe and chained build/tests returned 0 with no diagnostics. Task 2 complete.
+
+Task 3 RED: `lake env lean HarmoniaTests/RefinementProbes.lean` exit 1,
+missing `Examples/Foundation.olean`. Probes require two-step and empty path
+lifting, safety transfer, rejection of a constant wrong observation map, and
+failure of simulation to a system with no initial states.
+
+Task 3 GREEN: `lake build Harmonia` plus RefinementProbes exit 0; an unused
+binder warning was removed. Full `lake build` and all three probe commands
+then exit 0 without new warnings. Task 3 complete. `simulation` is a proved
+value of the simulation proposition, not a custom axiom.

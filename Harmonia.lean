@@ -1,3 +1,4 @@
+import Harmonia.Examples.Foundation
 import Harmonia.Core.Invariant
 import Harmonia.Core.Execution
 /-
