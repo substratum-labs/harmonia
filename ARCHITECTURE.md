@@ -59,17 +59,76 @@ The new Core imports only its predecessor foundation modules and Lean's implicit
 standard prelude. The umbrella `Harmonia.lean` also imports legacy prototypes;
 import a specific foundation module for the independent API.
 
-## Planned layers
+## Implemented stage two
 
-1. **Distributed:** explicit finite membership, local processing, message
-   occurrences and identities, scheduling, crash/recovery and fault profiles.
-2. **Applications/Kadmos:** typed action semantics, reference interpreter,
+Import `Harmonia.Distributed` independently of the legacy umbrella.
+`Membership` checks an explicit finite list without deduplication; member subtypes
+constrain actors and endpoints. Empty configuration is valid, with no actors.
+`Protocol` takes only actor, own durable/volatile data and explicit message or
+scheduler input. This argument boundary requires fixed-closure discipline; it
+is not an epistemic theorem about arbitrary external Lean closures.
+
+`Network` distinguishes application logical IDs from unique Nat transmission
+occurrences. Same logical ID may carry different payloads; duplicate copies an
+entire envelope under a fresh occurrence ID. Take is a permutation-based
+one-occurrence removal, so receive/drop can select any position. Publication
+assigns an unbounded monotone supply to a finite outgoing list. This supply is
+model bookkeeping, not a central runtime service, and is not protocol input.
+
+`Semantics` defines process, deliver, drop, duplicate, crash and recover labels.
+Local processing/delivery require running status; a timeout says nothing about
+peers. The fixed profile independently gates each fault. Reliable disables all
+four faults, without promising eventual delivery. Crash preserves durable data,
+resets volatile data with crashReset D V, and recovery rebuilds V from D only.
+Inflight messages survive both. Local durable/volatile update and outgoing
+publication are one abstract atomic step, with no physical IO guarantee.
+
+`Properties` proves all-successor network WF via Foundation.invariant, frame
+(the delivery actor is recipient), durable preservation, consumption, fresh
+duplication, init/WF permutation transport, and same-label finite execution
+lifting modulo PoolEq. Exact crash/recovery list preservation makes lifting
+existential over related successors. Initialized pending-envelope origin is
+proved separately from unique transmission IDs: it records prior envelope
+publication, not the allocating step of every occurrence or payload authenticity.
+A consumed tid cannot replay in reachable WF states; malformed raw duplicate-tid
+pools can admit a second consumption and are shown unreachable.
+
+The single source `Harmonia.Examples.Distributed` has namespace
+`Harmonia.Distributed.Examples`; Traces imports it explicitly. Fixtures witness
+send/crash/recover/deliver, nonzero volatile loss/rebuild, duplicate and retry
+delivery twice, nonhead/reordered receive, other-node frames and scheduler timeout
+with a running peer. All histories are finite, with no semantic depth/message
+bound. No automatic protocol invariant, fairness/liveness, consensus, crypto,
+physical runtime, codegen or legacy correspondence claim is made.
+
+Dedicated verification:
+
+```sh
+python3 scripts/check_distributed_audit.py --self-test
+python3 scripts/check_distributed_audit.py
+lake build distributedTest distributedAudit distributedAuditRejection
+```
+
+The shared audit retains stage-one coverage and scans source modules independently
+of declaration namespace, all theorem dependencies and unused source axioms.
+Unsafe compiler placeholders without declaration ranges are excluded only from
+the auxiliary scan. Unsafe source axioms with ranges still reject, as tested;
+source inventory also rejects forbidden proof tokens. Inventory detects missing
+imports/manifest entries, namespace escape and adversarial imports in either
+certified closure. Rejection modules remain isolated. Ubuntu CI includes all
+foundation/distributed targets, inventory tests and pinned/running version checks.
+Observed local results and review boundary are in the
+[stage-two receipt](docs/verification/2026-10-04-minimal-distributed-semantics.md).
+
+## Remaining layers
+
+1. **Applications/Kadmos:** typed action semantics, reference interpreter,
    verdicts, directives, savepoints and local rollback.
-3. **Verification:** sound VC generation, bounded exploration with replay,
+2. **Verification:** sound VC generation, bounded exploration with replay,
    solver adapters and separately reported proof reconstruction.
-4. **Codegen and adapters:** supported target representations and correspondence
+3. **Codegen and adapters:** supported target representations and correspondence
    theorems, then host concurrency/storage/recovery contracts.
-5. **Feedback:** revise abstractions and select later applications from evidence.
+4. **Feedback:** revise abstractions and select later applications from evidence.
 
 These stages are unimplemented here. Infinite executions, temporal logic,
 fairness and protocol impossibility results require their own semantics and

@@ -23,3 +23,13 @@ jobs:
         run: lake build foundationsAudit
       - name: Isolated adversarial audit rejection tests
         run: lake build foundationsAuditRejection
+      - name: Verify running Lean version
+        run: lake env lean --version | grep -F 'version 4.16.0,'
+      - name: Distributed source and import inventory
+        run: python3 scripts/check_distributed_audit.py --self-test && python3 scripts/check_distributed_audit.py
+      - name: Distributed formal regression probes
+        run: lake build distributedTest
+      - name: Distributed certified axiom audit
+        run: lake build distributedAudit
+      - name: Distributed adversarial audit rejection probes
+        run: lake build distributedAuditRejection
