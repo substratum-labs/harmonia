@@ -218,3 +218,14 @@ propositions failing; no mutants in source. Ordinary elaboration iterations
 resolved reserved `prefix`, core range arithmetic and composition reduction;
 core has no assumed nodup_append/map helper, freshness proved structurally.
 Omega is kernel-producing core arithmetic, not native_decide or a dependency.
+
+Task 3: complete. RED Steps probe exit 1 missing Semantics.olean. GREEN
+`lake build distributedTest foundationsTest foundationsAudit foundationsAuditRejection`
+exit 0, including actual send, universal wrong-outs process/deliver, crashed
+receive/local/timeout, wrong crash/recover preconditions, four disabled reliable
+faults, independent recovery gating, actorOf recipient and empty init/zero/no-step.
+Scratch removal of process running and drop permission premises exit 1 in the
+corresponding negation proofs (constructor/premise no longer available). Ordinary
+binder/name errors resolved by explicit generic update types and qualifying a
+shadowed theorem name. Abstract rules do not require WF to run; no protocol gets
+supply, network or fault profile. Source and legacy Core unchanged.

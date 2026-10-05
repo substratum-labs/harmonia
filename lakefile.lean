@@ -26,4 +26,4 @@ lean_lib foundationsAuditRejection where
   roots := #[`HarmoniaTests.AuditRejection]
 
 lean_lib distributedTest where
-  roots := #[`HarmoniaTests.DistributedMembership, `HarmoniaTests.DistributedNetwork]
+  roots := #[`HarmoniaTests.DistributedMembership, `HarmoniaTests.DistributedNetwork, `HarmoniaTests.DistributedSteps]
