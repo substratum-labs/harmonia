@@ -229,3 +229,18 @@ corresponding negation proofs (constructor/premise no longer available). Ordinar
 binder/name errors resolved by explicit generic update types and qualifying a
 shadowed theorem name. Abstract rules do not require WF to run; no protocol gets
 supply, network or fault profile. Source and legacy Core unchanged.
+
+Task 4: complete. RED generic Properties probe exit 1 missing Properties.olean.
+GREEN `lake build distributedTest Harmonia.Distributed foundationsTest
+foundationsAudit foundationsAuditRejection` exit 0. Proved PoolEq refl/symm/trans,
+init_iff/wf_iff, Step.frame, crash/recover durability, monotone supply, symmetric
+same-label step/execution lifting, consumption length, duplicate freshness,
+all-successor WF and reachable_wf using Foundation.invariant. Provenance uses
+actual Execution.nil/cons and SentIn indexed by the path; arbitrary-start origin
+lemma precedes initialized corollary. Reachable WF consumption excludes spent-tid
+replay; raw malformed duplicate-tid pools remain outside that guarantee.
+Scratch durable-loss/stale-duplicate mutant exited 1: durability/WF/freshness
+obligations failed. Elaboration diagnosis: existing section s/t were accidentally
+captured by SentIn constructor binders; explicit fresh constructor state binders
+removed those extra parameters without weakening the proposition. Core helper
+nodup append proved directly. No source contract change or dependency added.

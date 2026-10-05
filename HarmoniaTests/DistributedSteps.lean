@@ -63,7 +63,7 @@ namespace Harmonia.Distributed.Tests.Steps
 open Harmonia.Distributed
 def empty : Config Nat := ⟨[],by decide⟩
 theorem empty_member (m : Member empty) : False := by
-  have h := m.property; simpa [empty] using h
+  have h := m.property; simp [empty] at h
 def emptyProtocol : Protocol (Member empty) Nat Nat Nat Unit Unit Unit where
   initial _ _ _ := False
   react _ _ _ _ _ _ _ := False
