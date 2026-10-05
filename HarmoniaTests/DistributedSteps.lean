@@ -1,24 +1,7 @@
-import Harmonia.Distributed.Semantics
+import Harmonia.Examples.Distributed
 namespace Harmonia.Distributed.Tests.Steps
-open Harmonia.Distributed
+open Harmonia.Distributed Harmonia.Distributed.Examples
 
-def pair : Config Nat := ⟨[0,1], by decide⟩
-abbrev M := Member pair
-def left : M := ⟨0,by decide⟩
-def right : M := ⟨1,by decide⟩
-def counting : Protocol M Nat Nat Nat Unit M Unit where
-  initial _ d v := d = 0 ∧ v = 0
-  react _ d v input d' v' outs := match input with
-    | .scheduled (.local peer) => d' = d+1 ∧ v' = v+1 ∧ outs = [⟨peer,7,()⟩]
-    | .scheduled (.timeout ()) => d' = d ∧ v' = v+1 ∧ outs = []
-    | .message _ => d' = d+1 ∧ v' = v+1 ∧ outs = []
-  crashReset _ _ := 0
-  recover := id
-abbrev S := State M Nat Nat Nat Unit
-abbrev A := Label M Nat Unit M Unit
-def start : S := ⟨fun _ => ⟨0,0,.running⟩,[],0⟩
-def e0 : Transmission M Nat Unit := ⟨0,⟨left,right,7,()⟩⟩
-def down : S := ⟨fun _ => ⟨0,0,.crashed⟩,[e0],1⟩
 theorem sent : Step pair counting .reliable start (.process left (.local right) [⟨right,7,()⟩])
     ⟨setNode start.nodes left ⟨1,1,.running⟩,[e0],1⟩ :=
   .process rfl ⟨rfl,rfl,rfl⟩ (List.Perm.refl _)
@@ -32,19 +15,18 @@ theorem no_recover_running (t : S) : ¬ Step pair counting .omission start (.rec
 theorem wrong_process_outs (t : S) : ¬ Step pair counting .omission start (.process left (.local right) []) t := by
   intro h
   cases h with
-  | process _ hr _ => simp [counting] at hr
-def queued : S := ⟨start.nodes,[e0],1⟩
+  | process _ hr _ => simp [counting,counterProtocol] at hr
 theorem wrong_deliver_outs (t : S) : ¬ Step pair counting .omission queued (.deliver e0 [⟨left,7,()⟩]) t := by
   intro h
   cases h with
-  | deliver _ _ hr _ => simp [counting] at hr
+  | deliver _ _ hr _ => simp [counting,counterProtocol] at hr
 theorem deliver_actor : actorOf (.deliver e0 [] : A) = some right := rfl
 theorem drop_actor : actorOf (.drop e0 : A) = none := rfl
 theorem duplicate_actor : actorOf (.duplicate e0 : A) = none := rfl
 end Harmonia.Distributed.Tests.Steps
 
 namespace Harmonia.Distributed.Tests.Steps
-open Harmonia.Distributed
+open Harmonia.Distributed Harmonia.Distributed.Examples
 theorem reliable_drop (t : S) : ¬ Step pair counting .reliable queued (.drop e0) t := reliable_no_drop
 theorem reliable_dup (t : S) : ¬ Step pair counting .reliable queued (.duplicate e0) t := reliable_no_duplicate
 theorem reliable_crash (t : S) : ¬ Step pair counting .reliable start (.crash left) t := reliable_no_crash
@@ -60,7 +42,7 @@ theorem nonempty_init : ¬ (system pair counting .omission).init queued := by
   intro h; cases h.1
 end Harmonia.Distributed.Tests.Steps
 namespace Harmonia.Distributed.Tests.Steps
-open Harmonia.Distributed
+open Harmonia.Distributed Harmonia.Distributed.Examples
 def empty : Config Nat := ⟨[],by decide⟩
 theorem empty_member (m : Member empty) : False := by
   have h := m.property; simp [empty] at h

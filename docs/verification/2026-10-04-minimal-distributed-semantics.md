@@ -244,3 +244,19 @@ obligations failed. Elaboration diagnosis: existing section s/t were accidentall
 captured by SentIn constructor binders; explicit fresh constructor state binders
 removed those extra parameters without weakening the proposition. Core helper
 nodup append proved directly. No source contract change or dependency added.
+
+Task 5: complete. RED trace import exit 1 (missing example); follow-on RED
+references retry_delivery/tripleAfter/malformed_replay exit 1 before those
+fixtures existed. GREEN `lake build distributedTest foundationsTest
+foundationsAudit foundationsAuditRejection` exit 0. One example source module
+is imported by Traces (also Steps); nested namespace does not alter source origin.
+Actual initialized histories prove inflight survival, nonzero durable loss/rebuild,
+duplicate occurrences delivered twice, reliable retry with same logical ID and
+fresh tids, nonhead receive/drop and reordered-start lifting. Concrete third-node
+frame proofs cover send/receive/crash/recover. Peer-running timeout, self-send,
+multiple/zero emissions and two distinct nondeterministic successors pass.
+Malformed duplicate-tid pool permits two raw receives but is proved unreachable;
+reachable WF spent-tid replay is universally prohibited. Wrong-outs tests retain
+legal running/pool premises. Fixture refactor required unfolding counterProtocol
+in two negatives and specifying reliable in profile-independent frame conclusions;
+ordinary elaboration corrections, no proposition weakening.
