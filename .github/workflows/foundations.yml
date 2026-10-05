@@ -19,5 +19,7 @@ jobs:
         run: lake build
       - name: Formal regression probes
         run: lake build foundationsTest
-      - name: Comprehensive theorem axiom audit and rejection tests
+      - name: Certified comprehensive theorem axiom audit
         run: lake build foundationsAudit
+      - name: Isolated adversarial audit rejection tests
+        run: lake build foundationsAuditRejection

@@ -14,7 +14,10 @@
 
 - Preserve legacy protocol/SMT/C source behavior. Correct documentation claims and route to the accepted design.
 - Core must not depend on Kadmos, savepoints, verdicts, DSL macros, solver IO or physical storage.
-- Transitions may be nondeterministic and disabled. Atomicity is instance-specific.
+- Transitions may be nondeterministic. At a state, disabled means no applicable
+  `(action, observation, successor)` Step triple; a particular action `a` is
+  disabled at `s` when `¬ ∃ o s', T.step s a o s'`. Disabled is not a new Core
+  outcome enum. Atomicity is instance-specific.
 - No sorry, admit, sorryAx, hidden axioms or native_decide in certified new foundation proofs.
 - Work in an isolated native worktree; no secrets, caches or generated artifacts in commits.
 
@@ -34,7 +37,10 @@
 - `Harmonia/Core/Refinement.lean`: state relation and observation mapping for forward simulation; lift concrete executions and transfer abstract invariants. Begin with one-step matching and document this boundary.
 - `Harmonia/Examples/Foundation.lean`: initial witnesses, deterministic/disabled/nondeterministic cases, labeled traces and a concrete-to-abstract refinement.
 - `HarmoniaTests/Foundations.lean`: theorem probes including negative cases for wrong labels and unsafe transitions.
-- `HarmoniaTests/AxiomAudit.lean`: inspect dependencies of new public theorems, reject sorryAx and unexpected axioms; report standard Lean axioms explicitly.
+- `HarmoniaTests/AxiomAudit.lean`: certified automatic audit of every new theorem;
+  no fixture imports; `lake build foundationsAudit` builds this audit and AuditPolicy.
+- `HarmoniaTests/AuditRejection.lean`: isolated adversarial fixtures, built only by
+  `lake build foundationsAuditRejection`; verify custom-axiom and sorryAx rejection.
 - `Harmonia.lean`, `lakefile.lean`: expose new modules and dedicated test/audit targets without changing existing demo behavior.
 - `README.md`, `ARCHITECTURE.md`: identify legacy demonstrations versus newly proved foundations and exact verification commands.
 
@@ -76,6 +82,36 @@ Expected safety theorem: initialization and step preservation imply `∀ s, Reac
 - [x] Demonstrate a concrete state carrying an extra field and an abstract counter; wrong observation mappings cannot meet the simulation obligation.
 - [x] Run all tests and build; commit.
 
+### Exact proved forward-simulation contract
+
+```lean
+structure ForwardSimulation (C : TransitionSystem CS CA CO)
+    (B : TransitionSystem BS BA BO) (R : CS → BS → Prop) (obsMap : CO → BO) : Prop where
+  initial : ∀ c, C.init c → ∃ b, B.init b ∧ R c b
+  matchStep : ∀ c a o c' b, R c b → C.step c a o c' →
+    ∃ ba b', B.step b ba (obsMap o) b' ∧ R c' b'
+```
+
+For every concrete initial state, `initial` supplies at least one related
+abstract initial state. `matchStep` covers **every** concrete pre-state, action,
+observation and successor, and **every** abstract pre-state related to that
+concrete pre-state. Each such concrete step must have one matching abstract
+step with observation `obsMap o` and a related successor. Abstract action `ba`
+and successor `b'` are existentially chosen for that obligation; no uniqueness
+or determinism is required.
+
+Safety transfer requires both `∀ b, Reachable B b → I b` and
+`∀ c b, R c b → I b → J c`; it then establishes `J c` for every reachable
+concrete state. The relation-mediated implication is an explicit obligation,
+not automatic equality of state predicates.
+
+Concrete and abstract action types `CA` and `BA` may differ. The Core preserves
+declared observations, without asserting equality or a map of action labels.
+Inputs/actions that are externally relevant must be represented in observations
+or constrained by an application refinement contract. The current examples use
+identical `Unit` actions. Finite internal-step/weak matching remains deferred;
+this interface does not establish liveness or bisimulation.
+
 ## Task 4 Verification and delivery
 
 - [x] Add an axiom audit over all new named public theorems and examples; prove its failure detection covers sorryAx and a synthetic protocol axiom.
@@ -94,7 +130,8 @@ All new theorem proofs must be kernel checked. No state machine test alone subst
 Execution is authorized inline, within this invocation's native worktree. The
 coordinator performs independent review and integration: replace the old Grok
 review step with delivery for coordinator review. No push means hosted CI cannot
-be triggered here; commit the workflow and run its three commands locally.
+be triggered here; commit the workflow and run its verification commands locally.
+The resume adds the fourth target `lake build foundationsAuditRejection`.
 
 Exact interfaces (namespace `Harmonia.Foundation`, universe-polymorphic types):
 ```lean
@@ -149,6 +186,17 @@ and `sorryAx` (neither admitted to the certified foundation).
 - [x] Task 3: run `lake env lean HarmoniaTests/RefinementProbes.lean` RED; implement;
   build and all probes GREEN; commit.
 - [x] Task 4: run audit policy detection tests RED/GREEN; expose
-  `lake build foundationsTest` and `lake build foundationsAudit`; add pinned CI;
-  document evidence and boundaries; run `lake build`, both targets, diff checks;
+  `lake build foundationsTest`, `lake build foundationsAudit` (certified only),
+  and `lake build foundationsAuditRejection` (fixtures only); add pinned CI;
+  document evidence and boundaries; run all four build commands and diff checks;
   commit delivery for coordinator review.
+
+## Supported source-package review corrections
+
+- [x] Pin the actual quantifiers above; retain different action types and document
+  the externally relevant input/action contract boundary. No public API change.
+- [x] Observe `lake build foundationsAuditRejection` RED before adding the target;
+  split its roots from the certified audit and add the fourth command to CI/docs.
+- [x] Clarify disabled as absence of applicable Step triples, without an enum.
+- [x] Run all four targets, direct audit/rejection elaborations and
+  `git diff --check`; record outputs/exit codes and commit on the existing branch.

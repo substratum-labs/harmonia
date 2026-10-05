@@ -103,12 +103,39 @@ reachable states exactly as endpoints of initialized finite paths.
 `Initially T I` and `Preserved T I` imply `invariant`: every reachable state
 satisfies I. Preservation covers all labeled successors, not a selected branch.
 
-`ForwardSimulation C B R obsMap` requires an abstract related initial state for
-every concrete initial state, and one abstract step with mapped observation
-for each concrete step from every related pair. `lift` produces a valid abstract
-path, a related final state and precisely the mapped observation list.
-`reachable` and `transfer_invariant` transfer abstract reachable-state safety.
-Action labels may differ; no map of actions is promised.
+The actual proved `ForwardSimulation` contract is:
+
+```lean
+structure ForwardSimulation (C : TransitionSystem CS CA CO)
+    (B : TransitionSystem BS BA BO) (R : CS → BS → Prop) (obsMap : CO → BO) : Prop where
+  initial : ∀ c, C.init c → ∃ b, B.init b ∧ R c b
+  matchStep : ∀ c a o c' b, R c b → C.step c a o c' →
+    ∃ ba b', B.step b ba (obsMap o) b' ∧ R c' b'
+```
+
+For every concrete initial state, `initial` supplies at least one related
+abstract initial state. `matchStep` covers **every** concrete pre-state, action,
+observation and successor, and **every** abstract pre-state related to that
+concrete pre-state. Each such concrete step must have one matching abstract
+step with observation `obsMap o` and a related successor. Abstract action `ba`
+and successor `b'` are existentially chosen for that obligation; no uniqueness
+or determinism is required.
+
+Safety transfer requires both `∀ b, Reachable B b → I b` and
+`∀ c b, R c b → I b → J c`; it then establishes `J c` for every reachable
+concrete state. The relation-mediated implication is an explicit obligation,
+not automatic equality of state predicates.
+
+Concrete and abstract action types `CA` and `BA` may differ. The Core preserves
+declared observations, without asserting equality or a map of action labels.
+Inputs/actions that are externally relevant must be represented in observations
+or constrained by an application refinement contract. The current examples use
+identical `Unit` actions. Finite internal-step/weak matching remains deferred;
+this interface does not establish liveness or bisimulation.
+
+`lift` produces a valid abstract path, a related final state and precisely the
+mapped observation list. `reachable` and `transfer_invariant` use initial-state
+matching and the explicit relation-mediated safety obligations above.
 
 Examples: counter starts at 0, increments while below 2, emits its successor,
 and stays within bound 2. The concrete state pairs that counter with Boolean
@@ -142,7 +169,7 @@ Linux CI is supplied but has not run in this invocation. Machine-specific
 command logs and generated artifacts are outside Git; this receipt records
 portable commands, outputs and exit codes.
 
-## Final physical verification
+## Original delivery physical verification (c2ce9e0)
 
 | Command/check | Observed result |
 | --- | --- |
@@ -168,8 +195,7 @@ named public proof declarations and formal probes; no handpicked theorem list.
 - `2e6fa41`: Task 1 relational systems and labeled finite executions; preflight.
 - `f593785`: Task 2 all-successor invariant induction and unsafe mutant probes.
 - `b97c058`: Task 3 execution lifting, safety transfer and nonvacuous examples.
-- Delivery commit containing this receipt: Task 4 audit/CI/documentation, identified
-  by final branch HEAD in the executor handoff (avoids a self-referential hash).
+- `c2ce9e0`: Task 4 audit/CI/documentation, original stage-one delivery.
 
 Changed files, relative to this worktree:
 
@@ -195,3 +221,64 @@ Changed files, relative to this worktree:
 Task 4 complete for the bounded executor scope. Ready for coordinator independent
 review; no claim that independent review or hosted CI has already passed.
 No deferred minor findings were recorded. No background process remains.
+
+## Supported source-package review corrections
+
+Resume baseline: `c2ce9e0`, same native worktree and branch. Coordinator reports
+independent successful reruns of the original three targets and exact-head Linux
+push/PR CI at that commit. Those are coordinator-provided results; this executor
+has not accessed remote CI or other projects. Correction-head CI awaits the
+coordinator's next run.
+
+Ruling: retain the actual proved API with distinct concrete and abstract action
+types, rather than requiring identical action types. `matchStep` universally
+covers every related abstract pre-state and every concrete labeled step, and
+existentially supplies a single abstract step with the mapped observation and
+related successor. Initial matching and relation-mediated safety transfer are
+explicit, as detailed above. Current examples use identical Unit actions.
+Externally relevant inputs/actions must appear in observations or be constrained
+by an application refinement contract; the generic theorem alone does not
+certify input/action identity. Cost if this boundary is omitted: an application
+could overclaim preservation of behavior it never exposed or constrained.
+Finite internal-step/weak refinement, liveness and bisimulation remain deferred.
+No proved API or proof changes are made for this ruling.
+
+Audit isolation correction: `foundationsAudit` now has only AuditPolicy and
+certified AxiomAudit as roots; `foundationsAuditRejection` builds the adversarial root
+separately. AxiomAudit's import closure remains fixture-free, and the automatic
+all-new-theorem dependency audit is unchanged. CI and documentation invoke both
+commands separately.
+
+Target RED: `lake build foundationsAuditRejection` before implementation returned
+exit 1 with `error: unknown target foundationsAuditRejection`.
+
+Disabled clarification: no applicable `(action, observation, successor)` Step
+triple at a state; a particular action is disabled when no observation/successor
+satisfies its step relation. No new Core outcome enum is introduced.
+
+### Correction verification
+
+Target GREEN: after splitting Lake roots, `lake build foundationsAuditRejection`
+returned exit 0 (`Build completed successfully`). The final physical runs on
+this correction tree were inspected individually:
+
+| Command/check | Observed result |
+| --- | --- |
+| `lake build` | exit 0; Build completed successfully |
+| `lake build foundationsTest` | exit 0; Build completed successfully |
+| `lake build foundationsAudit` | exit 0; certified audit PASS, 52 theorems |
+| `lake build foundationsAuditRejection` | exit 0; isolated rejection fixtures pass |
+| `lake env lean HarmoniaTests/AxiomAudit.lean` | exit 0; fresh audit PASS, 52 theorems |
+| `lake env lean HarmoniaTests/AuditRejection.lean` | exit 0; all expected diagnostics match |
+| `git diff --check` | exit 0; no whitespace errors |
+
+Both audit runs report only `[propext, Quot.sound]` in certified theorem
+dependencies. The certified module and automatic audit policy are unchanged;
+its imports remain Foundations, InvariantProbes, RefinementProbes and AuditPolicy.
+No AuditRejection import or root remains in the certified target. Core, examples,
+formal proofs, legacy source and `lean-toolchain` have no diff from `c2ce9e0`.
+
+Correction files: lakefile, CI workflow, README, ARCHITECTURE, implementation plan
+and this receipt only. The correction commit is the final HEAD named in the
+executor handoff. Ready for coordinator final review; no external reviewer,
+agents, push, merge or background process was used in this resume.

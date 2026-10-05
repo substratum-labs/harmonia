@@ -13,10 +13,14 @@ lean_exe "harmonia" where
   root := `Main
   moreLinkArgs := if System.Platform.isOSX then #["-fuse-ld=/usr/bin/ld"] else #[]
 
--- Proof elaboration targets; adversarial audit fixtures remain isolated.
+-- Proof elaboration targets; certified audit and adversarial fixtures are separate.
 lean_lib foundationsTest where
   roots := #[`HarmoniaTests.Foundations, `HarmoniaTests.InvariantProbes,
     `HarmoniaTests.RefinementProbes]
 
 lean_lib foundationsAudit where
-  roots := #[`HarmoniaTests.AuditPolicy, `HarmoniaTests.AxiomAudit, `HarmoniaTests.AuditRejection]
+  roots := #[`HarmoniaTests.AuditPolicy, `HarmoniaTests.AxiomAudit]
+
+-- Deliberate axiom/sorryAx fixtures: never a root of foundationsAudit.
+lean_lib foundationsAuditRejection where
+  roots := #[`HarmoniaTests.AuditRejection]

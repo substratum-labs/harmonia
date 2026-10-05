@@ -20,13 +20,15 @@ With [elan](https://github.com/leanprover/elan) installed, run:
 lake build
 lake build foundationsTest
 lake build foundationsAudit
+lake build foundationsAuditRejection
 ```
 
 `lean-toolchain` pins `leanprover/lean4:v4.16.0`. Foundation verification needs
 no SMT solver. The audit enumerates every theorem from the imported new modules,
 checks transitive dependencies and prints each theorem's axiom set. Isolated
 adversarial fixtures verify rejection of custom axioms and `sorryAx`; they are
-not imported into the certified foundation audit.
+built only by `foundationsAuditRejection`, not by the certified
+`foundationsAudit` target or its module import closure.
 
 The legacy CLI remains available as `lake exe harmonia`; its SMT demonstrations
 require Z3. `Event`, `Network`, `SmallStep`, handwritten 2PC, DSL datatype macros,
@@ -40,3 +42,15 @@ Next stages are minimal distributed semantics, Kadmos application semantics,
 and verification/codegen correspondence, followed by evidence-driven expansion.
 Forward simulation transfers the stated safety properties; it does not prove
 liveness or bisimulation.
+
+The proved simulation requires a related abstract initial state for every
+concrete initial state. For every related abstract pre-state and every concrete
+step, it requires one abstract step with the mapped observation and a related
+successor. Safety transfer additionally requires that the abstract invariant,
+through the state relation, implies the concrete property. The exact quantifiers
+are documented in [architecture](ARCHITECTURE.md).
+
+Concrete and abstract internal action types may differ; current examples use
+identical `Unit` actions. Externally relevant inputs/actions must be represented
+in observations or constrained by an application refinement contract. Finite
+internal-step/weak matching remains deferred.

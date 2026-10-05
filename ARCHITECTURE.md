@@ -25,11 +25,35 @@ quantifies over every legal action, observation and successor. Models choose
 step granularity and observations; the Core assumes no executable transition
 function, persistence, physical IO atomicity, checker or verdict mechanism.
 
-Simulation preserves the mapped observation list and matches every concrete
-step with exactly one abstract step. Abstract action labels are existential;
-state correspondence is an explicit relation. This supports reachable-state
-safety transfer, not liveness, fairness, bisimulation, reverse matching or
-internal-step erasure. Finite-internal-step refinement is deferred.
+The actual proved forward-simulation interface is:
+
+```lean
+structure ForwardSimulation (C : TransitionSystem CS CA CO)
+    (B : TransitionSystem BS BA BO) (R : CS → BS → Prop) (obsMap : CO → BO) : Prop where
+  initial : ∀ c, C.init c → ∃ b, B.init b ∧ R c b
+  matchStep : ∀ c a o c' b, R c b → C.step c a o c' →
+    ∃ ba b', B.step b ba (obsMap o) b' ∧ R c' b'
+```
+
+For every concrete initial state, `initial` supplies at least one related
+abstract initial state. `matchStep` covers **every** concrete pre-state, action,
+observation and successor, and **every** abstract pre-state related to that
+concrete pre-state. Each such concrete step must have one matching abstract
+step with observation `obsMap o` and a related successor. Abstract action `ba`
+and successor `b'` are existentially chosen for that obligation; no uniqueness
+or determinism is required.
+
+Safety transfer requires both `∀ b, Reachable B b → I b` and
+`∀ c b, R c b → I b → J c`; it then establishes `J c` for every reachable
+concrete state. The relation-mediated implication is an explicit obligation,
+not automatic equality of state predicates.
+
+Concrete and abstract action types `CA` and `BA` may differ. The Core preserves
+declared observations, without asserting equality or a map of action labels.
+Inputs/actions that are externally relevant must be represented in observations
+or constrained by an application refinement contract. The current examples use
+identical `Unit` actions. Finite internal-step/weak matching remains deferred;
+this interface does not establish liveness or bisimulation.
 
 The new Core imports only its predecessor foundation modules and Lean's implicit
 standard prelude. The umbrella `Harmonia.lean` also imports legacy prototypes;
@@ -67,6 +91,7 @@ SMT and C behaviors. Legacy performance measurements do not prove correctness.
 lake build
 lake build foundationsTest
 lake build foundationsAudit
+lake build foundationsAuditRejection
 ```
 
 CI runs these commands on Ubuntu and enforces the Lean 4.16.0 pin. The Mac
@@ -74,5 +99,7 @@ linker option is restricted to macOS so Linux uses Lean's default linker.
 See the [stage-one receipt](docs/verification/2026-10-04-foundations-stage-one.md)
 for physical results and the independent-review handoff. The audit's allowed
 standard axioms are `propext`, `Quot.sound` and `Classical.choice`; the receipt
-reports which actually occur. The adversarial audit module is deliberately
-separate from certified proofs.
+reports which actually occur. `foundationsAudit` has only AuditPolicy and the
+certified AxiomAudit as roots; their import closure contains no AuditRejection.
+`foundationsAuditRejection` separately elaborates the adversarial fixtures.
+Automatic coverage of every new theorem remains in the certified audit.
