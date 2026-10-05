@@ -1,3 +1,4 @@
+import Harmonia.Core.Invariant
 import Harmonia.Core.Execution
 /-
   Harmonia: Formalizing the Foundations of Distributed Systems

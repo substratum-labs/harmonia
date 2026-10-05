@@ -39,3 +39,14 @@ HarmoniaTests/Foundations.lean` exit 0; full `lake build` and repeated probe
 exit 0. During development, build exit 1 exposed the explicit argument
 signature of `List.map_append` in Lean 4.16; supplying `Prod.snd xs ys` resolved
 it without changing the API or probes. Task 1 complete.
+
+Task 2 RED: `lake env lean HarmoniaTests/InvariantProbes.lean` exit 1,
+missing `Invariant.olean`. Unsafe model has initial 0 and an actual reachable
+successor 3; probe negates all-successor preservation of the bound 2.
+
+Task 2 GREEN: full `lake build`, Foundations and InvariantProbes commands exit
+0. Intermediate fixture errors: reserved `unsafe` identifier renamed
+`unsafeSystem`, and unused Unit action supplied explicitly in the reachable
+witness. A shell invocation whose trailing diff check returned 0 still printed
+an elaboration error; it was not accepted as GREEN. The subsequent separate
+probe and chained build/tests returned 0 with no diagnostics. Task 2 complete.
