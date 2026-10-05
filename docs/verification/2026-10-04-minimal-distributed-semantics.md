@@ -197,3 +197,13 @@ Interfaces checked: Task 1 types → 2 network → 3 Step/system → 4 proofs �
 fixtures → 6 audit. Actual Foundation imports/constructors match the plan.
 Task 1: pending. Task 2: pending. Task 3: pending. Task 4: pending.
 Task 5: pending. Task 6: pending.
+
+Task 1: complete. RED `lake env lean HarmoniaTests/DistributedMembership.lean`
+exit 1: missing Protocol.olean. GREEN `lake build distributedTest foundationsTest
+foundationsAudit foundationsAuditRejection` exit 0, source/API and type probes.
+Ruling: Lean 4.16 has no #check_fail command — use fail_if_success with typed
+have declarations instead — equivalent type rejection without requiring later
+Lean syntax; cost if wrong is probe diagnostic ergonomics, not model behavior.
+Intermediate build exit 1 identified exactly that unsupported command; no
+semantic API change. Checked lists reject duplicates without deduplication;
+empty/two-member witnesses and nonmember actor/endpoint rejection pass.

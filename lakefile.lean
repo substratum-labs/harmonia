@@ -24,3 +24,6 @@ lean_lib foundationsAudit where
 -- Deliberate axiom/sorryAx fixtures: never a root of foundationsAudit.
 lean_lib foundationsAuditRejection where
   roots := #[`HarmoniaTests.AuditRejection]
+
+lean_lib distributedTest where
+  roots := #[`HarmoniaTests.DistributedMembership]
