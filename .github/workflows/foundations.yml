@@ -1,0 +1,25 @@
+name: Formal foundations
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  lean:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install elan
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - name: Verify toolchain pin
+        run: test "$(cat lean-toolchain)" = "leanprover/lean4:v4.16.0"
+      - name: Build
+        run: lake build
+      - name: Formal regression probes
+        run: lake build foundationsTest
+      - name: Certified comprehensive theorem axiom audit
+        run: lake build foundationsAudit
+      - name: Isolated adversarial audit rejection tests
+        run: lake build foundationsAuditRejection
