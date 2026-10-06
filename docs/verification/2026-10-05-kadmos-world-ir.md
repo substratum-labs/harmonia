@@ -1,7 +1,7 @@
 # T-393 design-only baseline receipt
 
 Date: 2026-10-05. Owner: actual physical Codex. Independent reviewer: actual Grok,
-dispatched by parent; first package preflight returned REVISE. No revised acceptance is claimed.
+dispatched by parent; first and R2 package preflights returned REVISE. No revised acceptance is claimed.
 Baseline HEAD: `5daf0208c07eafba0540f054291bfeb3d238fcf9` (integrated T-392).
 Toolchain: `leanprover/lean4:v4.16.0`.
 
@@ -216,3 +216,34 @@ historical sentence saying placeholders were absent (exit1). Rewording that hist
 sentence and rerunning returned exit0 for all documents; no unresolved placeholder was
 present. Fence/whitespace checks, four-task count and explicit six-target coverage all
 passed; spec remains180 lines and plan352. Final staged/commit scope is documents only.
+
+## R2 sole-blocker proof-method correction
+
+Resume HEAD: `663f4bc437f5d2c411cac6c75610e104d3e9de02`; same native03e7 branch,
+clean at entry. Read `/private/tmp/harmonia-t393-preflight-r2-verdict.md` and the
+coordinator-checked `/private/tmp/harmonia-t393-fin-context-probe.lean`. R2 returned
+REVISE solely because singleton Fin-context updates are propositionally, not
+definitionally, equal to constant lambdas. Coordinator's probe exit0 confirmed this;
+executor rerun `lake env lean /private/tmp/harmonia-t393-fin-context-probe.lean`
+also exited0. Both updated and round-trip contexts use `fail_if_success rfl`, then
+funext and Fin.ext with Nat.eq_zero_of_le_zero/Nat.le_of_lt_succ to prove equality.
+The outside-product probe checks the proof method, not an implemented interpreter.
+
+Replaced debit30's successful whole-Result rfl with debit_accept at100/30, retaining
+balanceState(100-30) and accepted/none. General debit_accept/debit_insufficient still
+state whole-Result equalities and use context extensionality. Checked every planned
+successful identity: both bounds round trips, n=b, accepted trace steps, phase1/balance70,
+and zero-effect/directive-only successes. Reduce round-trip verdict, directive and
+context0 first; prove whole State extensionally. Literal context reuse, direct default
+initialization, unchanged-state rejection, runEffects projections and helper unfolding
+retain rfl only when definitionally true. No numeric projection replaces a whole Result.
+Spec and plan pin this method; semantics, four tasks and interpreter-derived Step are
+unchanged. No second balance relation, product/test/tool edit or new feature.
+
+Per coordinator instruction, unchanged product suites were not repeated: two serial
+baseline rounds already passed. This correction runs only the tiny typed probe and
+Git/document checks. Probe file stays outside product and unstaged. R3 acceptance is
+pending; stop immediately after committing these three documents. No subagents,
+Kadmos/internal edits, push or merge. Managed authorization remains in effect.
+Git protected-tree diff and whitespace checks exited0. Document checks passed:
+spec184/plan375 lines, balanced fences, four tasks, no successful whole-Result rfl pin.

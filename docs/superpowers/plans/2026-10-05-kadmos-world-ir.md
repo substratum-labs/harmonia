@@ -191,6 +191,8 @@ theorem runTransitionEffects_target (t : Transition p v f) (i : Fin f → Int) (
   rejection original100; add150 then subtract150 also accepts100. Intermediate -50 is safeInt despite
   violating declared bounds. Constant add/sub commute; the review's reversed-final-minus50 claim is wrong.
   Keep x/y ordering as the sensitivity test.
+  For both successful round trips, reduce verdict=.accepted, directive=none and context0=100;
+  prove equality of the entire candidate State/context extensionally, not by whole-State rfl.
 - [ ] Prove `interpret_malformedSpec (h : initialize w = .error e) (s : State p v) (r : Request f) :
   interpret w s r = ⟨s, ⟨.rejected (.malformedSpec e), none⟩⟩`; unfold the initial pipeline branch.
   Pin malformedSpec wrappers at interpret with caller phase0/context100 and otherwise valid request:
@@ -219,7 +221,8 @@ arbitrary-amount debit theorems.
 -- Namespace Harmonia.Applications.Kadmos.Tests.Balance.
 example : initialize balanceWorld = .ok (balanceState 100) := by rfl
 example : interpret balanceWorld (balanceState 100) (debit 30) =
-  ⟨balanceState 70, ⟨.accepted, none⟩⟩ := by rfl
+  ⟨balanceState (100-30), ⟨.accepted, none⟩⟩ := by
+  exact debit_accept 100 30 (by decide) (by decide) (by decide) (by decide)
 example : interpret balanceWorld (balanceState 100) (debit 130) =
   ⟨balanceState 100, ⟨.rejected (.bounds 0), none⟩⟩ := by rfl
 ```
@@ -244,7 +247,8 @@ theorem debit_insufficient (b n : Int) (hb : 0 ≤ b) (hB : b ≤ S) (hbn : b < 
 ```
 
   Use the installed Int lemmas (omega only after an Init-only Lean4.16 feasibility check) to prove -S≤b-n≤S,
-  unfold actual eval, then context extensionality. Pin n=b>0 accepts0; debit1 from0 passes the positive guard
+  unfold actual eval, then context extensionality. Prove debit_accept before closing the debit30 pin
+  through it; keep the whole Result with accepted/none. Pin n=b>0 accepts0; debit1 from0 passes the positive guard
   and rejects bounds0. No hardcoded-amount premise.
 - [ ] Prove initialized balance safety for arbitrary Reachable states, extracting the bound 0≤context0≤S from
   Good. Exhibit `Foundation.Reachable (system balanceWorld) (balanceState 100)` using `.init` and the
@@ -261,6 +265,25 @@ theorem debit_insufficient (b n : Int) (hb : 0 ≤ b) (hB : b ≤ S) (hbn : b < 
   invariant balance+1<=S, effect balance=S passes bounds but overflows invariant evaluation: reject
   invariant0, preserve100. Both false and EvalError map to invariant(index); setting initial defaultS gives
   initialInvariant. Bad bounds/default/initial flags from Task1 remain distinct from runtime errors.
+- [ ] Apply the method to every successful whole-State/Result identity: debit30, n=b,
+  accepted 30/20/130 trace steps, both bounds round trips and the phase1/balance70 fixture.
+  Reduce phase/verdict/directive, then use constructor congruence and context extensionality:
+
+```lean
+theorem finOne_context_eq (c : Fin 1 → Int) (n : Int) (h0 : c 0 = n) :
+    c = (fun _ => n) := by
+  funext y
+  have hy : y = (0 : Fin 1) :=
+    Fin.ext (Nat.eq_zero_of_le_zero (Nat.le_of_lt_succ y.isLt))
+  rw [hy]
+  exact h0
+```
+
+  Substitute that context equality to close the whole Result, retaining accepted/none or SEND.
+  Zero-effect/directive-only successes may use rfl when context is literally reused; initialization
+  rfl requires a directly built default lambda. Otherwise use extensionality. Rejections reuse s;
+  runEffects projections and the target-helper equation retain rfl where definitionally true.
+  Whole-Result obligations must not be replaced by numeric projections.
 - [ ] GREEN: `lake build kadmosWorldTest`; existing test/audit/rejection targets serially.
 - [ ] Commit explicit files: `feat: connect interpreted Kadmos balance safety to Foundation`.
 

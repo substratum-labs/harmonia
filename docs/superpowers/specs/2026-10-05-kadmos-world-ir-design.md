@@ -157,6 +157,10 @@ even though its mathematical final result is safe. From100/bounds[0,S], subtract
 subtract150 alone rejects bounds0 preserving100. Reversing both constant writes also accepts100: (100+150)-150=100.
 The review's reversed-final-minus50 claim is declined; order sensitivity belongs to the x/y probe, not commuting constants.
 
+Successful whole-State/Result identities after writes require function extensionality, not rfl on updated Fin-indexed functions. Reduce phase,
+verdict/directive and pointwise reads, then use funext/Fin.ext; close debit examples through the general whole-Result debit_accept theorem.
+Apply this to both bounds round trips, n=b, trace steps and the phase1 fixture; initialization/rejection/projections retain rfl only when definitionally true.
+
 Balance: Ready, balance default100, bounds[0,S], invariant balance>=0; debit self-loop, amount required safe int, guard amount>0, effect
 balance=balance-amount, directive none. Prove positive arbitrary safe amounts accept when their resulting balance is legal; 30 yields70; 130
 passes guard but rejects at bounds with original100. Repeat debits remain enabled until a negative candidate rejects. Trace 30,20,130 ends50
