@@ -1,0 +1,22 @@
+version: "kadmos.world.v0"
+name: "BalanceWorld"
+states:
+  - id: Ready
+    initial: true
+context:
+  balance:
+    type: integer
+    min: 0
+    max: 9007199254740991
+    default: 100
+invariants:
+  - id: nonnegative
+    predicate: "balance >= 0"
+transitions:
+  - id: DEBIT
+    from: Ready
+    to: Ready
+    guard: "event.amount > 0"
+    directive: null
+    effects:
+      - "balance = balance - event.amount"

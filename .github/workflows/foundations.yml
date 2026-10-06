@@ -41,3 +41,15 @@ jobs:
         run: lake build kadmosWorldAudit
       - name: Kadmos World isolated adversarial audit probes
         run: lake build kadmosWorldAuditRejection
+      - name: Kadmos Bridge artifact provenance and policy tests
+        run: python3 scripts/check_kadmos_bridge_artifacts.py --self-test && python3 scripts/check_kadmos_bridge_artifacts.py
+      - name: Kadmos Bridge source and root inventory
+        run: python3 scripts/check_kadmos_bridge_audit.py --self-test && python3 scripts/check_kadmos_bridge_audit.py
+      - name: Kadmos Bridge syntax, certificate and fixture probes
+        run: lake build kadmosBridgeSyntaxTest kadmosBridgeCertificateTest kadmosBridgeFixturesTest
+      - name: Kadmos Bridge certified axiom audit
+        run: lake build kadmosBridgeAudit
+      - name: Kadmos Bridge fresh axiom audit
+        run: lake env lean HarmoniaTests/KadmosBridgeAxiomAudit.lean
+      - name: Kadmos Bridge isolated adversarial audit probes
+        run: lake build kadmosBridgeAuditRejection

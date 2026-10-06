@@ -1,3 +1,6 @@
+import Harmonia.Applications.Kadmos.Bridge.Fixtures
+import Harmonia.Applications.Kadmos.Bridge.Certificate
+import Harmonia.Applications.Kadmos.Bridge.Syntax
 import Harmonia.Applications.Kadmos
 import HarmoniaTests.KadmosWorldIR
 import HarmoniaTests.KadmosWorldInterpreter

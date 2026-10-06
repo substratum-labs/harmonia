@@ -42,3 +42,18 @@ lean_lib kadmosWorldAudit where
 lean_lib kadmosWorldAuditRejection where
   roots := #[`HarmoniaTests.KadmosWorldRejection.Unused,
     `HarmoniaTests.KadmosWorldRejection.Unsafe, `HarmoniaTests.KadmosWorldAuditRejection]
+
+lean_lib kadmosBridgeSyntaxTest where
+  roots := #[`HarmoniaTests.KadmosBridgeSyntax]
+
+lean_lib kadmosBridgeCertificateTest where
+  roots := #[`HarmoniaTests.KadmosBridgeCertificate]
+
+lean_lib kadmosBridgeFixturesTest where
+  roots := #[`HarmoniaTests.KadmosBridgeFixtures]
+
+lean_lib kadmosBridgeAudit where
+  roots := #[`HarmoniaTests.AuditPolicy, `HarmoniaTests.KadmosBridgeAxiomAudit]
+lean_lib kadmosBridgeAuditRejection where
+  roots := #[`HarmoniaTests.KadmosBridgeRejection.Unused,
+    `HarmoniaTests.KadmosBridgeRejection.Unsafe, `HarmoniaTests.KadmosBridgeAuditRejection]
