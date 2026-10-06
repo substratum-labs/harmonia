@@ -55,7 +55,8 @@ def distributedDeclaration (env : Environment) (n : Name) : Bool :=
 def kadmosWorldSourceModules : Array Name := #[
   `Harmonia.Applications.Kadmos, `Harmonia.Applications.Kadmos.World,
   `Harmonia.Applications.Kadmos.Interpreter, `Harmonia.Applications.Kadmos.System,
-  `Harmonia.Applications.Kadmos.Balance, `HarmoniaTests.KadmosWorldIR,
+  `Harmonia.Applications.Kadmos.Balance, `Harmonia.Applications.Kadmos.Bridge.Syntax,
+  `HarmoniaTests.KadmosWorldIR,
   `HarmoniaTests.KadmosWorldInterpreter, `HarmoniaTests.KadmosWorldBalance,
   `HarmoniaTests.KadmosWorldAxiomAudit]
 

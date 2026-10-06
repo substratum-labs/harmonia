@@ -42,3 +42,6 @@ lean_lib kadmosWorldAudit where
 lean_lib kadmosWorldAuditRejection where
   roots := #[`HarmoniaTests.KadmosWorldRejection.Unused,
     `HarmoniaTests.KadmosWorldRejection.Unsafe, `HarmoniaTests.KadmosWorldAuditRejection]
+
+lean_lib kadmosBridgeSyntaxTest where
+  roots := #[`HarmoniaTests.KadmosBridgeSyntax]
