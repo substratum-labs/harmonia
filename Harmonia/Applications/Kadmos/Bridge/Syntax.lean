@@ -87,6 +87,7 @@ private def priority : String → Nat
   | "=>" => 1 | "||" => 2 | "&&" => 3 | "==" => 4
   | ">" | ">=" | "<" | "<=" => 5
   | "+" | "-" => 6
+  | "!" => 7
   | _ => 0
 private def combine (op : String) (l r : SourceExpr) : SourceExpr :=
   match op with

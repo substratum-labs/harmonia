@@ -87,6 +87,27 @@ theorem balance_130 : interpret balanceCandidate (balanceState 100) (balanceRequ
   rfl
 end Harmonia.Applications.Kadmos.BridgeFixtures.Tests
 namespace Harmonia.Applications.Kadmos.BridgeFixtures.Tests
+private def bangRaw : RawWorld :=
+  { balanceRaw with transitions := [⟨"DEBIT","Ready","Ready",
+      .expr "!true && event.amount > 0",["balance = balance - event.amount"],none⟩] }
+private def bangCandidate : World 1 1 1 1 :=
+  { balanceCandidate with transitions := fun _ =>
+      ⟨0,0,.and (.not (.bool true)) (.not (.le (.request 0) (.int 0))),
+        [⟨0,.sub (.context 0) (.request 0)⟩],none⟩ }
+private def oldWrongBangCandidate : World 1 1 1 1 :=
+  { balanceCandidate with transitions := fun _ =>
+      ⟨0,0,.not (.and (.bool true) (.not (.le (.request 0) (.int 0)))),
+        [⟨0,.sub (.context 0) (.request 0)⟩],none⟩ }
+example : (checkBridge bangRaw bangCandidate).toOption.isSome = true := by decide +kernel
+example : (checkBridge bangRaw oldWrongBangCandidate).toOption.isSome = false := by decide +kernel
+example : interpret bangCandidate (balanceState 100) (balanceRequest 0) =
+    ⟨balanceState 100,⟨.rejected .guardFalse,none⟩⟩ := rfl
+example : (interpret oldWrongBangCandidate (balanceState 100) (balanceRequest 0)).observation =
+    ⟨.accepted,none⟩ := by decide +kernel
+example : (interpret oldWrongBangCandidate (balanceState 100) (balanceRequest 0)).state.context 0 =
+    100 := by decide +kernel
+end Harmonia.Applications.Kadmos.BridgeFixtures.Tests
+namespace Harmonia.Applications.Kadmos.BridgeFixtures.Tests
 
 def orderInitial : State 2 2 := ⟨0,fun j => if j == 0 then 1 else 0⟩
 def orderFinal : State 2 2 := ⟨1,fun _ => 2⟩
