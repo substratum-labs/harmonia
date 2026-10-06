@@ -1,7 +1,7 @@
 # T-393 design-only baseline receipt
 
 Date: 2026-10-05. Owner: actual physical Codex. Independent reviewer: actual Grok,
-dispatched by parent; no reviewer result is claimed in this invocation.
+dispatched by parent; first package preflight returned REVISE. No revised acceptance is claimed.
 Baseline HEAD: `5daf0208c07eafba0540f054291bfeb3d238fcf9` (integrated T-392).
 Toolchain: `leanprover/lean4:v4.16.0`.
 
@@ -107,18 +107,18 @@ application proof. No product scaffolding or prototype was written.
    kernel proofs. No solver, physical IO, distributed composition, codegen or target
    correspondence result is claimed; legacy experiments remain unconnected.
 
-No hosted Linux CI or independent Grok preflight/review was run here. Parent dispatches
-preflight before any implementation. The bounded planning deliverables are the spec
-(under200 lines), plan (under300 lines) and this receipt; line/scope/whitespace checks
-and document-only commit identity are reported in the final handoff.
+The original planning invocation ran no hosted Linux CI or independent Grok review.
+Parent subsequently supplied first preflight REVISE; accepted revised preflight still
+precedes implementation. Original spec/plan were under200/under300 lines; coordinator
+permits modest plan growth for concrete revision pins. Current counts follow below.
 
 [Spec](../superpowers/specs/2026-10-05-kadmos-world-ir-design.md) ·
 [Plan](../superpowers/plans/2026-10-05-kadmos-world-ir.md).
 
-## Document self-review and scope check
+## Original document self-review and scope check
 
 Observed CLI exit0: spec165 lines and plan288 lines, below the requested limits;
-balanced Markdown fences; no TODO/TBD or trailing whitespace in all three documents.
+balanced Markdown fences; no unresolved placeholders or trailing whitespace in all three documents.
 All requested semantics map to the four task cycles. Self-review sharpened the target-
 phase invariant probe, repeated-assignment probe, non-null directive acceptance and
 certified Lake-root contamination policy. Public signatures and fixture constructors
@@ -126,3 +126,93 @@ agree across spec/plan; no product implementation is represented as already prov
 `git diff --exit-code` against baseline for Harmonia, HarmoniaTests, scripts, CI,
 lakefile, lean-toolchain, Main and root Harmonia exited0 with no diff. Git status
 showed exactly the three requested new document paths and no unrelated work.
+
+## Coordinator-reviewed preflight rulings (document correction only)
+
+Resume HEAD: `442241ff1d27b908075797d25117878a90a8711a`; same native03e7 worktree,
+thread and branch; clean at entry. Read `/private/tmp/harmonia-t393-preflight-verdict.md`
+completely. Actual Grok returned REVISE, package-only with no tests; coordinator reports
+physical reviewer process exit0/374.6s. That timing/exit is supplied evidence, not a
+review process run by this executor. Receiving-code-review and writing-plans applied;
+managed authority covers these document corrections. No routine approval requested.
+Rulings are ledgered here; coordinator retains the internal registry, which is untouched.
+
+1. **Accept late-bounds gap; decline wrong reversal arithmetic.** Add start100/bounds0..S,
+   subtract150 then add150 => accepted100, including safe private -50; subtract150 alone
+   => rejected(bounds0)/original100. Both reversed constant writes also end100:
+   (100+150)-150=100, not -50. Order-sensitive evidence remains x=x+1;y=x versus reversal.
+   Keep final40 with invariant min50 as a separate invariant-only rejection.
+2. **Clarify audit ambiguity, preserve policy.** The original phrase “three certified
+   audit targets” meant foundationsAudit/distributedAudit/kadmosWorldAudit, not the
+   Kadmos rejection target. The claimed Critical contradiction was an ambiguous reading,
+   not a policy contradiction. Six certified test/audit target closures must be trap-free.
+   Isolated rejection targets may import their own traps and shared AuditPolicy or
+   Foundation definitions. Isolation is directional: no certified-to-trap import edge;
+   banning rejection-to-shared-tooling edges would make the harness impossible. New
+   synthetic tests separately reject certified-root contamination and accept correctly
+   isolated rejection roots; no original distributed/root rule is weakened.
+3. **Accept exact stage pins.** UnknownAction beats phase; wrongPhase beats directive;
+   SEND mismatch rejects unauthorizedDirective/none; matching SEND accepts SEND and
+   none/none accepts none. Invalid raw type/range precedes false guard in this reference
+   contract. Second-write overflow is effectError overflow with whole original State.
+   Eager and/or/implies/not overflow pins are explicit; implies computes !left||right
+   after evaluating both operands. These are planned probes, not observed new results.
+4. **Accept malformedSpec and invariant-error pins.** Interpretation wraps duplicate
+   initials, invalid bounds, empty/duplicate action IDs, terminal-source and overflowing
+   initial-invariant errors, preserving caller State/none. Missing default0 is legal at
+   min0. World0000 initialization returns initialCount; State0 is uninhabited so no
+   fake interpretation caller is specified. False and evaluation-error post-invariants
+   both report invariant(index); overflowing initial invariant reports initialInvariant.
+5. **Accept whole-Result generic balance signatures and witnesses.** debit_accept and
+   debit_insufficient retain arbitrary Int amounts with explicit hypotheses and full
+   verdict/directive equality; n=b>0 accepts0, debit1 from0 rejects bounds0. Include
+   Reachable balance100 and the interpreted 30/20/130 execution ending50.
+6. **Accept target-phase proof limitation.** Successful numeric-only effects cannot
+   distinguish phase behaviorally; bool stateIs RHS fails at either phase. Actual
+   interpret must use runTransitionEffects; prove its runEffects transition.target
+   equation by unfolding that used helper. Keep candidate phase1/balance70 invariant
+   success versus phase0 failure. No unsupported conditional syntax is introduced.
+7. **Accept boundary pins and scoped counts.** Add literal/context S+1 overflow,
+   field1 decoder errors, unused required fields, Fin0 decode and a valid World1000
+   with unknown-action result. Preserve Foundation52 and Distributed336/594 in separate
+   certified environments. Existing selectors may legitimately see imported Foundation
+   and probe declarations in a combined application environment; report selector and
+   import scope rather than imposing the standalone counts there.
+
+Fin references remain typed; expression sorts remain dynamic, not a static GADT.
+Existing WorldSpec/types and runtime semantics remain the alignment baseline. The
+Lean input contract and safe-intermediate arithmetic remain narrower, with no parsing,
+YAML-schema compatibility or equivalence theorem claimed. Four tasks and the original
+bounded slice are retained. No product/test/tool code, dependency or toolchain changed;
+no subagents, Kadmos/internal edits, push or merge. Implementation and new policy/probe
+execution remain stopped pending accepted revised preflight.
+
+## Revision verification (actual CLI; one Lake process at a time)
+
+| Command/check | Exit | Observed result |
+| --- | --- | --- |
+| `lake build` | 0 | Build completed successfully |
+| `lake build foundationsTest foundationsAudit foundationsAuditRejection` | 0 | original targets passed; separate Foundation52 summary |
+| `lake build distributedTest distributedAudit distributedAuditRejection` | 0 | original targets passed; separate Distributed336/594 summary |
+| `python3 scripts/check_distributed_audit.py --self-test` | 0 | unchanged 16 policy tests, OK |
+| `python3 scripts/check_distributed_audit.py` | 0 | certified_modules12, distributed_closure16, foundation_closure10 |
+| `lake env lean HarmoniaTests/AxiomAudit.lean` | 0 | fresh 52 theorems; observed [propext, Quot.sound] |
+| `lake env lean HarmoniaTests/DistributedAxiomAudit.lean` | 0 | fresh 336 theorems/594 declarations; observed [propext, Quot.sound, Classical.choice] |
+| `git diff --exit-code 442241f -- Harmonia HarmoniaTests scripts .github lakefile.lean lean-toolchain Main.lean Harmonia.lean` | 0 | protected/product/test/tooling trees unchanged |
+| `git diff --check` | 0 | no whitespace errors |
+
+New application targets are still absent; the revised probes and policy tests above
+are execution obligations. Build summaries can replay artifacts; the two audit commands
+freshly elaborated their separate certified roots and confirm the counts independently.
+Logs stay in /private/tmp and are unstaged. No combined-environment count is asserted.
+Spec180/plan352 lines retain four tasks; the plan grew64 lines for concrete requested
+pins under the coordinator's explicit modest-growth allowance. Original line counts in
+this receipt describe the first delivery, not the revised package. Final document
+self-review, staged three-path scope and correction commit are supplied in handoff.
+Revised actual Grok preflight acceptance remains outstanding; stop after docs commit.
+
+Final revision self-review passed after a literal placeholder scan initially flagged a
+historical sentence saying placeholders were absent (exit1). Rewording that historical
+sentence and rerunning returned exit0 for all documents; no unresolved placeholder was
+present. Fence/whitespace checks, four-task count and explicit six-target coverage all
+passed; spec remains180 lines and plan352. Final staged/commit scope is documents only.
