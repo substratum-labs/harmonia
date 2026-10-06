@@ -833,6 +833,21 @@ theorem projectWorld_names_wf {raw : RawWorld} {w : World raw.states.length raw.
   · exact hn
   · simp [projectWorld,hn] at h
 
+instance : DecidableEq (World p v f a) := fun l r =>
+  if h : worldEq l r = true then isTrue ((worldEq_iff l r).mp h)
+  else isFalse (fun he => h ((worldEq_iff l r).mpr he))
+
+instance [DecidableEq E] [DecidableEq A] : DecidableEq (Except E A) := fun x y =>
+  match x,y with
+  | .ok a,.ok b =>
+    if h : a = b then isTrue (by cases h; rfl)
+    else isFalse (by intro hh; cases hh; exact h rfl)
+  | .error e,.error f =>
+    if h : e = f then isTrue (by cases h; rfl)
+    else isFalse (by intro hh; cases hh; exact h rfl)
+  | .ok _,.error _ => isFalse (by intro h; cases h)
+  | .error _,.ok _ => isFalse (by intro h; cases h)
+
 def checkBridge (raw : RawWorld)
     (candidate : World raw.states.length raw.context.length raw.fields.length raw.transitions.length) :
     Except BridgeError (World raw.states.length raw.context.length raw.fields.length raw.transitions.length) :=

@@ -57,6 +57,7 @@ def kadmosWorldSourceModules : Array Name := #[
   `Harmonia.Applications.Kadmos.Interpreter, `Harmonia.Applications.Kadmos.System,
   `Harmonia.Applications.Kadmos.Balance, `Harmonia.Applications.Kadmos.Bridge.Syntax,
   `Harmonia.Applications.Kadmos.Bridge.Certificate,
+  `Harmonia.Applications.Kadmos.Bridge.Fixtures,
   `HarmoniaTests.KadmosWorldIR,
   `HarmoniaTests.KadmosWorldInterpreter, `HarmoniaTests.KadmosWorldBalance,
   `HarmoniaTests.KadmosWorldAxiomAudit]

@@ -48,3 +48,6 @@ lean_lib kadmosBridgeSyntaxTest where
 
 lean_lib kadmosBridgeCertificateTest where
   roots := #[`HarmoniaTests.KadmosBridgeCertificate]
+
+lean_lib kadmosBridgeFixturesTest where
+  roots := #[`HarmoniaTests.KadmosBridgeFixtures]

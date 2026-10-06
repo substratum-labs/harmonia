@@ -1,0 +1,29 @@
+version: "kadmos.world.v0"
+name: "OrderPhaseWorld"
+states:
+  - id: A
+    initial: true
+  - id: B
+context:
+  x:
+    type: integer
+    min: 0
+    max: 9007199254740991
+    default: 1
+  y:
+    type: integer
+    min: 0
+    max: 9007199254740991
+    default: 0
+invariants:
+  - id: phase_order
+    predicate: "state == 'B' => y == x"
+transitions:
+  - id: STEP
+    from: A
+    to: B
+    guard: true
+    directive: null
+    effects:
+      - "x = x + 1"
+      - "y = x"
