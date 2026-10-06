@@ -35,3 +35,10 @@ lean_lib distributedAuditRejection where
 
 lean_lib kadmosWorldTest where
   roots := #[`HarmoniaTests.KadmosWorldIR, `HarmoniaTests.KadmosWorldInterpreter, `HarmoniaTests.KadmosWorldBalance]
+
+lean_lib kadmosWorldAudit where
+  roots := #[`HarmoniaTests.AuditPolicy, `HarmoniaTests.KadmosWorldAxiomAudit]
+
+lean_lib kadmosWorldAuditRejection where
+  roots := #[`HarmoniaTests.KadmosWorldRejection.Unused,
+    `HarmoniaTests.KadmosWorldRejection.Unsafe, `HarmoniaTests.KadmosWorldAuditRejection]

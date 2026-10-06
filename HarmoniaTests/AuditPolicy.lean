@@ -52,9 +52,22 @@ def distributedDeclaration (env : Environment) (n : Name) : Bool :=
   (`Harmonia.Distributed).isPrefixOf (sourceModule env n) ||
   distributedSourceModules.contains (sourceModule env n)
 
+def kadmosWorldSourceModules : Array Name := #[
+  `Harmonia.Applications.Kadmos, `Harmonia.Applications.Kadmos.World,
+  `Harmonia.Applications.Kadmos.Interpreter, `Harmonia.Applications.Kadmos.System,
+  `Harmonia.Applications.Kadmos.Balance, `HarmoniaTests.KadmosWorldIR,
+  `HarmoniaTests.KadmosWorldInterpreter, `HarmoniaTests.KadmosWorldBalance,
+  `HarmoniaTests.KadmosWorldAxiomAudit]
+
+def kadmosWorldDeclaration (env : Environment) (n : Name) : Bool :=
+  (`Harmonia.Applications.Kadmos).isPrefixOf n ||
+  (`Harmonia.Applications.Kadmos).isPrefixOf (sourceModule env n) ||
+  kadmosWorldSourceModules.contains (sourceModule env n)
+
 /-- Shared scan: source axioms first, even unused; unsafe compiler placeholders
 are exempt only from the auxiliary scan, never theorem dependency checks. -/
-def auditSelected (select : Name → Bool) (label : String) (allObserved : Bool := false) : CommandElabM Unit := do
+def auditSelected (select : Name → Bool) (label : String) (allObserved : Bool := false)
+    (summaryPrefix : String := "DISTRIBUTED AUDIT PASS") : CommandElabM Unit := do
   let env ← getEnv
   let declarations := env.constants.toList.toArray.qsort (fun a b => a.1.toString < b.1.toString)
   for (n, info) in declarations do
@@ -81,7 +94,7 @@ def auditSelected (select : Name → Bool) (label : String) (allObserved : Bool 
       if !observed.contains ax then observed := observed.push ax
     logInfo m!"{n}: {axioms}"
   if allObserved then
-    logInfo m!"DISTRIBUTED AUDIT PASS: {names.size} theorems; {count} declarations; observed axioms {observed}; whitelist [propext, Quot.sound, Classical.choice]"
+    logInfo m!"{summaryPrefix}: {names.size} theorems; {count} declarations; observed axioms {observed}; whitelist [propext, Quot.sound, Classical.choice]"
   else
     logInfo m!"AUDIT PASS: {names.size} theorems; observed axioms {observed}; whitelist [propext, Quot.sound, Classical.choice]"
 
@@ -107,3 +120,8 @@ elab "#audit_distributed" : command => do
 elab "#audit_module " n:ident : command => do
   let env ← getEnv
   HarmoniaAudit.auditSelected (fun name => HarmoniaAudit.sourceModule env name == n.getId) "source module" true
+
+elab "#audit_kadmos_world" : command => do
+  let env ← getEnv
+  HarmoniaAudit.auditSelected (HarmoniaAudit.kadmosWorldDeclaration env) "kadmos world" true
+    "KADMOS WORLD AUDIT PASS"

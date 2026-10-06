@@ -139,3 +139,8 @@ example : interpret {world [] with
 example : interpret IR.inert (⟨0,Fin.elim0⟩ : State 1 0) request =
   ⟨⟨0,Fin.elim0⟩,⟨.rejected .unknownAction,none⟩⟩ := by rfl
 end Harmonia.Applications.Kadmos.Tests.Interpreter
+namespace Harmonia.Applications.Kadmos.Tests.Interpreter
+example {w : World p v f a} (s : State p v) (r : Request f) {j : Fin f}
+    (h : ¬ inputValid (r.payload j)) :
+    ∃ e, interpret w s r = ⟨s,⟨.rejected e,none⟩⟩ := interpret_invalid_input h
+end Harmonia.Applications.Kadmos.Tests.Interpreter

@@ -33,3 +33,11 @@ jobs:
         run: lake build distributedAudit
       - name: Distributed adversarial audit rejection probes
         run: lake build distributedAuditRejection
+      - name: Kadmos World source and root inventory
+        run: python3 scripts/check_kadmos_world_audit.py --self-test && python3 scripts/check_kadmos_world_audit.py
+      - name: Kadmos World interpreter and kernel probes
+        run: lake build kadmosWorldTest
+      - name: Kadmos World certified axiom audit
+        run: lake build kadmosWorldAudit
+      - name: Kadmos World isolated adversarial audit probes
+        run: lake build kadmosWorldAuditRejection

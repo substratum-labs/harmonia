@@ -65,3 +65,7 @@ def twoInitial : World 2 0 0 0 :=
 example : «initialize» twoInitial = .error .initialCount := by rfl
 example : «initialize» {twoInitial with phaseIds := fun _ => "A"} = .error .phaseIds := by rfl
 end Harmonia.Applications.Kadmos.Tests.IR
+
+namespace KadmosNamespaceEscape
+theorem marker : True := True.intro
+end KadmosNamespaceEscape

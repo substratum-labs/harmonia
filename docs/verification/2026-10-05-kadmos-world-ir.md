@@ -1,7 +1,9 @@
-# T-393 design-only baseline receipt
+# T-393 verification receipt
 
 Date: 2026-10-05. Owner: actual physical Codex. Independent reviewer: actual Grok,
-dispatched by parent; first and R2 package preflights returned REVISE. No revised acceptance is claimed.
+dispatched by parent; first/R2 preflights returned REVISE and R3 returned ACCEPT.
+Historical planning evidence follows; current local implementation evidence is at the end.
+Final independent review and hosted Linux CI remain parent-owned and unobserved here.
 Baseline HEAD: `5daf0208c07eafba0540f054291bfeb3d238fcf9` (integrated T-392).
 Toolchain: `leanprover/lean4:v4.16.0`.
 
@@ -298,3 +300,94 @@ support lemma added to Interpreter (no runtime change). balance_initial_reachabl
 balance_reachable_bounds and balance_trace kernel checked. Closed pins include n=b,
 1from0, strict invalid tags/range, guard0/negative, invariant40/min50, invariant overflow,
 and target-phase candidate success versus source-phase failure. No deferred task3 pins.
+
+## Task4 complete: audit, inventory and Linux workflow
+
+Task3 commit1b66ca6. Task4 policy RED exit1: old distributed inventory silently accepted
+an unregistered application axiom source (one assertion failed; old tests passed).
+Task4 GREEN: all new Lake roots exit0. Certified application selection is namespace OR
+source prefix OR exact manifest (both namespace and source coverage), reusing the old
+unused-axiom/dependency engine. Only a configurable summary prefix was added; original
+selectors, whitelist and adversarial diagnostics remain intact. Escaped-source marker
+KadmosNamespaceEscape.marker appears in the fresh audit with dependency set[].
+
+Inventory:9 certified application/probe/audit modules,13 project modules in its audit
+closure;6 certified target closures trap-free;3 isolated rejection closures permitted
+own traps/shared tooling. Exact disk manifest/import coverage; product imports restricted
+to Init, certified application modules and the four established Foundation modules.
+Source tokens and every literal manifest/root array are checked. Rejection modules are
+excluded from certified roots/source manifest and tested separately, including unused
+normal/unsafe namespace-escaped axioms, indirect custom axiom and deliberate sorryAx.
+
+Author check found two policy holes before task completion; behavioral mutations were
+observed RED then GREEN: appended ++ array suffix, and an outside-inventory escaped
+axiom import/root. The task-owned checker now rejects nonliteral suffixes, unexpected
+project imports in the application audit, and certified roots not covered by their
+corresponding audit environment. This implements the accepted exact-coverage requirement,
+not a language feature. Existing checker/parsers/tests were not modified or weakened.
+Final new policy20 tests and old policy16 tests passed; post-fix inventories exit0.
+Linux workflow appends new inventory/tests/audit/rejection steps; no hosted run claimed.
+
+## Final serial acceptance matrix and proof scope
+
+All commands below ran physically and individually completed exit0 before another
+Lake invocation. Full logs remain in /private/tmp, not Git. After the final policy-only
+correction, both Python inventories and test suites were rerun exit0; Lean source and
+its fresh-audit results were unchanged, so those suites were not repeated unnecessarily.
+
+| Command | Actual result |
+| --- | --- |
+| lake build | exit0 |
+| lake build foundationsTest foundationsAudit foundationsAuditRejection | exit0 |
+| lake build distributedTest distributedAudit distributedAuditRejection | exit0 |
+| lake build kadmosWorldTest kadmosWorldAudit kadmosWorldAuditRejection | exit0 |
+| python3 scripts/check_distributed_audit.py --self-test; checker without flag | each exit0,16 tests; inventory12/16/10 |
+| python3 scripts/check_kadmos_world_audit.py --self-test; checker without flag | each exit0,20 tests; inventory9/13;6 certified/3 isolated targets |
+| lake env lean HarmoniaTests/AxiomAudit.lean | exit0,fresh52 theorems;[propext,Quot.sound] |
+| lake env lean HarmoniaTests/DistributedAxiomAudit.lean | exit0,fresh336 theorems/594 declarations;[propext,Quot.sound,Classical.choice] |
+| lake env lean HarmoniaTests/KadmosWorldAxiomAudit.lean | exit0,fresh426 theorems/752 declarations;[propext,Quot.sound,Classical.choice] |
+| lake env lean HarmoniaTests/AuditRejection.lean | exit0,expected diagnostics matched |
+| lake env lean HarmoniaTests/DistributedAuditRejection.lean | exit0,expected diagnostics matched |
+| lake env lean HarmoniaTests/KadmosWorldAuditRejection.lean | exit0,expected diagnostics matched |
+| lake env lean --version | exit0,4.16.0 arm64-apple-darwin23.6.0 |
+| protected-tree diff from031ace3 | exit0,no Core/Distributed/legacy/toolchain/old-inventory diff |
+| git diff --check | exit0 |
+
+The three audit counts belong to SEPARATE environments. Application count selects its
+namespace/source manifest including generated/private proof declarations and probes;
+imported Foundation dependencies are collected but not counted as application sources.
+A combined environment's Foundation selector can legitimately count additional probes;
+no standalone count is imposed there. Observed standard axiom cardinalities:Foundation2,
+Distributed3,application3; none outside the three-standard-axiom whitelist. No certified
+custom axiom/sorryAx, native_decide, external solver or finite-exploration proof claim.
+
+Locally complete four tasks. Proofs cover strict decoding/range, initialized Good,
+rejection full-State frame/no directive, accepted Good/exact declared directive,
+sequential effect equations/order probes, actual target-phase helper, Foundation
+reachable safety, nonvacuous general balance acceptance/insufficiency and interpreted
+30/20/130 trace ending50. Temporary declared-bound violations may be restored before
+publication; numeric safety remains checked at every literal/read/intermediate.
+Raw actions need not inherently preserve the invariant: unsafe candidates reject.
+
+Rulings made during execution: canonical validated input projection instead of decoder
+updates; escaped initialize identifier/explicit binders/Bool success matcher as Lean4.16
+elaboration corrections; internally checked candidate subtype carrying proof data;
+publication and runAction_debit computation lemmas to keep full-Result proofs local.
+All preserve accepted semantics. No deferred minors identified by author check.
+Risks/boundaries unchanged: safe-integer/all-required-field contract narrower than Kadmos;
+no YAML/parser/host-object compatibility, TS/Python/codegen correspondence, history,
+savepoint/rollback, physical directive IO, distributed composition, SMT/TLC or liveness.
+Final physical Grok review and Linux CI have not run in this executor. Parent integrates.
+No push/PR/merge, subagents, Kadmos/internal edits, generated artifacts or secrets staged.
+Task4 commit identity and clean branch are supplied in final handoff (no self-hash).
+
+Final strict-input proof pin: author check added interpret_invalid_input for arbitrary
+worlds, requests and invalid field indices, concluding the actual whole rejected Result
+with original State and no directive; earlier spec/action/phase/directive errors may win.
+The generic probe was observed RED (missing theorem, exit1) then GREEN; helper
+runAction_decode_error reasons through the actual pipeline, without changing execution.
+All application targets reran exit0, followed by fresh application audit/rejection and
+20-policy-test/inventory reruns exit0. Current fresh application426/752 replaces the
+intermediate422/747 count before these proof declarations. The original Foundation52
+and Distributed336/594 environments are unchanged. Final full scope/whitespace check
+and explicit staged paths passed; four focused task commits supplied in handoff.

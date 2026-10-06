@@ -80,6 +80,16 @@ def runAction (w : World p v f a) (k : Fin a) (s : State p v) (r : Request f) :
   let ctx ← (runTransitionEffects t input s).mapError RejectReason.effectError
   publishCandidate w ⟨t.target,ctx⟩
 
+/-- Invalid fields cannot produce an accepted candidate; earlier stage errors may win. -/
+theorem runAction_decode_error {w : World p v f a} {s : State p v} {r : Request f}
+    (k : Fin a) (hd : decode r.payload = .error e) :
+    ∃ reason, runAction w k s r = .error reason := by
+  by_cases hs : (w.transitions k).source ≠ s.phase
+  · exact ⟨.wrongPhase, by simp [runAction,hs,Bind.bind,Pure.pure,Except.bind,Except.pure]⟩
+  · by_cases hp : r.proposedDirective ≠ (w.transitions k).directive
+    · exact ⟨.unauthorizedDirective, by simp [runAction,hs,hp,Bind.bind,Pure.pure,Except.bind,Except.pure]⟩
+    · exact ⟨e, by simp [runAction,hs,hp,hd,Bind.bind,Pure.pure,Except.bind,Except.pure]⟩
+
 def attempt (w : World p v f a) (s : State p v) (r : Request f) :
     Except RejectReason (Fin a × {t : State p v // Good w t}) :=
   match «initialize» w with
@@ -139,4 +149,18 @@ theorem accepted_directive {w : World p v f a} {s : State p v} {r : Request f}
 theorem interpret_malformedSpec {w : World p v f a} (h : «initialize» w = .error e)
     (s : State p v) (r : Request f) : interpret w s r = ⟨s,⟨.rejected (.malformedSpec e),none⟩⟩ := by
   simp [interpret,attempt,h]
+
+/-- Strict rejection for arbitrary invalid tags/ranges at any declared field, using
+    the actual pipeline and preserving the whole state and authorization frame. -/
+theorem interpret_invalid_input {w : World p v f a} {s : State p v} {r : Request f} {j : Fin f}
+    (h : ¬ inputValid (r.payload j)) : ∃ e, interpret w s r = ⟨s,⟨.rejected e,none⟩⟩ := by
+  obtain ⟨e,hd⟩ := decode_invalid h
+  cases hi : «initialize» w with
+  | error err => exact ⟨.malformedSpec err, by simp [interpret,attempt,hi]⟩
+  | ok initial =>
+    cases hl : lookupAction w r.actionId with
+    | none => exact ⟨.unknownAction, by simp [interpret,attempt,hi,hl]⟩
+    | some k =>
+      obtain ⟨reason,hr⟩ := runAction_decode_error (w := w) (s := s) k hd
+      exact ⟨reason, by simp [interpret,attempt,hi,hl,hr,Except.map]⟩
 end Harmonia.Applications.Kadmos
