@@ -272,3 +272,16 @@ initial defaults/bounds, empty and duplicate initial phases and invariant failur
 Task1 complete: World definitions, decode_field/decode_invalid, checkedInt_safe,
 initialize_good and good_bounds kernel checked. Foundation regression/audit/rejection
 command exit0 after this product change. No completed-task verification failures.
+Task1 commit046f9b6. Task2 RED: new interpreter probe import absent, exit1.
+Task2 Ruling: internal checked-candidate subtype stores Good evidence constructed
+only by actual postchecks; it is erased proof data, not another transition definition.
+This makes acceptance proof local to checked publication; incorrect checks would
+invalidate the witness. Namespace/API proofs still analyze actual interpret/attempt.
+Task2 GREEN: lake build kadmosWorldTest exit0, including all stage reasons, directive
+SEND/none acceptance and mismatches, malformedSpec wrappers, unused required field,
+private-overflow frame, ordered/repeated/zero effects and both full-State round trips
+(by Fin extensionality). Kernel properties: rejection_frame, accepted_good,
+accepted_directive/attempt_action, interpret_malformedSpec, runEffects_append and
+runTransitionEffects_target. Existing Foundation/Distributed targets exit0. Task2 complete.
+Installed Init-only omega scratch elaboration exit0 (unused-premise warnings only);
+Task3 may use omega, with generated proof terms audited like other declarations.

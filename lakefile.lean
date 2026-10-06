@@ -34,4 +34,4 @@ lean_lib distributedAuditRejection where
   roots := #[`HarmoniaTests.DistributedRejection.Unused, `HarmoniaTests.DistributedRejection.Unsafe, `HarmoniaTests.DistributedAuditRejection]
 
 lean_lib kadmosWorldTest where
-  roots := #[`HarmoniaTests.KadmosWorldIR]
+  roots := #[`HarmoniaTests.KadmosWorldIR, `HarmoniaTests.KadmosWorldInterpreter]
