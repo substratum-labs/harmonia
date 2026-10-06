@@ -601,7 +601,11 @@ private def assignment (s : String) : Option (String × String) :=
   | lhs :: rhsParts =>
     let name := trimWS lhs
     let rhs := trimWS (String.intercalate "=" rhsParts)
-    if name != "" && rhs != "" then some (name,rhs) else none
+    let startsClean := match lhs.toList with
+      | [] => false
+      | c :: _ => !c.isWhitespace
+    if startsClean && !s.toList.any (fun c => c == '\n' || c == '\r') &&
+        name != "" && rhs != "" then some (name,rhs) else none
 
 def lowerEffect (raw : RawWorld) (s : String) : Except BridgeError (Effect raw.states.length raw.context.length raw.fields.length) := do
   let some (name,rhs) := assignment s | throw (.malformedEffect 0)

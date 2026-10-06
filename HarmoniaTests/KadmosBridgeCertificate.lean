@@ -57,3 +57,7 @@ private def directiveCandidate : World 1 1 1 1 :=
   { smallCandidate with transitions := fun _ =>
     ⟨0,0,.not (.le (.request 0) (.int 0)),[⟨0,.sub (.context 0) (.request 0)⟩],some "SEND"⟩ }
 example : (checkBridge smallRaw directiveCandidate).toOption.isSome = false := by decide +kernel
+example : (projectWorld { smallRaw with transitions :=
+  [⟨"STEP","A","A",.expr "event.amount > 0",[" x = x - event.amount"],none⟩] }).toOption.isSome = false := by decide +kernel
+example : (lowerExpr smallRaw ["amount"] (.field .request "amount")).toOption =
+    (lowerExpr smallRaw ["amount"] (.field .event "amount")).toOption := by decide +kernel

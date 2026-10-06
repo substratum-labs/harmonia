@@ -48,3 +48,4 @@ example : ¬ sourceSafe zeroEnv (.sub (.add (.int S) (.int 1)) (.int 1)) := by
       have hs := hsum S 1 (by rfl) (by rfl)
       dsimp [safeInt,S] at hs
       omega
+example : (parseSourceExpr "state == 'B\\C'").toOption = none := by decide +kernel

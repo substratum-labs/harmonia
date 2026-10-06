@@ -54,9 +54,10 @@ private def lexStep (fuel : Nat) (cs : List Char) (acc : List String) : Except B
         lexStep fuel (rest.dropWhile Char.isDigit) ((String.mk (c :: tail)) :: acc)
       else if c == '\'' then
         let tail := rest.takeWhile (· != '\'')
-        match rest.dropWhile (· != '\'') with
-        | [] => .error (.syntax 0)
-        | _ :: after => lexStep fuel after (("'" ++ String.mk tail ++ "'") :: acc)
+        if tail.contains '\\' then .error (.unsupported "string escape")
+        else match rest.dropWhile (· != '\'') with
+          | [] => .error (.syntax 0)
+          | _ :: after => lexStep fuel after (("'" ++ String.mk tail ++ "'") :: acc)
       else
         match c, rest with
         | '=', '>' :: after => lexStep fuel after ("=>" :: acc)

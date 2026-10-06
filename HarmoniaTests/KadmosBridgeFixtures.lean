@@ -9,6 +9,31 @@ namespace Harmonia.Applications.Kadmos.BridgeFixtures.Tests
 
 def balanceState (n : Int) : State 1 1 := ⟨0, fun _ => n⟩
 def balanceRequest (n : Int) : Request 1 := ⟨"DEBIT",fun _ => .int n,none⟩
+private def initializedPhase (x : Except SpecError (State p v)) : Option (Fin p) :=
+  match x with | .ok s => some s.phase | .error _ => none
+private def initializedField (x : Except SpecError (State p v)) (j : Fin v) : Option Int :=
+  match x with | .ok s => some (s.context j) | .error _ => none
+theorem balance_initialized : «initialize» balanceCandidate = .ok (balanceState 100) := by
+  have hp : initializedPhase («initialize» balanceCandidate) = some 0 := by decide +kernel
+  have hc : initializedField («initialize» balanceCandidate) 0 = some 100 := by decide +kernel
+  cases hi : «initialize» balanceCandidate with
+  | error e => simp [initializedPhase,hi] at hp
+  | ok st =>
+    have hphase : st.phase = 0 := by simpa [initializedPhase,hi] using hp
+    have hctx : st.context 0 = 100 := by simpa [initializedField,hi] using hc
+    have hs : st = balanceState 100 := by
+      cases st with
+      | mk phase ctx =>
+        have hcontext : ctx = (fun _ => (100 : Int)) := by
+          funext j
+          have hj : j = (0 : Fin 1) := Fin.ext (Nat.eq_zero_of_le_zero (Nat.le_of_lt_succ j.isLt))
+          rw [hj]
+          exact hctx
+        cases hphase
+        cases hcontext
+        rfl
+    cases hs
+    rfl
 theorem balance_30 : interpret balanceCandidate (balanceState 100) (balanceRequest 30) =
   ⟨balanceState 70,⟨.accepted,none⟩⟩ := by
   have hp : (interpret balanceCandidate (balanceState 100) (balanceRequest 30)).state.phase = 0 := by decide +kernel
@@ -61,10 +86,39 @@ theorem balance_130 : interpret balanceCandidate (balanceState 100) (balanceRequ
   ⟨balanceState 100,⟨.rejected (.bounds 0),none⟩⟩ := by
   rfl
 end Harmonia.Applications.Kadmos.BridgeFixtures.Tests
+namespace Harmonia.Applications.Kadmos.BridgeFixtures.Tests
 
 def orderInitial : State 2 2 := ⟨0,fun j => if j == 0 then 1 else 0⟩
 def orderFinal : State 2 2 := ⟨1,fun _ => 2⟩
 def orderRequest : Request 0 := ⟨"STEP",Fin.elim0,none⟩
+theorem order_initialized : «initialize» orderCandidate = .ok orderInitial := by
+  have hp : initializedPhase («initialize» orderCandidate) = some 0 := by decide +kernel
+  have hx : initializedField («initialize» orderCandidate) 0 = some 1 := by decide +kernel
+  have hy : initializedField («initialize» orderCandidate) 1 = some 0 := by decide +kernel
+  cases hi : «initialize» orderCandidate with
+  | error e => simp [initializedPhase,hi] at hp
+  | ok st =>
+    have hphase : st.phase = 0 := by simpa [initializedPhase,hi] using hp
+    have hcx : st.context 0 = 1 := by simpa [initializedField,hi] using hx
+    have hcy : st.context 1 = 0 := by simpa [initializedField,hi] using hy
+    have hs : st = orderInitial := by
+      cases st with
+      | mk phase ctx =>
+        have hcontext : ctx = (fun j : Fin 2 => if j == 0 then (1 : Int) else 0) := by
+          funext j
+          by_cases hj : j = 0
+          · simpa [hj] using hcx
+          · have hj1 : j = (1 : Fin 2) := by
+              apply Fin.ext
+              have hlt := j.isLt
+              have hne : j.val ≠ 0 := by intro hval; apply hj; exact Fin.ext hval
+              omega
+            simpa [hj,hj1] using hcy
+        cases hphase
+        cases hcontext
+        rfl
+    cases hs
+    rfl
 theorem order_step : interpret orderCandidate orderInitial orderRequest =
   ⟨orderFinal,⟨.accepted,none⟩⟩ := by
   have hp : (interpret orderCandidate orderInitial orderRequest).state.phase = 1 := by decide +kernel
@@ -105,9 +159,15 @@ example : (checkBridge orderRaw reversedCandidate).toOption.isSome = false := by
 example : (checkBridge reversedRaw reversedCandidate).toOption.isSome = true := by decide +kernel
 theorem reversed_order_reject : interpret reversedCandidate orderInitial orderRequest =
   ⟨orderInitial,⟨.rejected (.invariant 0),none⟩⟩ := rfl
+end Harmonia.Applications.Kadmos.BridgeFixtures.Tests
 namespace Harmonia.Applications.Kadmos.BridgeFixtures.Tests
 theorem balance_130_after50 : interpret balanceCandidate (balanceState 50) (balanceRequest 130) =
   ⟨balanceState 50,⟨.rejected (.bounds 0),none⟩⟩ := rfl
+
+theorem balance_initial_reachable : Foundation.Reachable (system balanceCandidate) (balanceState 100) :=
+  .init balance_initialized
+theorem order_initial_reachable : Foundation.Reachable (system orderCandidate) orderInitial :=
+  .init order_initialized
 
 theorem balance_trace : Foundation.Execution (system balanceCandidate) (balanceState 100)
     [(balanceRequest 30,⟨.accepted,none⟩),(balanceRequest 20,⟨.accepted,none⟩),

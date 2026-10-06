@@ -128,3 +128,25 @@ elab "#audit_kadmos_world" : command => do
   let env ← getEnv
   HarmoniaAudit.auditSelected (HarmoniaAudit.kadmosWorldDeclaration env) "kadmos world" true
     "KADMOS WORLD AUDIT PASS"
+
+namespace HarmoniaAudit
+
+def kadmosBridgeSourceModules : Array Name := #[
+  `Harmonia.Applications.Kadmos.Bridge.Syntax,
+  `Harmonia.Applications.Kadmos.Bridge.Certificate,
+  `Harmonia.Applications.Kadmos.Bridge.Fixtures,
+  `HarmoniaTests.KadmosBridgeSyntax,
+  `HarmoniaTests.KadmosBridgeCertificate,
+  `HarmoniaTests.KadmosBridgeFixtures,
+  `HarmoniaTests.KadmosBridgeAxiomAudit]
+
+def kadmosBridgeDeclaration (env : Environment) (n : Name) : Bool :=
+  (`Harmonia.Applications.Kadmos.Bridge).isPrefixOf n ||
+  (`Harmonia.Applications.Kadmos.Bridge).isPrefixOf (sourceModule env n) ||
+  kadmosBridgeSourceModules.contains (sourceModule env n)
+end HarmoniaAudit
+
+elab "#audit_kadmos_bridge" : command => do
+  let env ← getEnv
+  HarmoniaAudit.auditSelected (HarmoniaAudit.kadmosBridgeDeclaration env) "kadmos bridge" true
+    "KADMOS BRIDGE AUDIT PASS"
