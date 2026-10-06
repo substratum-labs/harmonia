@@ -247,3 +247,28 @@ pending; stop immediately after committing these three documents. No subagents,
 Kadmos/internal edits, push or merge. Managed authorization remains in effect.
 Git protected-tree diff and whitespace checks exited0. Document checks passed:
 spec184/plan375 lines, balanced fences, four tasks, no successful whole-Result rfl pin.
+
+## Accepted preflight and implementation ledger
+
+R3 physical Grok ACCEPT, coordinator-supplied exit0/71.9s; read all three verdicts.
+Execution starts from031ace3 in the same isolated branch. Parent owns reviews/CI and
+integration; no subagents or internal registry edits. Receipt is the durable task ledger
+instead of an additional skill scratch ledger, per explicit user destination.
+Interfaces checked: Task1 IR/eval/Good feeds Task2 pipeline; Task2 outcome proofs feed
+Task3 Foundation induction; Task4 imports every certified source/probe. No conflicts.
+Task1 in progress. RED `lake build kadmosWorldTest`: unknown target, exit1.
+Ruling: decoder will validate finite raw tables then return the canonical integer
+projection, rather than construct the same function through redundant updates — keeps
+strict decoding and declaration-order errors, simplifies its all-field proof. Wrong
+validation would breach input typing; decode_field and failure probes check it.
+Task1 elaboration rulings: Lean's reserved initialize token is spelled «initialize»
+in source (same public name); dimension binders are explicit in properties. Invariants
+use a pattern-matching success Bool instead of requiring DecidableEq on Except. These
+are representation/elaboration corrections, not semantic changes. Fin0 decoder equality
+uses extensionality because two empty function definitions need not reduce identically.
+Task1 GREEN: lake build kadmosWorldTest exit0. IR probes cover all raw tags, range,
+field1, Fin0, all eager boolean operators, literal/read/intermediate overflow, validated
+initial defaults/bounds, empty and duplicate initial phases and invariant failure/error.
+Task1 complete: World definitions, decode_field/decode_invalid, checkedInt_safe,
+initialize_good and good_bounds kernel checked. Foundation regression/audit/rejection
+command exit0 after this product change. No completed-task verification failures.
