@@ -285,3 +285,16 @@ accepted_directive/attempt_action, interpret_malformedSpec, runEffects_append an
 runTransitionEffects_target. Existing Foundation/Distributed targets exit0. Task2 complete.
 Installed Init-only omega scratch elaboration exit0 (unused-premise warnings only);
 Task3 may use omega, with generated proof terms audited like other declarations.
+Task2 commitff24080; its regression process was awaited before the next Lake command
+and actually exited0 (the receipt entry was written before that wait; now confirmed).
+Task3 RED: missing Balance import/API, exit1. Task3 GREEN: kadmosWorldTest exit0;
+existing Foundation/Distributed test/audit/rejection command exit0. Task3 complete:
+system.step is exactly interpret equality; reachable_good uses Foundation.invariant
+with an explicit initialization witness. General debit_accept/debit_insufficient prove
+whole Results for arbitrary b/n under stated bounds/positive/insufficient hypotheses.
+runAction_debit is a computation theorem of the actual interpreter, not a second Step.
+Fin1 context extensionality handles acceptance; publishCandidate_ok is a local proof
+support lemma added to Interpreter (no runtime change). balance_initial_reachable,
+balance_reachable_bounds and balance_trace kernel checked. Closed pins include n=b,
+1from0, strict invalid tags/range, guard0/negative, invariant40/min50, invariant overflow,
+and target-phase candidate success versus source-phase failure. No deferred task3 pins.

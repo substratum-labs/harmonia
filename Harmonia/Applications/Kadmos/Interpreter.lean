@@ -58,6 +58,16 @@ def publishCandidate (w : World p v f a) (s : State p v) :
     | some j => .error (.invariant j)
     | none => .ok ⟨s, by simp [Good,checkState,hb,hi]⟩
 
+theorem publishCandidate_ok {w : World p v f a} {s : State p v}
+    (hb : checkBounds w s = none) (hi : checkInvariants w s = none) :
+    publishCandidate w s = .ok ⟨s,by simp [Good,checkState,hb,hi]⟩ := by
+  unfold publishCandidate
+  split
+  · simp [hb] at *
+  · split
+    · simp [hi] at *
+    · rfl
+
 def runAction (w : World p v f a) (k : Fin a) (s : State p v) (r : Request f) :
     Except RejectReason {t : State p v // Good w t} := do
   let t := w.transitions k
