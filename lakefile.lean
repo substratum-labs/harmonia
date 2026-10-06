@@ -45,3 +45,6 @@ lean_lib kadmosWorldAuditRejection where
 
 lean_lib kadmosBridgeSyntaxTest where
   roots := #[`HarmoniaTests.KadmosBridgeSyntax]
+
+lean_lib kadmosBridgeCertificateTest where
+  roots := #[`HarmoniaTests.KadmosBridgeCertificate]

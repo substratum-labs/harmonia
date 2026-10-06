@@ -198,10 +198,10 @@ def parseSourceExpr (s : String) : Except BridgeError SourceExpr := do
   | [e] => .ok e
   | _ => .error (.syntax 0)
 
-private def srcInt : Value → Except EvalError Int
+def srcInt : Value → Except EvalError Int
   | .int n => .ok n
   | .bool _ => .error .expectedInt
-private def srcBool : Value → Except EvalError Bool
+def srcBool : Value → Except EvalError Bool
   | .bool b => .ok b
   | .int _ => .error .expectedBool
 
@@ -219,7 +219,7 @@ def sourceEval (ρ : SourceEnv) : SourceExpr → Except EvalError Value
     return .int ((← srcInt a) - (← srcInt b))
   | .eqInt l r => do
     let a ← sourceEval ρ l; let b ← sourceEval ρ r
-    return .bool ((← srcInt a) == (← srcInt b))
+    return .bool (decide ((← srcInt a) = (← srcInt b)))
   | .lt l r => do
     let a ← sourceEval ρ l; let b ← sourceEval ρ r
     return .bool ((← srcInt a) < (← srcInt b))
@@ -228,10 +228,10 @@ def sourceEval (ρ : SourceEnv) : SourceExpr → Except EvalError Value
     return .bool ((← srcInt a) ≤ (← srcInt b))
   | .gt l r => do
     let a ← sourceEval ρ l; let b ← sourceEval ρ r
-    return .bool ((← srcInt a) > (← srcInt b))
+    return .bool (!decide ((← srcInt a) ≤ (← srcInt b)))
   | .ge l r => do
     let a ← sourceEval ρ l; let b ← sourceEval ρ r
-    return .bool ((← srcInt a) ≥ (← srcInt b))
+    return .bool (!decide ((← srcInt a) < (← srcInt b)))
   | .and l r => do
     let a ← sourceEval ρ l; let b ← sourceEval ρ r
     return .bool ((← srcBool a) && (← srcBool b))
