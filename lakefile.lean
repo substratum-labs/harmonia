@@ -32,3 +32,13 @@ lean_lib distributedAudit where
   roots := #[`HarmoniaTests.AuditPolicy, `HarmoniaTests.DistributedAxiomAudit]
 lean_lib distributedAuditRejection where
   roots := #[`HarmoniaTests.DistributedRejection.Unused, `HarmoniaTests.DistributedRejection.Unsafe, `HarmoniaTests.DistributedAuditRejection]
+
+lean_lib kadmosWorldTest where
+  roots := #[`HarmoniaTests.KadmosWorldIR, `HarmoniaTests.KadmosWorldInterpreter, `HarmoniaTests.KadmosWorldBalance]
+
+lean_lib kadmosWorldAudit where
+  roots := #[`HarmoniaTests.AuditPolicy, `HarmoniaTests.KadmosWorldAxiomAudit]
+
+lean_lib kadmosWorldAuditRejection where
+  roots := #[`HarmoniaTests.KadmosWorldRejection.Unused,
+    `HarmoniaTests.KadmosWorldRejection.Unsafe, `HarmoniaTests.KadmosWorldAuditRejection]
