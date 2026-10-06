@@ -1,77 +1,194 @@
 # T-396 Stage3c: generated implementation correspondence design
 
-Status: investigation and design for parent-owned physical Grok preflight. No product, test, or CI implementation has started. Owner: physical Codex on `feat/t396-generated-correspondence`, native worktree `/Users/yong/.codex/worktrees/5b89/harmonia`, base `bcf44916b5cedf351a78e715470c351ddc84a2ad`. Parent owns Grok, publication and integration. This document selects a deliberately small first **code** correspondence theorem and names the larger step theorem that remains open.
+Status: corrected investigation/design for parent-owned physical Grok preflight; no product, test or CI implementation has begun. Parent's review of `e253b774475dde8b7a6d4f814e6bbb57edfe66b5` required a dynamic generated `step` theorem. That review was **not** a Grok REVISE/strike. Owner: physical Codex thread `01a11179-2107-7842-8ea3-adaac2c2993a`, native worktree `/Users/yong/.codex/worktrees/5b89/harmonia`, branch `feat/t396-generated-correspondence`, Harmonia base `bcf44916b5cedf351a78e715470c351ddc84a2ad`. Parent owns Grok, publication and integration. Product execution waits for actual Grok preflight ACCEPT.
 
-## Intent, authorization, and scope
+## Goal and acceptance boundary
 
-The two user goals are (1) proving properties of the Harmonia model and (2) proving that generated target behavior corresponds to that model. Stage3a supplies a restricted `World` and `interpret`; Stage3b checks an actual parsed `WorldSpec` projection and source expressions, but does not prove emitted TS or Python. T-396 must begin goal (2) with semantics of actual emitted program constructs, not a second reference interpreter or a digest assertion. Existing user managed authorization covers design and normal future reviewed execution; product work waits for the parent's actual Grok preflight ACCEPT. Native physical CLI execution is selected. No virtual agents or other-repository writes.
+The two user goals are proving Harmonia model properties and proving actual emitted program behavior corresponds to that model. Stage3b proves that an actual parsed Kadmos WorldSpec projects to a certified Lean `World`; it explicitly leaves emitted TypeScript/Python unproved. T-396 acceptance requires (1) default construction and getters for both emitted balance/order checkers and (2) a **universal dynamic balance DEBIT step correspondence theorem for each emitted TS and Python checker**. Constructor/getter proof alone is insufficient. The theorem is about a restricted **source-language operational semantics of the recognized emitted code**, with the host Node/CPython implementation of primitive operations separately stated as an external boundary. No test-only equality or copied reference interpreter substitutes for it.
 
-**First supported slice:** default construction, `getState`/`getContext` in emitted TypeScript, and `__init__`/`get_state`/`get_context` in emitted Python, for the two Stage3b certified balance and order worlds. A Lean certificate consumes a complete emitted source string for each target, validates a restricted **whole-file shape** and parses the initialization/getter statements into a small target program. An independent target machine evaluates those statements with ordered finite maps, a fresh object-copy operation, and the checked target bounds/invariant predicates under explicit safe-number assumptions. Kernel theorems show successful constructor target state is related to `initialize` of the certified Stage3b `World`; both getters return the related phase/context, and returned contexts are copies. This is a real, though narrow, generated-code/model behavioral theorem. It does **not** establish `step` correspondence, so it must never be titled or reported as full generated checker correctness.
+For the step theorem, let `S = 9007199254740991`, `0 ≤ b ≤ S`, `-S ≤ n ≤ S`. The current target state is `Ready` with one integer context entry `balance=b`, a valid ordinary own-data request has `transitionId="DEBIT"`, `eventPayload={amount:n}`, and no `proposedDirective` property. TS permits only a canonical ordinary non-proxy object with the required own data descriptors and a canonical ordinary payload object; Python permits only exact built-in `dict` objects with string keys, each containing only the named entries. There are no extras, accessors, callbacks, shared/cyclic objects, non-finite/fractional numbers, bool-as-number, signed negative zero or inherited properties. Current target store is well-formed, not busy, with empty prior history and no savepoint; its phase/context relation to the source state is a **prestate** condition, not a demanded outcome. `n ≤ 0` yields `GUARD_FAILED` and preserves `b`; `0 < n ≤ b` accepts with `b-n`; `n > b` yields `INVALID_BOUNDS` and preserves `b`. In every case current state is `Ready`, directive is null, and normalized allow/state/context/directive equals `interpret balanceCandidate (balanceState b) (balanceRequest n)`. The theorem quantifies over every such `b,n` and related prestore, not only the finite probes. Prove the three model cases as Lean lemmas rather than assume them as premises. For `n>0`, `b-n ∈ [-S,S]` automatically, including the rejected negative candidate; for `n≤0` the effect is not evaluated. This avoids the real unsafe-intermediate divergence without pretending arbitrary expressions are safe.
 
-A first slice limited to constructors/getters is justified: the actual step bodies include dynamic Pratt parsing, sanitization, JS/Python number behavior, mutation, errors and history. Pretending all of those are covered by one certificate would defeat the stated goal. The acceptance bar for this slice is nonvacuous actual emitted balance and order files in both languages, concrete constructor/getter theorems and a hostile mutation of a parsed initialization/getter operation that fails certification. Physical accept/reject/ordered step vectors remain explicitly finite evidence and a future proof target.
+The first theorem does not cover other transition IDs/directives, arbitrary requests, reset overrides, savepoint/rollback API calls, reentrancy, error messages/history content or generic worlds. Order `STEP` remains finite physical step evidence; order construction/getters are kernel checked. Rejected `step` preserves the complete modeled checker state including the initially empty history and absent undo (except transient busy, which resets); the observation projection drops messages and counterexample traces with explicit justification that they cannot affect this one call's allow/state/context/directive.
 
-## Read-only source facts and physical provenance
+## Pinned source and observed emitted behavior
 
-Base Harmonia is `bcf44916b5cedf351a78e715470c351ddc84a2ad`, Lean `leanprover/lean4:v4.16.0`. Pinned read-only Kadmos is `/Users/yong/projects/substratum/kadmos` at `fda8c6e42825b35afe5484a4af9d84d9d206ba9a` (clean when inspected). `src/world_compiler.ts` exports `compileWorldSpec`, which emits `portsDts` and `worldCheckerTs`; `src/python_compiler.ts` exports `compileWorldSpecPython`, which emits `portsPy` and `worldCheckerPy`. Both are called on actual `parseWorldSpec` results, not manually reconstructed worlds. The existing Stage3b YAML, `profiles.json`, `parsed.json`, Bridge certificate and provenance remain the source-side binding. Kadmos's installed `tsc` compiled its source into `/private/tmp/t396-probe/kadmos-js`; no Kadmos file was changed. `node --experimental-strip-types` ran the emitted `.ts` checker, and Python 3 ran emitted `.py` checker, with ports files beside them in private tmp. Full hashes and observed traces are in the verification record.
+Harmonia base and toolchain: `bcf44916b5cedf351a78e715470c351ddc84a2ad`, `leanprover/lean4:v4.16.0`. Read-only Kadmos: `/Users/yong/projects/substratum/kadmos` at `fda8c6e42825b35afe5484a4af9d84d9d206ba9a`. Actual `parseWorldSpec` and `compileWorldSpec` in `src/world_compiler.ts`, `compileWorldSpecPython` in `src/python_compiler.ts`, compiled using the pinned checkout's installed `tsc` into `/private/tmp/t396-probe/kadmos-js`. The two Stage3b tracked YAML/profile/parser records and `Harmonia.Applications.Kadmos.BridgeFixtures.balance_certificate` bind the source side. The actual emitted `worldCheckerTs`/`worldCheckerPy` and ports were generated and executed from private tmp; their exact fingerprints, traces and new boundary probes are in the verification record. These observations do not certify helper semantics.
 
-Exact relevant emitted structure:
+Actual balance path, in execution order:
 
-| Target | Default construction and reads | Runtime step facts to preserve in later slice |
-| --- | --- | --- |
-| TS | `world = ${JSON.stringify(spec)} as const`; `#state` is initial ID; `#context` is JSON defaults; constructor calls `checkBounds` then `checkInvariants`; `getState` returns field; `getContext` spreads a copy. | `step` descriptor checks and `sanitizeWorldPayload`; `.find` first matching `(id,from)`; directive check; guard on old state/context; effects in order with target phase/candidate context; per-effect type/safe-integer check; final bounds then invariants; publish on success, rollback on rejection. |
-| Python | `_WORLD = _freeze(json.loads(embedded JSON string))`; `_INITIAL`, `_DEFAULTS`; `__init__` sets fields, calls `reset(initial_context)`, then records initial context; getters return state and `dict(context)` copy. | `step` dict sanitization; `next` first matching `(id,from)`; same high-level phase/effect order; numbers converted to `float` in evaluator, effect results converted to `int`; final bounds/invariants; publish on success, rollback on rejection. |
+| Stage | TS source construct | Python source construct | Required formal behavior |
+| --- | --- | --- | --- |
+| request shape/copy | own descriptors, proxy/array/accessor checks, `sanitizeWorldPayload`, `Object.getOwnPropertyNames`, `Object.defineProperty` | `type(request) is dict`, `dict.items`, `sanitize_world_payload`, `type(raw) is dict` | Canonical shape takes the success branches; copying retains exactly `amount:n`. No sanitizer is a primitive or assumed correct. |
+| transition/directive | `.find((item) => item.id === action && item.from === state)`, null-normalized directive comparison | `next((item for ...), None)`, directive comparison | First/only `DEBIT` from Ready, directive null. |
+| guard | `evaluateWorld("event.amount > 0", env(oldState,oldContext))` | `evaluate_world(...)` | Eager token/Pratt path reads copied amount, checks numeric `n > 0`, maps false to guard rejection. |
+| candidate/effect | clone current context; anchored effect regex; `evaluateWorld("balance - event.amount", env(transition.to,candidate))`; integer/safe check; candidate assignment | `dict(original_context)`; `_EFFECT.fullmatch`; `evaluate_world`; `_safe_integer`; `int(value)`; candidate assignment | Target phase is Ready; old candidate balance read, exact subtraction for `n>0`, one ordered effect. Wrong type/error branches cannot fire in domain. |
+| postchecks/publication | `checkBounds(candidate)`, `checkInvariants(transition.to,candidate,payload)`, rollback/reject or assign `#state/#context/#history` and return verdict | `_bounds`, `_invariant`, rollback/reject or assign `state/context/history` and return verdict | Bounds checks safe integer then min=0/max=S; negative candidate rejects before invariant; nonnegative candidate satisfies `balance >= 0`, then publishes. |
 
-TS evaluator tokenizes the source expression, evaluates both binary operands eagerly, uses `Number` and checks finite numbers at numeric operators, not safe intermediates; effect assignment checks `Number.isSafeInteger`. Python evaluator eagerly parses both operands, converts numeric operands to float, and checks safe integer only for effects/bounds. Both `event` and `request` point to sanitized payload. `step` catches guard/effect evaluation errors into distinct rejection codes. TS constructor can throw `INVALID_BOUNDS`/`INITIAL_INVARIANT_FAILED`; Python `__init__` uses `reset`, which can throw these. The generated type declarations are API hints, not runtime checks.
+`evaluateWorld`/`evaluate_world` are generated user-defined Pratt evaluator bodies, not language primitives. TS uses JS `Number`; Python `_number` converts to float, with `_safe_integer` and `int` at effect publication. Their source bodies eagerly evaluate binary operands; numeric result checks differ from Lean outside this domain. Sanitizer, bounds and invariant helpers are likewise user-defined. The body of every helper **reached by the canonical balance path**, plus its call site and return/error routing, must be parsed/validated and receive independent formal execution semantics. Type declarations alone impose no runtime constraints. Terminal selection and wrong action/directive branches may be present in the recognized code but are not taken in the theorem domain; their syntax/control-flow order is still checked, with no behavioral theorem for those branches.
 
-The balance file produced SHA-256 TS `1934926af84814aa2e463dd5429f0236a651c9eb1a8527707a203c438917d49d`, Python `3ccec332a536cca1f98043a92d4988e2eec36471b4511f4d0aec9eba0c365c32`; order TS `6495eebd088e782a535b45b852520b314f859937f096d38ed246b654333bc37a`, Python `54a8bc28762d930e90fa2b4078fa2726775f689bcd87e56a5e021bf4ae777c78`. These identify exact current outputs but are not semantic proofs. A future regeneration must compare exact bytes as well as hashes. No host object, proxy, accessor, reentrancy, savepoint, history, reset override or physical IO is certified by the first slice.
+## Options and ruling: how emitted text earns semantics
 
-## Routes and ruling
+1. **Whole existing compiler plus JS/Python semantics:** strongest eventual assurance, too large for this stage (regex, descriptors/proxies, Python object model, exceptions, history, exact number behavior, emission). It would conflate project scope with a language verification effort.
+2. **Per-artifact checked restricted target-language translation validation (chosen):** a Lean parser consumes the **complete source string**, decodes embedded data, validates the fixed nonselected suffix/prefix, and constructs syntax trees for constructor/getters and the selected `step` plus reached helper bodies. The parser is syntax directed: each recognized `let`/assignment/condition/loop/call/return/try-catch and expression operator creates its corresponding target AST node; calls have checked targets and argument order. An independently stated `SourceParses lang source program` grammar relation records the exact token spans, call targets, statement order and AST node for each selected construct; prove `parseGenerated_sound : parseGenerated lang source = .ok program → SourceParses lang source program`. A separate small-step/evaluation relation executes these nodes, including reached helper bodies. This soundness theorem is about the restricted source grammar and parsed AST, not Node/CPython execution. The theorem proceeds by source-program execution and a simulation with Bridge `interpret`. A mere fixed-text match of a helper followed by an idealized `guardCheck` or `boundsCheck` macro is forbidden. Exact untouched text can guard *unexecuted* sections only; those sections receive no semantics theorem. Cost: substantial parser/semantics work even for one action and an explicit primitive host boundary.
+3. **Certified restricted backend:** would produce a target with easier proof, but it is an alternative compiler and a material integration change. Do not silently replace Kadmos's existing output. Parent must explicitly choose it if route 2 cannot produce a genuine step theorem after preflight.
 
-1. **Prove all of the current compiler and both host runtimes.** Strongest final statement, but requires semantics for JS/Python, regex/string processing, object security, number/exception behavior, template emission and parser correctness. It is too large for one reviewed stage and cannot be asserted from a few traces.
-2. **Checked per-artifact restricted target translation validation (chosen).** Parse emitted code to a target instruction tree inside Lean, reject unsupported shapes, execute that tree under independently defined target operational semantics, prove a simulation with Bridge `initialize` for the first constructor/getter fragment. Exact full-file recognition prevents an unexamined text change from retaining a certificate; only the parsed fragment gets a semantic theorem. It allows extending the target AST and proof one runtime operation at a time. Cost: a deliberately narrow claim and an explicit host-language semantics boundary.
-3. **Certified restricted backend.** Could make a larger theorem easier by generating a language with an already formalized runtime, but would introduce an alternative compiler and integration choice. The user asked about existing Kadmos outputs. Do not implement or silently substitute it. Consider only after an explicit architecture decision, including where Kadmos would call it and how outputs replace existing artifacts.
+The proposed route attempts a bounded **program-slice** formalization rather than a whole-language parser. Feasibility is conditional on representing every reached construct in the parser and operational semantics; failure at that gate is a concrete blocker, not permission to claim the constructor slice as T-396 completion. Source text is segmented only at exact grammar delimiters; lexing/quoting and embedded JSON are checked in Lean. All executable constructs on the selected balance call graph are parsed to a low-level AST and covered by the independent `SourceParses` relation; unsupported statement forms, unmatched calls, changed operators/order, duplicate definitions, altered helper bodies or unconsumed bytes fail certification. This includes `step`, `evaluateWorld`/`evaluate_world` including their tokenizer/precedence/parser loop paths for the three concrete expressions, sanitizer's canonical branch, bounds, invariants, Python `_freeze` and `reset` on default construction, TS `deepFreezeWorld` on accepted history record, and getter/constructor methods. Standard `structuredClone`/`copy.deepcopy` on the canonical finite record are basic copy primitives with explicit finite-tree rules; they are not assumed to preserve arbitrary host objects. A lexer/regex primitive may be used only with an **explicitly defined restricted matching relation** for these concrete patterns; no axiom that the helper evaluator/sanitizer/bounds checker behaves ideally. Exact fixed helper source text may help recognition, but formal execution must be by the resulting statement/expression trees. Tokenization of the three fixed expressions is proved from parsed tokenizer operations, not supplied by the exporter. The supported source-language semantics use ordered immutable object maps, checked own-data lookup, integer/float exact-domain arithmetic, booleans, exceptions/early returns, and store updates. Only basic host primitive implementation of those specified operations is outside the kernel theorem.
 
-## Artifact binding and independent semantics
+## Exact interfaces and noncircular proof shape
 
-New modules under `Harmonia/Applications/Kadmos/Generated/` must be Init-only and import Bridge where needed. `TargetSyntax.lean` defines `TargetLang := ts | python`, `TargetOp` for field initialization, bound/invariant checks, state/context reads and copy, plus a finite `TargetProgram`. `TargetSemantics.lean` defines an execution relation/function over target store and result independently of `World.interpret` and Bridge `sourceEval`; it never calls either to implement an operation. Its number domain is integer values constrained to exact JS safe integers. Constructor checks may be proved by relating parsed world tables to Bridge's checked `World`; do not define them as `initialize`. Python float conversion on the default integers is an explicit exactness lemma/assumption over the safe domain, not silently identified with Lean `Int`.
+All new types live in `Harmonia.Applications.Kadmos.Generated`. The following is the required **schema**, not an unresolved generic signature; constructors may be split into additional declarations without changing their fields/meaning. `NumberTag` is `.jsNumber | .pyInt | .pyFloat`. `TargetValue` includes `.undefined`, `.null`, `.bool Bool`, `.number (tag : NumberTag) (value : Int)`, `.string String`, and `.object (List (String × TargetValue))`, and `.array (List TargetValue)`; object lists preserve insertion order. This first numeric carrier covers exact integral values reached by the certified path; a Python float is tagged `.pyFloat` even when its exact value is integral. Primitive conversion from `.pyInt` to `.pyFloat`, arithmetic and `int` back to `.pyInt` are proved exact for the stated domain. Unsupported nonintegral/unsafe primitive outcomes fail the restricted interpreter rather than being silently identified with `Int`. `TargetExpr` includes literals, local/field reads, property/own-descriptor lookup, strict equality, numeric comparison/subtraction, boolean operations, object copy, safe-integer/type tests, regex token/assignment match with explicit restricted semantics, and calls to declared functions. `TargetOp` uses the statement constructors in the schema below, including loops, `tryCatchFinally`, return and throw; sequencing is `List TargetOp`. **No** `evaluateWorld`, `sanitizeWorldPayload`, `checkBounds`, `checkInvariants`, `interpret`, `sourceEval`, or `modelResult` constructor exists as an atomic primitive. Calls to these names resolve to parsed `TargetFunction.body` and evaluate it. `TargetFunction` has `name : String`, `params : List String`, `captures : List String`, `body : List TargetOp`. `TargetProgram` has `lang`, `worldData : TargetValue`, `functions : List TargetFunction`, `constructor`, `getState`, `getContext`, and `step : Option (List TargetOp)`; checked unique function names and lexical variables are part of parse success.
 
-`ArtifactCertificate.lean` defines `parseGenerated : TargetLang → String → Except ParseError TargetProgram` and `checkGenerated : TargetLang → String → RawWorld → World p v f a → Except CertError TargetProgram`. The parser consumes **the entire** generated file, recognizes the pinned fixed template sections verbatim and parses the selected executable statements and embedded world literal from their actual spellings. A template section outside this fragment is recognized as opaque source text only: it receives no operational theorem. Reject any unconsumed text, duplicate selected statement, changed initializer/getter, changed `world` literal, wrong order, or target-language crossover. `checkGenerated` calls `checkBridge raw w`; checks that the embedded world data and constructor defaults/initial phase are those of `raw` in their original order; and returns the parsed target program. The embedded JSON decoding and string-escape rules must be implemented or checked **inside Lean** for the accepted subset. An external exporter may only serialize the complete literal source string into a Lean fixture and record exact output bytes; it cannot assert a pre-decoded AST or a successful certificate. A byte digest or template match alone grants no semantic theorem.
+The minimal Lean data declarations are:
 
-Proposed theorem interface (names and types are binding for the plan; Lean elaboration may require explicit universe/index arguments):
+```lean
+inductive TargetLang | ts | python deriving DecidableEq
+inductive NumberTag | jsNumber | pyInt | pyFloat deriving DecidableEq
+inductive TargetValue
+  | undefined | null | bool (b : Bool)
+  | number (tag : NumberTag) (value : Int)
+  | string (value : String)
+  | object (entries : List (String × TargetValue))
+  | array (items : List TargetValue)
+  | closure (functionName : String) (captures : List (String × TargetValue))
+  deriving DecidableEq
+inductive RequestShape | ordinaryRecord | exactDict deriving DecidableEq
+inductive PrimOp
+  | strictEq | less | greater | add | sub | boolNot | boolAnd | boolOr
+  | typeofName | safeInteger | getProperty | hasOwn | ownDescriptor | ownKeys
+  | objectCopy | putOwn | defineOwn | isArray | isProxy | prototypeOf
+  | arrayLength | regexToken | regexEffect | toFloat | toInt
+  deriving DecidableEq
+inductive TargetExpr
+  | literal (v : TargetValue) | local (name : String) | checkerField (name : String)
+  | primitive (op : PrimOp) (args : List TargetExpr)
+  | call (functionName : String) (args : List TargetExpr)
+  | lambda (functionName : String)
+inductive TargetOp
+  | letLocal (name : String) (value : TargetExpr)
+  | assignLocal (name : String) (value : TargetExpr)
+  | assignField (name : String) (value : TargetExpr)
+  | ifThenElse (test : TargetExpr) (yes no : List TargetOp)
+  | forEach (name : String) (values : TargetExpr) (body : List TargetOp)
+  | whileDo (test : TargetExpr) (body : List TargetOp)
+  | breakLoop | continueLoop
+  | tryCatchFinally (body : List TargetOp) (errorName : String)
+      (handler finalizer : List TargetOp)
+  | returnValue (value : TargetExpr) | throwValue (value : TargetExpr)
+structure TargetFunction where
+  name : String
+  params : List String
+  captures : List String
+  body : List TargetOp
+structure TargetProgram where
+  lang : TargetLang
+  worldData : TargetValue
+  functions : List TargetFunction
+  constructor : List TargetOp
+  getState : List TargetOp
+  getContext : List TargetOp
+  step : Option (List TargetOp)
+structure TargetRequest where
+  lang : TargetLang
+  shape : RequestShape
+  ownData : List (String × TargetValue)
+  proxy : Bool
+  accessor : Bool
+```
+
+`PrimOp` has individually defined value/error/order semantics; it is **not** an escape hatch for a user helper. The actual templates may require more basic primitive cases (for example property access, object spread, or `isArray`) before source parsing succeeds; add only the concrete primitive case and rule, not a new macro for a whole helper. `regexToken` and `regexEffect` take the recognized pattern as an argument and use a proved restricted matching relation for the three fixture expressions/effect assignment. Parser output uses `TargetFunction` for the generated evaluator, sanitizer, bounds/invariant methods and the nested parser/closure bodies they call; `lambda` constructs a closure with exactly the checked capture names. Array `.find`/`.some`/`.map`, Python `next` generators and list comprehensions on the reached path are desugared to `forEach` plus `ifThenElse`/`breakLoop` with an AST equivalence lemma for the recognized source form. No selected call remains an opaque callback. A `whileDo`/recursive call must have fuel or a well-founded measure, with a theorem that the balance path has sufficient fuel for all `b,n` in the domain.
+
+`TargetStore` has `state : String`, `context : List (String × TargetValue)`, `history : List TargetValue`, `undo : Option TargetValue`, `busy : Bool`; `TargetFrame` holds ordered locals, a call stack and checker store. `TargetRequest` is `lang`, `shape : ordinaryRecord | exactDict`, `ownData : List (String × TargetValue)`, `proxy : Bool`, `accessor : Bool`; its canonical constructor puts action and payload in that order, with payload containing only amount. `TargetObservation` and `TargetResult` have these exact fields:
+
+```lean
+structure TargetStore where
+  state : String
+  context : List (String × TargetValue)
+  history : List TargetValue
+  undo : Option TargetValue
+  busy : Bool
+structure TargetFrame where
+  locals : List (String × TargetValue)
+  callStack : List String
+  checker : TargetStore
+structure TargetObservation where
+  allowed : Bool
+  previousState : String
+  currentState : String
+  context : List (String × TargetValue)
+  directiveAllowed : Option String
+  violationCode : Option String
+structure TargetResult where
+  postStore : TargetStore
+  observation : TargetObservation
+```
+
+A checker `TargetStore` includes all fields that rejection can restore. Any omitted generated field that can affect the selected path is a parser/semantics gap to repair before claiming the theorem. `targetStep` executes the parsed `step` operations with this request, not a separately scripted balance algorithm. `normalize` discards only code/message/history fields as stated; for this theorem it retains allow/state/context/directive, with `violationCode` separately proved to be the expected target code. All host values in the theorem are exact safe integers, so the target primitive numeric interpretation is exact; Python float conversion has a separate exactness lemma for `[-S,S]` and `b-n` on the taken branch.
 
 ```lean
 def parseGenerated (lang : TargetLang) (source : String) : Except ParseError TargetProgram
-def checkGenerated (lang : TargetLang) (source : String)
-    (raw : Bridge.RawWorld) (w : World p v f a) : Except CertError TargetProgram
-def targetConstruct (program : TargetProgram) : Except TargetError TargetStore
-def targetGetState (program : TargetProgram) (store : TargetStore) : String
-def targetGetContext (program : TargetProgram) (store : TargetStore) : List (String × Int)
-def targetRel (w : World p v f a) (s : State p v) (store : TargetStore) : Prop
+theorem parseGenerated_sound {lang : TargetLang} {source : String}
+    {program : TargetProgram} (h : parseGenerated lang source = .ok program) :
+    SourceParses lang source program
+def targetConstruct (p : TargetProgram) : Except TargetError TargetStore
+def targetGetState (p : TargetProgram) (s : TargetStore) : Except TargetError TargetValue
+def targetGetContext (p : TargetProgram) (s : TargetStore) : Except TargetError TargetValue
+def targetStep (p : TargetProgram) (s : TargetStore) (r : TargetRequest) :
+    Except TargetError TargetResult
+def targetStoredNumber (lang : TargetLang) (n : Int) : TargetValue
+def canonicalBalanceRequest (lang : TargetLang) (n : Int) : TargetRequest
 
-theorem checkGenerated_initial_simulation
-    (hc : checkGenerated lang source raw w = .ok program)
-    (hi : «initialize» w = .ok s) :
-    ∃ store, targetConstruct program = .ok store ∧ targetRel w s store ∧
-      targetGetState program store = w.phaseIds s.phase ∧
-      targetGetContext program store = List.ofFn (fun j => (w.contextIds j, s.context j))
+def checkGenerated (lang : TargetLang) (source : String) (raw : Bridge.RawWorld)
+    (w : World raw.states.length raw.context.length raw.fields.length raw.transitions.length) :
+    Except CertError TargetProgram
 ```
 
-The proof must also derive constructor `checkBounds`/`checkInvariants` success from `hi` and the exact parsed data, not assume a good target state as a premise. The source and target relation must compare every state/context entry by index and order, not only values on reads. A paired error theorem for malformed defaults or initial invariant failure is desirable only if the checked Bridge profile permits such input; current `checkBridge` rejects it, so do not manufacture a vacuous error theorem. Include concrete kernel closed facts for balance Ready/100 and order A/(1,0), and a getter-copy test in target semantics. A mutation of either language's initializer, embedded defaults, invariant call, or getter body must make `checkGenerated` fail; a mutation in opaque step code must also fail whole-file recognition, but this does **not** prove step behavior.
+The error interfaces are exact:
 
-The checked claim is: **for the exact source string in the Lean fixture, if the Lean parser accepts the supported target fragment and `checkGenerated` succeeds, the independent Lean target-machine construction/read result corresponds to Bridge initialization.** It is not a theorem that Node or CPython implements `TargetSemantics`. This external host-semantics correspondence, TypeScript stripping/transpilation, the YAML parser, and source-string serialization are trust assumptions, backed by pinned source, exact byte comparisons and physical execution only. The self-hosted artifact checker must compare actual compiler output byte-for-byte with tracked TS/Python artifacts; a changed Kadmos template fails provenance. The generated Lean string literal must be regenerated from those exact bytes, with a deterministic escaping round trip check. A malicious exporter that writes an unrelated source literal could still fool kernel facts unless the external byte comparison is trusted. State that limitation at every completion report.
+```lean
+inductive ParseError
+  | badToken (offset : Nat) | badEscape (offset : Nat) | badNumber (offset : Nat)
+  | missingFunction (name : String) | duplicateFunction (name : String)
+  | unsupportedConstruct (offset : Nat) | wrongCall (name : String)
+  | trailingSource (offset : Nat) | badEmbeddedData
+inductive CertError
+  | parse (error : ParseError) | bridge (error : Bridge.BridgeError)
+  | dataMismatch | unsupportedProfile | shapeMismatch
+inductive TargetError
+  | typeError | numberError | missingProperty (name : String)
+  | uncaught (message : String) | fuelExhausted | unsupportedStep
+```
 
-## Boundary for later `step` certification
+`checkGenerated` maps `checkBridge raw w` errors and checks exact ordered embedded world data and initial/defaults; on the balance profile it also checks the supported selected step call graph. On the order profile it checks whole-file shape and construction/getters while leaving its step section unexecuted by any theorem. It cannot accept a candidate of arbitrary dimensions. No checked dimension cast is needed. For the order fixture the same dependent checker certifies construction/getters with `step = none`; `targetStep` returns `.error .unsupportedStep` there, so it grants no order-step theorem. For balance, certificate success requires `step = some body` with the parsed selected call graph. The exporter provides complete source string literals only; no predecoded AST, purported target result or certificate premise.
 
-The next slice must extend the parsed target AST with actual `step`, sanitizer and evaluator operations and prove a commuting result for each language. It cannot alias `interpret`, call Bridge `sourceEval`, or use a handwritten replica as the target semantics. Its request relation needs plain own-data TS objects / exact Python dicts, valid action/directive fields, declared profile fields with safe-integer values, and a policy for extras. Stage3b's `decode` eagerly validates **all** fields; generated runtime lazily reads fields used by selected expressions. Thus either prove every field is present and safe before comparing, or change the model only in a separately reviewed stage. For `f=0`, account for extra payload properties and null/absent payload behavior explicitly.
+Put the fixture-specific theorem and `balanceState (b : Int) : State 1 1 := ⟨0, fun _ => b⟩`, `balanceRequest (n : Int) : Request 1 := ⟨"DEBIT", fun _ => .int n, none⟩` in `Generated/BalanceStep.lean`, importing `Generated/Fixtures.lean`; this avoids a certificate/fixture import cycle. Write `targetRel` against **prestate** phase/context entries, numeric type/safe bounds, inactive `busy`, and `history=[]`, `undo=none`; do not require a result or poststate. Define `sourceProjection lang` from `interpret`'s result, using `targetStoredNumber lang` for context: verdict accepted → allowed; state.phase/context → ordered target keys/values; observation.directive → target directive. Define `targetProjection` from `TargetResult` observation, checking that it agrees with the poststore. In the theorem below, `balancePreRel` and the fixture-specific projections are defined in `BalanceStep.lean`; generic parser/certificate declarations do not import fixtures. Prove, for each language, a generic cert-success constructor/getter theorem and this fixture-specific universal theorem (exact dependent dimensions are `World 1 1 1 1` for `balanceRaw`):
 
-Operational obligations include first matching transition and terminal rejection, old-state guard, target-phase ordered effects with candidate reads and repeated targets, effect type check before final bounds, invariant order and state phase, directive equality, rejection frame and `directiveAllowed=null`, accepted publication, and mapping of target violation codes to the coarser Lean reason. Typed current-state validity/bounds must be a premise or a reachable-state theorem; never define the relation to require the poststate that is being proved. Safe intermediate arithmetic is necessary: TS `Number` and Python float can diverge from Lean's checked integer evaluator even when the final result is safe (e.g. `(S+1)-1`). Eager operand evaluation and type-error order need their own lemma. Error messages, shortest-counterexample history, savepoint/rollback, reset overrides, security object checks, callbacks and reentrancy may be projected away **only after** the step theorem states which accepted host requests cannot exercise them. The generated runtime’s behavior on malformed or hostile host objects remains outside scope.
+```lean
+theorem balance_step_correspondence
+    (lang : TargetLang) (source : String) (program : TargetProgram)
+    (hc : checkGenerated lang source BridgeFixtures.balanceRaw
+      BridgeFixtures.balanceCandidate = .ok program)
+    (b n : Int) (hb : 0 ≤ b ∧ b ≤ S) (hn : safeInt n)
+    (store : TargetStore) (hr : balancePreRel lang b store) :
+    ∃ result, targetStep program store (canonicalBalanceRequest lang n) = .ok result ∧
+      targetProjection result =
+        sourceProjection lang (interpret BridgeFixtures.balanceCandidate
+          (balanceState b) (balanceRequest n)) ∧
+      (n ≤ 0 → result.observation.violationCode = some "GUARD_FAILED" ∧
+          result.postStore.context = store.context) ∧
+      (0 < n ∧ n ≤ b → result.observation.allowed = true ∧
+          result.postStore.context = [("balance", targetStoredNumber lang (b-n))]) ∧
+      (n > b → result.observation.violationCode = some "INVALID_BOUNDS" ∧
+          result.postStore.context = store.context)
+```
 
-Do not use test-only differential equality as a step theorem. Physical traces for balance and order demonstrate executable provenance and will become theorem witnesses only when the actual parsed step code has a target semantics and a proved simulation. No theorem about arbitrary generated programs, all Kadmos worlds, whole JS/Python, solver UNSAT, finite exploration, distributed composition or old 2PC/SMT/C experiments follows here.
+The theorem is nonvacuous only with closed `by decide +kernel` certificates for **both actual emitted source strings**, `balance_certificate`, explicit witnesses `b=100,n=30/130/0` and boundary witnesses `b=0,n=1`, `b=S,n=S`. `balancePreRel` must be constructible for every bounded `b` (prove `exists_balancePreRel lang b`) and must not mention `program`, `n`, `targetStep`, `interpret` result or expected observation. Prove model cases `n≤0`, `0<n≤b`, `n>b` from existing `interpret` code via reductions/`omega`; prove target cases by executing parsed AST and helper bodies. No result equality is assumed in `hc`, `hr` or host primitive assumptions. Rejection restores complete checker store; acceptable transient busy changes are internal to a call and `finally` clears them before the returned poststore.
 
-## Verification and source policy
+`checkGenerated` binds the emitted string to the Bridge projection and AST. Kernel theorem is **conditional on that exact Lean source literal and the restricted target-language semantics**. A tracked exporter must regenerate the actual pinned TS/Python bytes, compare them byte-for-byte with tracked files, and prove a deterministic literal round trip before Lean compilation. This external serialization/file comparison remains a trust boundary; SHA-256 is drift evidence, not semantic preservation. The host boundary is only that Node/CPython implements the chosen primitive language operations on canonical plain values (including TS exact safe integer arithmetic and Python exact float conversion in the proved range). There is no assumption saying the generated helper implements the formal evaluator: its recognized body is executed within the formal source-language semantics. Full-language semantics, hostile objects and other expressions remain outside scope and must be stated at completion.
 
-Keep `lean-toolchain` at `leanprover/lean4:v4.16.0`; no new Lean dependency, mathlib, Veil, solver IO, `native_decide`, `sorry`, `admit`, `sorryAx` or custom axioms in certified roots. Preserve Core, Distributed, legacy, World, Interpreter and Bridge semantics. Serial Lake only. Add exact new Generated source/test manifests and isolated rejection roots; do not select the entire existing Applications namespace. The old application source inventory scans `Harmonia/Applications` and therefore must register new modules. The Bridge audit grows only if its real import closure grows. Foundation 52 and Distributed 336/594 remain separate; old application and Bridge totals may rise, with no fixed old-count assertion. Hosted Linux CI runs the new targets serially and does not require a sibling Kadmos checkout; local pinned-source provenance does. No generated binaries, `.lake/`, caches, credentials or machine-specific logs are staged.
+## Verification, hostile cases and constraints
 
-## Review risks and decision checkpoint
+The first physical probe already ran both emitted languages: balance 100→70, 130 rejects/preserves 70, then 20→50; order A/(1,0)→B/(2,2). A private-tmp effect mutation from subtraction to addition made both balance checkers return 130 for DEBIT 30, diagnosing a mismatch. Additional boundary probes ran `b,n=(0,0),(0,1),(100,-1),(100,30),(100,130),(S,S),(S,-S)` in both emitted languages with the expected three-way results. None of these probes is the universal theorem. Implementation must mutate selected emitted source **with recomputed digest**: reverse subtraction, change `>` to `>=`, bypass sanitizer copy, change bound comparison/order, alter invariant call, publish before postcheck, or return stale context; each must fail `checkGenerated` or yield a kernel-diagnosed mismatch. A mutation confined to an unexecuted section must fail exact whole-file recognition but provides no proof of that section. Closed nonvacuity and wrong-source probes must fail under a temporary validator bypass and pass only after restoration.
 
-The most likely false assurance is to recognize a template, prove a property of a separately handwritten machine, and describe it as host execution correctness. The certificate must expose the parsed selected statements and independent transition rules; the theorem text and verification record must name the host semantics and serializer boundaries. If Grok judges even this first slice too narrow to count as T-396, the parent should decide between a larger actual-step formalization and a certified-backend architecture change before product work. This design does not pre-authorize either silent substitution. Parent's focused physical Grok review and independent judgment gate implementation.
+Preserve `leanprover/lean4:v4.16.0`, Init-only new applications, unchanged Core/Distributed/legacy/World/Interpreter/Bridge semantics. No Veil, mathlib, new dependency, solver IO, `native_decide`, `sorry`, `admit`, `sorryAx` or unreported custom axiom. Serial Lake. Old Kadmos inventory scans **all** Applications: register new sources. New Generated audit selects its exact product/test/audit manifest by namespace **or source module**, including escaped/unused declarations, with isolated own rejection roots. Bridge audit grows only for real import closure; never broaden it to all Applications. Keep Foundation 52 and Distributed 336/594 separate; no fixed old application/Bridge count. Hosted Linux CI runs targets serially without a sibling Kadmos checkout; local pinned-source regeneration is mandatory. Never stage `.lake/`, generated binaries/caches, credentials or machine-specific logs. No pushes/PRs/merges or other-repository edits by this owner.
+
+The key preflight risk is whether the selected statement/helper parser and operational semantics can be completed without smuggling an idealized macro for the existing runtime. Grok must inspect the call graph, exact AST/primitive boundary, dependent certificate type and universal proof obligations. If the parser cannot account for any helper branch taken by the canonical balance request, **no step-correctness claim is allowed**: parent must choose a larger formalization or explicitly authorize a certified restricted backend; constructor-only work can stand as a partial result but does not complete T-396. Parent's actual focused Grok ACCEPT is the next gate; this document has not received that verdict.

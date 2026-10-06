@@ -1,109 +1,139 @@
 # T-396 Generated Implementation Correspondence Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Native physical CLI execution is already selected; no virtual subagent workflow. Product execution begins only after parent-owned actual Grok preflight ACCEPT.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans task by task. Native physical CLI execution is selected; no virtual subagents. Product/test/CI work starts only after the parent's actual physical Grok preflight ACCEPT. This plan corrects the parent-reviewed `e253b77` constructor-only scope; that review was not a Grok REVISE.
 
-**Goal:** Prove that default construction and state/context getters parsed from actual emitted TypeScript and Python checkers correspond to initialization of two Stage3b certified Harmonia worlds.
+**Goal:** Kernel-check a dynamic DEBIT step correspondence for the actual pinned TS and Python balance checkers, plus constructor/getter correspondence for balance and order.
 
-**Architecture:** Preserve Stage3b's source-bound `World`. Export exact compiler outputs; a Lean checker consumes complete emitted source strings and extracts a restricted constructor/getter target program. An independent target machine executes the parsed selected operations; Lean proves its successful initial result and getter outputs correspond to `initialize`. The step pipeline is exercised physically but remains unproved.
+**Architecture:** Deterministically export actual Kadmos outputs. Lean checks full emitted source strings, parses the constructor/getters and selected balance `step` call graph (including reached helper bodies) into a small target-language AST, and executes that AST with independent operational semantics. A dependent certificate binds it to Stage3b's checked `World`; universal `b,n` lemmas establish target/model observations. Actual Node/CPython primitive semantics and source-string serialization remain explicit external boundaries.
 
-**Tech Stack:** Lean 4.16.0/Init/Lake, pinned Kadmos TypeScript compiler, Node 26 local probe, Python 3, existing Python inventory scripts and Linux CI.
+**Tech Stack:** Lean 4.16.0/Init/Lake, pinned Kadmos TypeScript compiler, Node and Python physical probes, existing Python inventory policy, serial hosted Linux CI.
 
 **Spec:** `docs/superpowers/specs/2026-10-06-generated-implementation-correspondence-design.md`
 
 ## Global Constraints
 
-- Keep `lean-toolchain` exactly `leanprover/lean4:v4.16.0`; use Init only, no new dependencies, no `native_decide`, `sorry`, `admit`, `sorryAx` or custom certified axioms.
-- Preserve Core, Distributed, legacy, World, Interpreter and Bridge semantics; no Kadmos or other-repository edits.
-- Use the clean pinned read-only Kadmos commit `fda8c6e42825b35afe5484a4af9d84d9d206ba9a` for local output regeneration; hosted Linux uses tracked artifacts.
-- Run Lake serially. Keep generated binaries, `.lake/`, caches, logs and credentials out of Git.
-- A successful certificate proves only the parsed constructor/getter fragment under independent Lean target semantics. Host interpreter/serialization assumptions and the unproved `step` pipeline must be stated in every report.
-- The old Kadmos application inventory scans all `Harmonia/Applications`; register new sources there. Do not broaden the Bridge selector to the whole application namespace. Keep Foundation 52 and Distributed 336/594 separate; do not assert fixed old application/Bridge totals.
+- Keep `lean-toolchain` exactly `leanprover/lean4:v4.16.0`; use Init only, no new dependencies, no `native_decide`, `sorry`, `admit`, `sorryAx` or certified custom axioms.
+- Preserve Core, Distributed, legacy, World, Interpreter and Bridge semantics. Do not edit Kadmos or another repository.
+- Use clean read-only Kadmos `fda8c6e42825b35afe5484a4af9d84d9d206ba9a` for local provenance; hosted Linux consumes tracked outputs without a sibling checkout.
+- Every Lake process runs serially. No generated binary, `.lake/`, cache, credential or machine log is staged.
+- T-396 is incomplete without universal dynamic generated `step` correspondence in **both** languages for the specified balance domain. Constructor/getter proof and physical traces alone cannot complete it.
+- Target operations execute a parsed AST; no reference `interpret`/`eval`/`sourceEval` call, no `targetResult = modelResult` premise, and no atomic helper macro named `evaluateWorld`, `sanitizeWorldPayload`, `checkBounds` or `checkInvariants`.
+- Old Kadmos inventory scans all Applications. Register new modules there; isolate new Generated audit/rejection roots. Keep Foundation 52 and Distributed 336/594 separate; no fixed old application/Bridge counts.
 
 ## Review Focus
 
-1. A changed initial phase/default or omitted bounds/invariant call must reject certification, including when the source digest is updated (Task 2 and 3 hostile tests).
-2. Python JSON double quoting and TS JSON literal escaping must preserve exact keys, order and safe integer tokens (Task 1 and 2).
-3. A getter returning a live context object rather than a copy must reject or fail its copy-semantic test (Task 2 and 3).
-4. An opaque step-section mutation must reject the whole-file shape, while the report still declines any step theorem (Task 2 and 4).
-5. A malformed fixture with duplicate/unknown fields or unsafe number must fail before theorem use, while an accepted balance/order constructor remains nonvacuous (Task 1 and 3).
+1. `n=0` and `n<0` take guard failure without effect evaluation; `n=b=S` succeeds with zero and `n>b` rejects bounds without publication (Tasks 3–4).
+2. TS ordinary descriptors and Python exact dict sanitizer paths preserve `amount:n`; a changed copy/lookup source rejects certification (Tasks 2–3).
+3. A modified emitted evaluator/operator, bound comparison, invariant call, return or publish order fails exact parsing or an operational theorem (Tasks 2–4).
+4. Wrong `World` dimensions cannot enter `checkBridge`; the dependent `World raw.states.length ...` signature elaborates without an assumed cast (Tasks 2–4).
+5. Source bytes, Python double JSON quoting and TS literal escaping preserve exact world data/order; recomputed hashes cannot rescue mutated source (Tasks 1–2).
 
 ---
 
-## File map and stable interfaces
+## File map and interfaces
 
-- `tools/export_kadmos_generated.mjs`: pinned-source compiler runner and exact UTF-8 TS/Python output plus Lean-source-string fixture writer; reuses Stage3b's YAML/parsed/profiles; never writes Kadmos.
-- `conformance/kadmos-generated/{balance,order_phase}/{world_checker.ts,ports.d.ts,world_checker.py,ports.py}` and `conformance/kadmos-generated/provenance.json`: exact tracked generated outputs and identities.
-- `Harmonia/Applications/Kadmos/Generated/TargetSyntax.lean`: `TargetLang`, `TargetOp`, `TargetProgram`, restricted whole-file parser and strict embedded data decode.
-- `Harmonia/Applications/Kadmos/Generated/TargetSemantics.lean`: independently defined target store, constructor/getter execution and operation lemmas.
-- `Harmonia/Applications/Kadmos/Generated/ArtifactCertificate.lean`: Bridge binding and simulation theorem.
-- `Harmonia/Applications/Kadmos/Generated/Fixtures.lean`: exact source strings and closed accepted/hostile certificates.
-- `HarmoniaTests/KadmosGeneratedSyntax.lean`, `KadmosGeneratedSemantics.lean`, `KadmosGeneratedCertificate.lean`, `KadmosGeneratedAxiomAudit.lean`, `KadmosGeneratedAuditRejection.lean`, `KadmosGeneratedRejection/{Unused,Unsafe}.lean`: test, audit and isolated traps.
-- `scripts/check_kadmos_generated_artifacts.py`, `scripts/test_kadmos_generated_artifacts.py`, `scripts/check_kadmos_generated_audit.py`, `scripts/test_kadmos_generated_audit.py`: exact byte and source/target inventory gates.
-- `lakefile.lean`, `HarmoniaTests/AuditPolicy.lean`, `Harmonia/Applications/Kadmos.lean`, `.github/workflows/foundations.yml`, `docs/verification/2026-10-06-generated-implementation-correspondence.md`: root and evidence integration. The umbrella import is added only if needed for the old application's real closure; audit manifests are updated for exact new modules.
+- `tools/export_kadmos_generated.mjs`; `conformance/kadmos-generated/{balance,order_phase}/{world_checker.ts,ports.d.ts,world_checker.py,ports.py}`; `conformance/kadmos-generated/provenance.json`; `scripts/check_kadmos_generated_artifacts.py`, `scripts/test_kadmos_generated_artifacts.py`: exact emitted-source provenance and literal round trip.
+- `Harmonia/Applications/Kadmos/Generated/TargetSyntax.lean`: `TargetLang`, `TargetValue`, `TargetExpr`, `TargetOp`, `TargetFunction`, `TargetProgram`, `TargetRequest`, `ParseError`, `SourceParses`, `parseGenerated`, `parseGenerated_sound`.
+- `Harmonia/Applications/Kadmos/Generated/TargetSemantics.lean`: `TargetStore`, `TargetFrame`, `TargetObservation`, `TargetResult`, `TargetError`, primitive evaluator, function-call execution, `targetConstruct`, getters, `targetStep`.
+- `Harmonia/Applications/Kadmos/Generated/ArtifactCertificate.lean`: dependent `checkGenerated`, `CertError` and generic constructor theorem. `Harmonia/Applications/Kadmos/Generated/BalanceStep.lean`: fixture-specific `balanceState`, `balanceRequest`, `balancePreRel`, source/target projections and universal step theorem; imports `Fixtures.lean` after the certificate.
+- `Harmonia/Applications/Kadmos/Generated/Fixtures.lean`: `balanceTsSource`, `balancePySource`, `orderTsSource`, `orderPySource : String` containing complete exact emitted source; checked balance/order certificate facts.
+- `HarmoniaTests/KadmosGeneratedSyntax.lean`, `KadmosGeneratedSemantics.lean`, `KadmosGeneratedConstructor.lean`, `KadmosGeneratedStep.lean`, `KadmosGeneratedAxiomAudit.lean`, `KadmosGeneratedAuditRejection.lean`, `KadmosGeneratedRejection/{Unused,Unsafe}.lean`: closed, universal, audit and hostile probes.
+- `scripts/check_kadmos_generated_audit.py`, `scripts/test_kadmos_generated_audit.py`, `lakefile.lean`, `HarmoniaTests/AuditPolicy.lean`, `.github/workflows/foundations.yml`, `docs/verification/2026-10-06-generated-implementation-correspondence.md`: exact source/root/CI evidence integration. Update `Harmonia/Applications/Kadmos.lean` only if the real import closure needs it.
 
-## Task 1: Reproducible emitted program evidence
-
-**Files:** create exporter, four files per fixture, provenance and artifact checker/test at the paths above; update verification record.
-
-**Interfaces:** consumes existing `parseWorldSpec`, `compileWorldSpec`, `compileWorldSpecPython` and Stage3b fixture paths. Produces exact `world_checker.ts/.py` UTF-8 bytes and a deterministic Lean `String` literal for each; `check_artifacts(root: Path, kadmos: Path | None) -> dict[str,str]` verifies bytes and hashes. This task creates no Lean proof.
-
-- [ ] **Step 1 RED:** Add Python artifact tests that mutate one byte of each output, edit an embedded default, duplicate a JSON key, use `-0`, and change a port file; run `python3 -m unittest scripts/test_kadmos_generated_artifacts.py` and observe failure because checker is absent.
-- [ ] **Step 2 GREEN:** Compile pinned Kadmos with its installed `node_modules/.bin/tsc -p ... --outDir /private/tmp/...`; call both compiler functions on the actual Stage3b YAML parser results. Write deterministic exact outputs and a manifest with Kadmos commit, fixture SHA-256, parser output SHA-256, compiler-output SHA-256, exporter version and command. Check canonical complete source-string escaping round trip against UTF-8 bytes; do not export a pre-decoded target AST.
-- [ ] **Step 3:** Run the Python artifact tests and physical `--kadmos --check` plus hermetic tracked-output `--check`, requiring all exit 0. In private tmp execute balance 30/130/20 and order STEP through emitted TS and Python; record full allowed/code/state/context/directive projections and exit statuses. Their finite equality is evidence only.
-- [ ] **Step 4:** Commit Task 1 paths only after a clean status/diff review; do not stage private tmp output.
-
-## Task 2: Parse selected emitted target operations and define target execution
-
-**Files:** create `TargetSyntax.lean`, `TargetSemantics.lean`, `HarmoniaTests/KadmosGeneratedSyntax.lean`, `HarmoniaTests/KadmosGeneratedSemantics.lean`; add two test targets to `lakefile.lean`.
-
-**Interfaces:**
+The following Lean declarations are shared interfaces, not explanatory shorthand. The design defines every AST constructor and record field. The dependent checker signature is exact; do not substitute `World p v f a` without checked equalities.
 
 ```lean
 def parseGenerated (lang : TargetLang) (source : String) : Except ParseError TargetProgram
-def targetConstruct (program : TargetProgram) : Except TargetError TargetStore
-def targetGetState (program : TargetProgram) (store : TargetStore) : String
-def targetGetContext (program : TargetProgram) (store : TargetStore) : List (String × Int)
+theorem parseGenerated_sound {lang : TargetLang} {source : String}
+    {program : TargetProgram} (h : parseGenerated lang source = .ok program) :
+    SourceParses lang source program
+def targetConstruct (p : TargetProgram) : Except TargetError TargetStore
+def targetGetState (p : TargetProgram) (s : TargetStore) : Except TargetError TargetValue
+def targetGetContext (p : TargetProgram) (s : TargetStore) : Except TargetError TargetValue
+def targetStep (p : TargetProgram) (s : TargetStore) (r : TargetRequest) :
+    Except TargetError TargetResult
+def targetStoredNumber (lang : TargetLang) (n : Int) : TargetValue
+def canonicalBalanceRequest (lang : TargetLang) (n : Int) : TargetRequest
+def checkGenerated (lang : TargetLang) (source : String) (raw : Bridge.RawWorld)
+    (w : World raw.states.length raw.context.length raw.fields.length raw.transitions.length) :
+    Except CertError TargetProgram
 ```
 
-`TargetProgram` contains ordered embedded states/context/transition/invariants and parsed constructor/getter `TargetOp`s; unknown sections are opaque but must equal the pinned template bytes. `targetConstruct` evaluates target operations from an empty store, with its own bounds/invariant expression evaluator and ordered map lookup, never invoking `initialize`, `interpret` or Bridge `sourceEval`.
+## Task 1: Exact artifact provenance and physical vectors
 
-- [ ] **Step 1 RED:** Add closed `by decide +kernel` probes for both exact source strings, their parsed initial phase/defaults and getters; add mutations of `#state`, `#context`, `getContext` spread, `_INITIAL`, `_DEFAULTS`, `dict(self.context)`, and opaque step text. Run `lake build kadmosGeneratedSyntaxTest`; require missing declarations/failing expectations.
-- [ ] **Step 2 GREEN:** Implement complete-source recognizer with anchored fixed sections, a restricted JSON/string parser for actual TS literal and Python doubly quoted JSON, and explicit selected-statement extraction. Reject unconsumed bytes, duplicate keys, unsupported escapes/numbers/order/operations. Do not treat a successful SHA check or externally supplied AST as parser success.
-- [ ] **Step 3 RED/GREEN:** Add and run target-machine tests for balance Ready/100, order A/(1,0), ordered context entries, required constructor checks, and getter copy behavior. Implement target store and operations, independent integer expression evaluation of initial invariants (`balance >= 0`, `state == 'B' => y == x`) and bounded defaults. `lake build kadmosGeneratedSyntaxTest kadmosGeneratedSemanticsTest` must pass; temporarily change a selected parsed operation to confirm a relevant test fails, then restore.
-- [ ] **Step 4:** Commit only these modules/tests/targets after reviewing that no operation implementation calls the reference evaluator.
+**Files:** exporter, eight tracked target files, provenance, artifact checker/tests and verification receipt paths above.
 
-## Task 3: Bridge certificate and nonvacuous kernel theorem
+**Consumes:** actual `parseWorldSpec`, `compileWorldSpec`, `compileWorldSpecPython` from pinned Kadmos, Stage3b balance/order YAML and `parsed.json`. **Produces:** complete exact TS/Python source UTF-8 files and Lean `String` literal round trip; `check_artifacts(root: Path, kadmos: Path | None) -> dict[str,str]`.
 
-**Files:** create `ArtifactCertificate.lean`, `Fixtures.lean`, `HarmoniaTests/KadmosGeneratedCertificate.lean`; update product imports only as required by closure.
+- [ ] **RED:** Add Python tests that alter each generated target file, mutate embedded defaults with recomputed digest, inject duplicate/unknown world keys, insert `-0`, corrupt TS/Python string escaping and change a ports file. Run `python3 scripts/check_kadmos_generated_artifacts.py --self-test`; expect failure before checker exists.
+- [ ] **GREEN:** Compile pinned Kadmos with installed `tsc -p ... --outDir /private/tmp/t396-...`; invoke actual compiler functions on parser-returned specs; track exact outputs and identities. Hermetic path compares tracked source/string literals and manifests; local `--kadmos --check` additionally regenerates and compares every output byte. Never export decoded `TargetProgram` or a presumed successful certificate.
+- [ ] Run both check modes and self-tests, then execute emitted balance boundary pairs `(0,0),(0,1),(100,-1),(100,30),(100,130),(S,S),(S,-S)` and order STEP with Node/Python. Record exit statuses and normalized outputs. These are finite provenance, not universal proof.
+- [ ] Review `git diff --check`, staged paths and clean Kadmos; commit Task 1 only.
 
-**Interfaces:**
+## Task 2: Source-directed parser and constructor/getter fragment
+
+**Files:** `TargetSyntax.lean`, `TargetSemantics.lean`, `Fixtures.lean`, `HarmoniaTests/KadmosGeneratedSyntax.lean`, `KadmosGeneratedConstructor.lean`; add `kadmosGeneratedSyntaxTest` and `kadmosGeneratedConstructorTest` roots.
+
+**Consumes:** Task 1 full source literals. **Produces:** exact schema and interfaces above; parser AST for both complete balance/order files; independent constructor/getter execution. Parser success requires unique bindings and a complete byte-consumption proof by its total `Except` result. Recognize unused sections exactly, but parse every selected statement and helper body into primitive AST nodes. AST function calls resolve only to parsed functions, with checked arity/order and lexical capture lists. Reached `.find`/`.some`/`.map` and Python `next` generator syntax desugars to `forEach`/condition/break nodes under an AST equivalence lemma; no callback is opaque.
+
+- [ ] **RED:** Add closed checks such as:
 
 ```lean
-def checkGenerated (lang : TargetLang) (source : String)
-    (raw : Bridge.RawWorld) (w : World p v f a) : Except CertError TargetProgram
-def targetRel (w : World p v f a) (s : State p v) (store : TargetStore) : Prop
--- theorem checkGenerated_initial_simulation has the statement in the design.
+example : (parseGenerated .ts balanceTsSource).toOption.isSome = true := by decide +kernel
+example : (parseGenerated .python balancePySource).toOption.isSome = true := by decide +kernel
+example : (parseGenerated .ts
+  (balanceTsSource.replace "const boundError = this.checkBounds(candidate);"
+    "const boundError = undefined;")).toOption.isSome = false := by decide +kernel
 ```
 
-`checkGenerated` must require `Bridge.checkBridge raw w = .ok w` and exact indexed equality of embedded source data with the checked raw projection; no candidate target store is supplied by the exporter. The theorem derives successful target construction and getter observations from successful check and `initialize w = .ok s`.
+  Run `lake build kadmosGeneratedSyntaxTest`; expect missing parser/failing probes. Include changed `getContext`, `_DEFAULTS`, `evaluateWorld` call target, `_bounds` order and an opaque-body byte mutation.
+- [ ] **GREEN parser:** Implement Lean lexical/string/JSON decoders for the actual literals and a restricted TS/Python statement parser. Define `SourceParses` as an independent restricted token/span grammar and prove `parseGenerated_sound`; the parser must produce `ifThenElse`/call/assignment/loop/return/throw nodes for selected `step` and reached sanitizer/evaluator/bounds/invariant helpers, Python `_freeze`/`reset` construction calls and TS `deepFreezeWorld` acceptance call. A recognizer that returns a single idealized helper node fails review. Check expression operator and helper call targets/arity in the AST; compare exact world data to the Stage3b raw record later in `checkGenerated`.
+- [ ] **RED/GREEN constructor:** Add exact Ready/100 and A/(x=1,y=0) construction/getter tests for both languages and a getter-copy mutation. Implement independent constructor/check execution. For the order invariant and balance initial invariant, execute parsed helper AST; no `initialize` call inside target semantics. Run `lake build kadmosGeneratedSyntaxTest kadmosGeneratedConstructorTest`; temporarily swap parsed initializer/getter nodes to see a regression fail, then restore.
+- [ ] Commit Task 2 only after checking no target primitive is a user-defined helper.
 
-- [ ] **Step 1 RED:** Add failing closed probes for both fixture/language pairs, an independently mutated world literal with recomputed provenance, altered initial phase/default and removed invariant call. Add explicit concrete `initialize` equalities for both certified worlds; run `lake build kadmosGeneratedCertificateTest` and observe failure before certificate implementation.
-- [ ] **Step 2 GREEN:** Prove parser extraction facts and target-construction simulation by induction on parsed operations and indexed lists, with safe-int arithmetic (`omega` as needed); prove `targetRel`, state/context getter and copy results. Use `by decide +kernel` only for closed artifact checks. Never make target semantics an alias of `initialize`/`interpret`.
-- [ ] **Step 3:** Run `lake build kadmosGeneratedCertificateTest`; prove four fixture certificates plus Ready/100 and A/(1,0) getter theorems. Mutation of a selected initializer/getter or embedded data must fail `checkGenerated` even when its external manifest is recomputed. State the theorem's exact source-string and host-semantics premises in the test comments and verification record.
-- [ ] **Step 4:** Commit Task 3 modules/tests after checking proof dependencies and no forbidden tokens.
+## Task 3: Independent execution of the reached balance step call graph
 
-## Task 4: Separate certified audit, inventories and Linux gate
+**Files:** extend `TargetSyntax.lean`, `TargetSemantics.lean`, create `HarmoniaTests/KadmosGeneratedSemantics.lean`; add `kadmosGeneratedSemanticsTest` root.
 
-**Files:** create Generated audit and rejection Lean modules, four Python policy/artifact scripts if not already created, update `lakefile.lean`, `AuditPolicy.lean`, old Kadmos inventory manifest, `.github/workflows/foundations.yml`, verification record.
+**Consumes:** parsed `TargetProgram`, canonical `TargetRequest`, `TargetStore`. **Produces:** `targetStep` through the actual parsed step body and reached helper bodies; lemmas about canonical request sanitization, transition lookup, three evaluator expressions and bounds/invariants. `TargetStore` and `TargetObservation` have exactly the fields in the design; `targetStep` returns both poststore and observation, without reading `interpret`.
 
-**Interfaces:** exact targets `kadmosGeneratedSyntaxTest`, `kadmosGeneratedSemanticsTest`, `kadmosGeneratedCertificateTest`, `kadmosGeneratedAudit`, `kadmosGeneratedAuditRejection`. `check_kadmos_generated_audit.py` composes the unchanged old application audit, inventories only exact Generated products/probes/audit, checks imports/root closure/trap isolation and forbidden source tokens. Its declaration selector is namespace **or source module** for those exact files, so unused/escaped axioms cannot hide.
+- [ ] **RED:** Add source-execution tests for `amount=0,-1,30,130,S`, current balances `0,100,S`; add a test of `event.amount > 0`, `balance - event.amount`, `balance >= 0` through the *parsed evaluator function*, not a separate expression evaluator. Include changed `>`/`>=`, subtraction/addition, sanitizer copy, bound order, invariant call and publish-before-check mutations with recomputed manifest. Run `lake build kadmosGeneratedSemanticsTest`; expect missing operations/failure.
+- [ ] **GREEN primitives:** Define small-step/evaluator rules for local/field access, ordered maps, own-data descriptors, copies, strict comparison, JS safe-integer arithmetic, Python float conversion on exact safe integers, exceptions, early return, `forEach`, `tryCatchFinally`, checked function call/return. Define restricted regex/token matching for the actual three expressions and anchored effect assignment; prove the parsed tokenizer/Pratt paths yield the expected tokens/evaluation for dynamic `n,b`. Do not make tokenization or helper correctness an axiom.
+- [ ] **GREEN path:** Derive canonical sanitizer success and copied `amount:n`; TS `deepFreezeWorld` success on its finite record and Python `copy.deepcopy` finite-tree copy; first transition/directive; guard classification; effect candidate `b-n` only when `n>0`; safe-integer check; bounds and invariant order; rejection rollback/observation; success publication/observation. Prove `0≤b≤S ∧ safeInt n ∧ n>0 → safeInt (b-n)` with `omega`. Run the target and closed source-execution tests; temporarily change parsed effect or bound AST and verify RED before restore.
+- [ ] Commit Task 3 after source/AST review confirms all reached calls resolve to parsed bodies. If a reached helper remains opaque, stop and report the concrete missing construct; do not proceed to a correspondence claim.
 
-- [ ] **Step 1 RED:** Add inventory mutation tests for a nested unregistered Generated file, missing import, extra certified root, unused axiom, escaped unsafe axiom, trap imported by a certified root, and whole-application namespace selection. Run `python3 scripts/check_kadmos_generated_audit.py --self-test`; see intentional initial failures.
-- [ ] **Step 2 GREEN:** Register exact source manifests and new Lake roots; add trap-free certified and isolated rejection roots. Run new inventory self-tests/checks and all old inventory suites. Foundation and Distributed counts remain separately reported; update old application closure only for genuine new imports.
-- [ ] **Step 3:** Add Linux CI steps after Bridge checks, serially: artifact self-test/check, source inventory self-test/check, three tests, certified audit, fresh `lake env lean HarmoniaTests/KadmosGeneratedAxiomAudit.lean`, isolated rejection target. No sibling checkout requirement or policy weakening.
-- [ ] **Step 4 verification:** Run `lake build`, then all 14 pre-existing dedicated targets and five new targets **serially**; run old/new inventories and artifact checks; run fresh audits where source closure changed. Record command, exit code, theorem/declaration counts and actual axiom sets. Confirm no `sorry`/`admit`/`sorryAx`/unreported axiom in certified roots; verify TS/Python physical examples and hostile source mutation, `git diff --check`, no untracked generated binary/cache, and clean pinned Kadmos.
-- [ ] **Step 5:** Commit documentation and gate files locally; perform an independent physical review through parent coordination before any integration. Parent owns Grok verdict, hosted Linux, publication and merge. Report the narrow certified theorem and every remaining unproved bridge.
+## Task 4: Dependent certificate and universal model simulation
 
-## Self-review and execution handoff
+**Files:** `ArtifactCertificate.lean`, `BalanceStep.lean`, `HarmoniaTests/KadmosGeneratedStep.lean`; update `Fixtures.lean` and constructor tests. Add `kadmosGeneratedStepTest` root.
 
-The four tasks cover exact compiler provenance, source-string parsing, independent target construction/read semantics, Bridge simulation and isolated audit/CI. Task interfaces use `TargetProgram`/`TargetStore` consistently. The plan intentionally does not implement `step`; physical step vectors are named finite evidence. Current Stage3b certificate covers exactly the balance/order worlds, so the constructor theorem has concrete witnesses and no vacuous malformed-world theorem. The chief residual risk is that modeled target operations have no kernel proof of Node/CPython semantics; an external comparison remains a trust boundary. Parent sends the full design to physical Grok and independently judges ACCEPT/REVISE before any task above starts.
+**Consumes:** Task 2–3 parser/execution, `Bridge.checkBridge` at raw-dependent dimensions and existing `balance_certificate`. **Produces:** `checkGenerated`, two actual-source certificates, constructor/getter theorem, universal step theorem in the design. `balancePreRel lang b store` constrains only incoming checker shape/state/context/busy/history; it must not mention result, n or model poststate.
+
+- [ ] **RED certificate:** Add:
+
+```lean
+example : (checkGenerated .ts balanceTsSource balanceRaw balanceCandidate).toOption.isSome = true := by decide +kernel
+example : (checkGenerated .python balancePySource balanceRaw balanceCandidate).toOption.isSome = true := by decide +kernel
+example : (checkGenerated .ts
+  (balanceTsSource.replace "balance - event.amount" "balance + event.amount")
+  balanceRaw balanceCandidate).toOption.isSome = false := by decide +kernel
+```
+
+  Include a changed guard, bound, sanitizer, publish and embedded world literal, each with recomputed external digest. Run `lake build kadmosGeneratedStepTest`; observe RED before implementation.
+- [ ] **GREEN certificate:** Implement the exact dependent signature in the shared interface. Require `checkBridge raw w = .ok w`, exact ordered embedded data, parsed call graph and supported balance profile; map parser/Bridge/data errors to `CertError`. Prove parser success exposes the specific AST structure used by the step lemmas; never add a premise saying a helper gives the expected result.
+- [ ] **RED/GREEN universal proof:** In `BalanceStep.lean`, define `balanceState (b : Int) : State 1 1 := ⟨0, fun _ => b⟩` and `balanceRequest (n : Int) : Request 1 := ⟨"DEBIT", fun _ => .int n, none⟩`; first prove reference `interpret`'s three cases for arbitrary `b,n` using these definitions, the actual `balanceCandidate`, `hb` and `hn`. Then prove target cases from Task 3 small-step execution. Combine with a prestate-only `balancePreRel` (`Ready`, one `balance` value, empty history, absent undo, not busy) and normalized observation mapping. Add `exists_balancePreRel` for every `0≤b≤S` and closed witnesses at `b=0,100,S`; invoke the theorem for both actual TS and Python certificate facts. A proof by `rfl` on closed 30/130 examples does not meet this task.
+- [ ] Run `lake build kadmosGeneratedConstructorTest kadmosGeneratedStepTest`. Mutation-disable the source statement validator briefly: the negative probe or a theorem must fail, then restore. Check `targetStep`, helper execution and relation definitions for reference-operation calls or expected-poststate premises; commit Task 4 only after clean review.
+
+## Task 5: Audit isolation, policy, Linux and acceptance evidence
+
+**Files:** new Generated audit/rejection Lean roots, `scripts/check_kadmos_generated_audit.py`, `scripts/test_kadmos_generated_audit.py`, `HarmoniaTests/AuditPolicy.lean`, `lakefile.lean`, `.github/workflows/foundations.yml`, verification receipt; old application manifest/umbrella import only as real closure requires.
+
+**Interfaces:** exact targets `kadmosGeneratedSyntaxTest`, `kadmosGeneratedConstructorTest`, `kadmosGeneratedSemanticsTest`, `kadmosGeneratedStepTest`, `kadmosGeneratedAudit`, `kadmosGeneratedAuditRejection`. The new audit selects exact Generated product/probe/audit source modules by namespace **or source module**. Its rejection target is isolated from certified roots and from old traps.
+
+- [ ] **RED:** Add inventory mutation tests for nested unregistered source/probe/rejection file, missing root/import, escaped unused axiom, indirect custom-axiom import, trap in certified closure and blanket old Applications selector. Run `python3 scripts/check_kadmos_generated_audit.py --self-test` and observe initial rejection failures.
+- [ ] **GREEN:** Register exact manifests/root closures and isolated traps. Compose with unchanged old Kadmos/Bridge audits. Run all old/new inventories; do not alter Foundation/Distributed policies or fix old counts. Add serial Linux steps for artifact self-test/check, inventory self-test/check, four tests, certified audit, fresh `lake env lean HarmoniaTests/KadmosGeneratedAxiomAudit.lean` and isolated rejection target.
+- [ ] **Full serial acceptance:** `lake build`, all 14 pre-existing dedicated targets and six new targets serially; old/new inventory suites; actual pinned-source `--kadmos --check` and hermetic artifact check; physical boundary examples and hostile mutations; fresh audits for changed closures. Record commands, exit codes, actual theorem/declaration/axiom counts, model assumptions, host primitive boundary and exactly what the universal theorem proves. No solver/finite trace is a kernel proof.
+- [ ] Review three-way `b,n` coverage, exact source-string fixture checks, no vacuous relation, no helper macro, complete reached call graph and clean Kadmos/Git state. Commit focused local implementation/evidence. Parent handles independent physical review, hosted Linux observation, Grok verdict, publication and integration; no push/PR/merge by this owner.
+
+## Self-review and handoff
+
+Five independently reviewable tasks cover actual artifact provenance, syntax-directed source recognition, independent execution of reached helper bodies, dependent Bridge certification with universal dynamic step simulation, and isolated audit/CI. `checkGenerated` uses raw-dependent dimensions everywhere. The theorem has only source certificate, `0≤b≤S`, `safeInt n` and a prestate relation; none assumes an observation or target/model equality. Both languages are required, and constructors/getters are an initial task. The major feasibility risk is parsing the generated evaluator/sanitizer control flow honestly. If Task 3 cannot give semantics to a branch exercised by the canonical balance call, implementation must stop and return a concrete architecture decision to the parent; a constructor-only result does not complete T-396. Parent sends this corrected design to physical Grok before work starts.
