@@ -19,4 +19,21 @@ theorem tainted : True := False.elim falseEvidence
 /-- error: axiom audit rejected QuorumAuditTrap.tainted: QuorumAuditTrap.falseEvidence -/
 #guard_msgs in
 #audit_declaration QuorumAuditTrap.tainted
+axiom unused : True
+/-- error: axiom audit rejected QuorumAuditTrap.unused: QuorumAuditTrap.unused -/
+#guard_msgs in
+#audit_declaration QuorumAuditTrap.unused
+/-- warning: declaration uses 'sorry' -/
+#guard_msgs in
+theorem placeholder : True := sorryAx True false
+/-- error: axiom audit rejected QuorumAuditTrap.placeholder: sorryAx -/
+#guard_msgs in
+#audit_declaration QuorumAuditTrap.placeholder
 end QuorumAuditTrap
+
+namespace Harmonia.Quorum.AuditTrap
+theorem tainted : True := False.elim QuorumAuditTrap.falseEvidence
+end Harmonia.Quorum.AuditTrap
+/-- error: axiom audit rejected Harmonia.Quorum.AuditTrap.tainted: QuorumAuditTrap.falseEvidence -/
+#guard_msgs in
+#audit_quorum

@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """Build and inspect the certified quorum audit and its isolated counterexamples."""
 
+import argparse
 import re
 import subprocess
 import sys
+import unittest
 from pathlib import Path
 
 sys.dont_write_bytecode = True
-from check_distributed_audit import import_closure, scrub
+from check_distributed_audit import import_closure, module_name, scrub
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -26,8 +28,19 @@ ROOTS = {
 FORBIDDEN = re.compile(r"\b(sorry|admit|sorryAx|axiom|native_decide)\b")
 
 
-def check() -> str:
-    lakefile = (ROOT / "lakefile.lean").read_text()
+def name_array(body: str, label: str) -> set[str]:
+    names = re.findall(r"`([A-Za-z_][A-Za-z_0-9]*(?:\.[A-Za-z_][A-Za-z_0-9]*)*)", body)
+    residue = re.sub(r"`[A-Za-z_][A-Za-z_0-9]*(?:\.[A-Za-z_][A-Za-z_0-9]*)*", "", body)
+    if re.sub(r"[\s,]", "", residue):
+        raise ValueError(f"malformed {label}")
+    if len(names) != len(set(names)):
+        raise ValueError(f"duplicate {label}")
+    return set(names)
+
+
+def check_static(root: Path) -> None:
+    root = root.resolve()
+    lakefile = (root / "lakefile.lean").read_text()
     for target in TARGETS:
         match = re.search(
             rf"(?m)^lean_lib {target} where\s+roots := #\[(.*?)\]",
@@ -35,36 +48,54 @@ def check() -> str:
         )
         if not match:
             raise ValueError(f"missing Lake target: {target}")
-        roots = set(re.findall(r"`([A-Za-z_][\w.]*)", match.group(1)))
+        roots = name_array(match.group(1), f"{target} roots")
         if roots != ROOTS[target]:
             raise ValueError(f"incorrect roots for {target}: {sorted(roots)}")
 
-    for module in CERTIFIED:
-        source = (ROOT / (module.replace(".", "/") + ".lean")).read_text()
+    products = set((root / "Harmonia/Theorems").rglob("*.lean"))
+    probes = {path for path in (root / "HarmoniaTests").rglob("*.lean")
+              if path.relative_to(root / "HarmoniaTests").parts[0].startswith("Quorum")}
+    inventory = {module_name(root, path) for path in products | probes}
+    inventory = {name for name in inventory
+                 if name != REJECTION and not name.startswith(REJECTION + ".")}
+    if not CERTIFIED <= inventory:
+        raise ValueError(f"missing certified quorum modules: {sorted(CERTIFIED - inventory)}")
+    for module in inventory:
+        source = (root / (module.replace(".", "/") + ".lean")).read_text()
         token = FORBIDDEN.search(scrub(source))
         if token:
             raise ValueError(f"forbidden certified source token {token.group(1)} in {module}")
-    product_imports = re.findall(r"(?m)^import\s+([^\s]+)",
-                                 (ROOT / "Harmonia/Theorems/Quorum.lean").read_text())
-    if product_imports != ["Init"]:
-        raise ValueError(f"quorum theorem module must import only Init: {product_imports}")
-    policy = scrub((ROOT / "HarmoniaTests/AuditPolicy.lean").read_text())
+    for path in products:
+        imports = re.findall(r"(?m)^import\s+([^\s]+)", path.read_text())
+        if any(not (name == "Init" or name.startswith("Init.") or
+                    name.startswith("Harmonia.Theorems.")) for name in imports):
+            raise ValueError(f"nonstandard theorem import in {module_name(root, path)}: {imports}")
+    policy = scrub((root / "HarmoniaTests/AuditPolicy.lean").read_text())
     manifest = re.search(r"\bdef quorumSourceModules : Array Name := #\[(.*?)\]", policy, re.S)
     if not manifest:
         raise ValueError("missing quorum axiom audit source manifest")
-    modules = set(re.findall(r"`([A-Za-z_][\w.]*)", manifest.group(1)))
-    if modules != CERTIFIED:
-        raise ValueError(f"incorrect quorum audit source manifest: {sorted(modules)}")
+    modules = name_array(manifest.group(1), "quorum manifest")
+    if modules != inventory:
+        raise ValueError(f"quorum manifest mismatch: missing={sorted(inventory - modules)}, extra={sorted(modules - inventory)}")
 
-    audit_closure = import_closure(ROOT, "HarmoniaTests.QuorumAxiomAudit")
-    test_closure = import_closure(ROOT, "HarmoniaTests.QuorumTest")
-    if not CERTIFIED <= audit_closure:
-        raise ValueError(f"uncovered certified modules: {sorted(CERTIFIED - audit_closure)}")
+    audit_closure = import_closure(root, "HarmoniaTests.QuorumAxiomAudit")
+    test_closure = import_closure(root, "HarmoniaTests.QuorumTest")
+    if not inventory <= audit_closure:
+        raise ValueError(f"uncovered certified modules: {sorted(inventory - audit_closure)}")
     if REJECTION in audit_closure | test_closure:
         raise ValueError("counterexample fixture imported by certified target")
-    rejection_closure = import_closure(ROOT, REJECTION)
+    project_closure = {name for name in audit_closure | test_closure
+                       if name.startswith(("Harmonia.", "HarmoniaTests."))}
+    unexpected = project_closure - inventory - {"HarmoniaTests.AuditPolicy"}
+    if unexpected:
+        raise ValueError(f"unknown certified import: {sorted(unexpected)}")
+    rejection_closure = import_closure(root, REJECTION)
     if REJECTION not in rejection_closure:
         raise ValueError("counterexample fixture missing from rejection closure")
+
+
+def check() -> str:
+    check_static(ROOT)
 
     result = subprocess.run(
         ["lake", "build", *TARGETS], cwd=ROOT, text=True,
@@ -98,6 +129,13 @@ def check() -> str:
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--self-test", action="store_true")
+    args = parser.parse_args()
+    if args.self_test:
+        import test_quorum_audit
+        suite = unittest.defaultTestLoader.loadTestsFromModule(test_quorum_audit)
+        raise SystemExit(0 if unittest.TextTestRunner(verbosity=2).run(suite).wasSuccessful() else 1)
     try:
         print(check())
     except (OSError, ValueError) as exc:

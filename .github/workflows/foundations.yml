@@ -56,4 +56,4 @@ jobs:
       - name: Quorum theorem probes and certified audit
         run: lake build quorumTest quorumAudit quorumAuditRejection
       - name: Quorum source and axiom audit check
-        run: python3 scripts/check_quorum_audit.py
+        run: python3 scripts/check_quorum_audit.py --self-test && python3 scripts/check_quorum_audit.py
