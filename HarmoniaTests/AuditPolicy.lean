@@ -167,3 +167,49 @@ elab "#audit_quorum" : command => do
   let env ← getEnv
   HarmoniaAudit.auditSelected (HarmoniaAudit.quorumDeclaration env) "quorum" true
     "QUORUM AUDIT PASS"
+
+namespace HarmoniaAudit
+
+def capSourceModules : Array Name := #[
+  `Harmonia.Theorems.CAP, `HarmoniaTests.CAPTest,
+  `HarmoniaTests.CAPAxiomAudit]
+
+def capDeclaration (env : Environment) (n : Name) : Bool :=
+  (`Harmonia.CAP).isPrefixOf n ||
+  capSourceModules.contains (sourceModule env n)
+
+def checkCapDeclaration (n : Name) : CommandElabM (Array Name) := do
+  unless (← getEnv).contains n do
+    throwError "CAP audit declaration does not exist: {n}"
+  let axioms ← collectAxioms n
+  for ax in axioms do
+    unless ax == ``propext || ax == ``Quot.sound do
+      throwError "CAP audit rejected {n}: {ax}"
+  return axioms
+
+def auditCap : CommandElabM Unit := do
+  let env ← getEnv
+  let select := capDeclaration env
+  let declarations := env.constants.toList.toArray.qsort (fun a b => a.1.toString < b.1.toString)
+  let names := theoremNames env select
+  if names.isEmpty then throwError "CAP audit found no theorems"
+  let mut observed : Array Name := #[]
+  let mut count := 0
+  for (n, info) in declarations do
+    if select n then
+      match info with
+      | .axiomInfo _ =>
+        let range ← findDeclarationRanges? n
+        unless info.isUnsafe && range.isNone do
+          discard <| checkCapDeclaration n
+      | _ => pure ()
+      unless info.isUnsafe do
+        let axioms ← checkCapDeclaration n
+        count := count + 1
+        for ax in axioms do
+          if !observed.contains ax then observed := observed.push ax
+  logInfo m!"CAP AUDIT PASS: {names.size} theorems; {count} declarations; observed axioms {observed}; whitelist [propext, Quot.sound]"
+
+end HarmoniaAudit
+
+elab "#audit_cap" : command => HarmoniaAudit.auditCap

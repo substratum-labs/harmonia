@@ -66,3 +66,12 @@ lean_lib quorumAudit where
 
 lean_lib quorumAuditRejection where
   roots := #[`HarmoniaTests.QuorumRejection]
+
+lean_lib capTest where
+  roots := #[`HarmoniaTests.CAPTest]
+
+lean_lib capAudit where
+  roots := #[`HarmoniaTests.AuditPolicy, `HarmoniaTests.CAPAxiomAudit]
+
+lean_lib capAuditRejection where
+  roots := #[`HarmoniaTests.CAPRejection]
