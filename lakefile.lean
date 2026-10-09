@@ -57,3 +57,12 @@ lean_lib kadmosBridgeAudit where
 lean_lib kadmosBridgeAuditRejection where
   roots := #[`HarmoniaTests.KadmosBridgeRejection.Unused,
     `HarmoniaTests.KadmosBridgeRejection.Unsafe, `HarmoniaTests.KadmosBridgeAuditRejection]
+
+lean_lib quorumTest where
+  roots := #[`HarmoniaTests.QuorumTest]
+
+lean_lib quorumAudit where
+  roots := #[`HarmoniaTests.AuditPolicy, `HarmoniaTests.QuorumAxiomAudit]
+
+lean_lib quorumAuditRejection where
+  roots := #[`HarmoniaTests.QuorumRejection]

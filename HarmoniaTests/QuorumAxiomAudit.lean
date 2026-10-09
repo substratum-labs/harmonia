@@ -1,0 +1,17 @@
+import Harmonia.Theorems.Quorum
+import HarmoniaTests.QuorumTest
+import HarmoniaTests.AuditPolicy
+
+#audit_quorum
+#audit_declaration Harmonia.Quorum.subset_length_le
+#audit_declaration Harmonia.Quorum.partition_length
+#audit_declaration Harmonia.Quorum.inclusion_exclusion
+#audit_declaration Harmonia.Quorum.disjoint_cardinality
+#audit_declaration Harmonia.Quorum.intersection_lower_bound
+#audit_declaration Harmonia.Quorum.cft_intersection
+#audit_declaration Harmonia.Quorum.bft_intersection
+#audit_declaration Harmonia.Quorum.cft_intersection_at_least
+#audit_declaration Harmonia.Quorum.bft_intersection_at_least
+#audit_declaration Harmonia.Quorum.bft_honest_cardinality
+#audit_declaration Harmonia.Quorum.bft_honest_exists
+#audit_declaration Harmonia.Quorum.bft_honest_exists_at_least

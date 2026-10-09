@@ -150,3 +150,20 @@ elab "#audit_kadmos_bridge" : command => do
   let env ← getEnv
   HarmoniaAudit.auditSelected (HarmoniaAudit.kadmosBridgeDeclaration env) "kadmos bridge" true
     "KADMOS BRIDGE AUDIT PASS"
+
+namespace HarmoniaAudit
+
+def quorumSourceModules : Array Name := #[
+  `Harmonia.Theorems.Quorum, `HarmoniaTests.QuorumTest,
+  `HarmoniaTests.QuorumAxiomAudit]
+
+def quorumDeclaration (env : Environment) (n : Name) : Bool :=
+  (`Harmonia.Quorum).isPrefixOf n ||
+  quorumSourceModules.contains (sourceModule env n)
+
+end HarmoniaAudit
+
+elab "#audit_quorum" : command => do
+  let env ← getEnv
+  HarmoniaAudit.auditSelected (HarmoniaAudit.quorumDeclaration env) "quorum" true
+    "QUORUM AUDIT PASS"

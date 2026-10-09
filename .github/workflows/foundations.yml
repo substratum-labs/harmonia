@@ -53,3 +53,7 @@ jobs:
         run: lake env lean HarmoniaTests/KadmosBridgeAxiomAudit.lean
       - name: Kadmos Bridge isolated adversarial audit probes
         run: lake build kadmosBridgeAuditRejection
+      - name: Quorum theorem probes and certified audit
+        run: lake build quorumTest quorumAudit quorumAuditRejection
+      - name: Quorum source and axiom audit check
+        run: python3 scripts/check_quorum_audit.py
