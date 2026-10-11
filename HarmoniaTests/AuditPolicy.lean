@@ -314,3 +314,6 @@ def auditCausal : CommandElabM Unit := do
 end HarmoniaAudit
 
 elab "#audit_causal" : command => HarmoniaAudit.auditCausal
+
+elab "#audit_causal_declaration " n:ident : command => do
+  discard <| HarmoniaAudit.checkCausalDeclaration n.getId

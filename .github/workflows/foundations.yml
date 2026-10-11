@@ -57,3 +57,7 @@ jobs:
         run: lake build quorumTest quorumAudit quorumAuditRejection
       - name: Quorum source and axiom audit check
         run: python3 scripts/check_quorum_audit.py --self-test && python3 scripts/check_quorum_audit.py
+      - name: Causal clocks theorem probes and certified audit
+        run: lake build causalTest causalAudit causalAuditRejection
+      - name: Causal clocks source and axiom audit check
+        run: python3 scripts/test_causal_audit.py && python3 scripts/check_causal_audit.py

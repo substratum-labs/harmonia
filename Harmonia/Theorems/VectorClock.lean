@@ -65,7 +65,7 @@ structure Clocking (t : Trace) (N : Nat) where
   clock : Event → VectorClock N
   before : Event → VectorClock N
   messageClock : MessageId → VectorClock N
-  local_precedes : ∀ {e f}, t.localEdge e f → le (clock e) (before f)
+  local_precedes : ∀ {e f}, ProgramOrder t e f → le (clock e) (before f)
   tick : ∀ e, clock e = increment
     (match t.kind e with
      | .receive m => merge (before e) (messageClock m)
@@ -144,7 +144,7 @@ private theorem Clocking.message_le_input {t : Trace} {N : Nat} (v : Clocking t 
   exact le_merge_right _ _
 
 theorem Clocking.local_sound {t : Trace} {N : Nat} (v : Clocking t N)
-    {e f : Event} (h : t.localEdge e f) : lt (v.clock e) (v.clock f) := by
+    {e f : Event} (h : ProgramOrder t e f) : lt (v.clock e) (v.clock f) := by
   have hp := v.local_precedes h
   have ht := v.before_lt_clock f
   constructor
@@ -168,7 +168,7 @@ theorem Clocking.message_sound {t : Trace} {N : Nat} (v : Clocking t N)
 theorem Clocking.sound {t : Trace} {N : Nat} (v : Clocking t N)
     {e f : Event} (h : HappensBefore t e f) : lt (v.clock e) (v.clock f) := by
   induction h with
-  | local_step _ _ he => exact v.local_sound he
+  | local_step he => exact v.local_sound he
   | msg_step _ _ hs hr => exact v.message_sound hs hr
   | trans _ _ ih₁ ih₂ => exact lt_trans ih₁ ih₂
 
@@ -208,3 +208,320 @@ theorem Clocking.concurrent_iff_incomparable {t : Trace} {N : Nat}
     · intro heq; subst f; exact hi.1 (le_refl _)
 
 end Harmonia.Causal.Vector
+
+namespace Harmonia.Causal.Vector.Canonical
+
+open Harmonia.Causal
+
+/-- Maximum observed local rank in a finite causal past. -/
+def foldMax {α : Type} (xs : List α) (g : α → Nat) : Nat :=
+  xs.foldr (fun x n => max (g x) n) 0
+
+theorem foldMax_mem {α : Type} (xs : List α) (g : α → Nat) {p : α}
+    (hp : p ∈ xs) : g p ≤ foldMax xs g := by
+  induction xs with
+  | nil => cases hp
+  | cons x xs ih =>
+      simp only [List.mem_cons] at hp
+      simp only [foldMax, List.foldr_cons]
+      rcases hp with rfl | hp
+      · exact Nat.le_max_left _ _
+      · exact Nat.le_trans (ih hp) (Nat.le_max_right _ _)
+
+theorem foldMax_mono {α : Type} (xs : List α) (g h : α → Nat)
+    (hm : ∀ p ∈ xs, g p ≤ h p) : foldMax xs g ≤ foldMax xs h := by
+  induction xs with
+  | nil => exact Nat.le_refl _
+  | cons x xs ih =>
+      have hx := hm x (by simp)
+      have hxs : ∀ p ∈ xs, g p ≤ h p := by
+        intro p hp; exact hm p (by simp [hp])
+      have ht := ih hxs
+      change max (g x) (foldMax xs g) ≤ max (h x) (foldMax xs h)
+      omega
+
+theorem foldMax_lt {α : Type} (xs : List α) (g : α → Nat) (M : Nat)
+    (hM : 0 < M) (hall : ∀ p ∈ xs, g p < M) : foldMax xs g < M := by
+  induction xs with
+  | nil => simpa [foldMax] using hM
+  | cons x xs ih =>
+      have hx := hall x (by simp)
+      have hxs : ∀ p ∈ xs, g p < M := by
+        intro p hp; exact hall p (by simp [hp])
+      have ht := ih hxs
+      change max (g x) (foldMax xs g) < M
+      omega
+
+theorem foldMax_le {α : Type} (xs : List α) (g : α → Nat) (M : Nat)
+    (hall : ∀ p ∈ xs, g p ≤ M) : foldMax xs g ≤ M := by
+  induction xs with
+  | nil => exact Nat.zero_le _
+  | cons x xs ih =>
+      have hx := hall x (by simp)
+      have hxs : ∀ p ∈ xs, g p ≤ M := by
+        intro p hp; exact hall p (by simp [hp])
+      change max (g x) (foldMax xs g) ≤ M
+      exact Nat.max_le_of_le_of_le hx (ih hxs)
+
+theorem foldMax_attains {α : Type} (xs : List α) (g : α → Nat)
+    (hpos : 0 < foldMax xs g) : ∃ p, p ∈ xs ∧ g p = foldMax xs g := by
+  induction xs with
+  | nil => simp [foldMax] at hpos
+  | cons x xs ih =>
+      change 0 < max (g x) (foldMax xs g) at hpos
+      change ∃ p, p ∈ x :: xs ∧ g p = max (g x) (foldMax xs g)
+      rcases Nat.le_total (g x) (foldMax xs g) with h | h
+      · have hm : max (g x) (foldMax xs g) = foldMax xs g := Nat.max_eq_right h
+        rw [hm] at hpos ⊢
+        obtain ⟨p, hp, hval⟩ := ih hpos
+        exact ⟨p, by simp [hp], hval⟩
+      · have hm : max (g x) (foldMax xs g) = g x := Nat.max_eq_left h
+        rw [hm]
+        exact ⟨x, by simp, rfl⟩
+
+/-- A finite causal history with computable reachability and increasing
+per-process ranks. These are execution-shape obligations, not clock facts. -/
+structure History (t : Trace) (N : Nat) where
+  nodeIndex : Event → Fin N
+  node_index : ∀ e, e ∈ t.events → t.node e = (nodeIndex e).val
+  rank : Event → Nat
+  rank_positive : ∀ e, e ∈ t.events → 0 < rank e
+  rank_strict : ∀ e f, e ∈ t.events → f ∈ t.events →
+    t.node e = t.node f → e < f → rank e < rank f
+  rank_reflect : ∀ e f, e ∈ t.events → f ∈ t.events →
+    t.node e = t.node f → rank e ≤ rank f → e ≤ f
+  knows : Event → Event → Bool
+  knows_correct : ∀ p f, knows p f = true ↔
+    p = f ∨ HappensBefore t p f
+
+def contribution {t : Trace} {N : Nat} (h : History t N)
+    (p f : Event) (i : Fin N) : Nat :=
+  if h.nodeIndex p = i ∧ h.knows p f = true then h.rank p else 0
+
+def clock {t : Trace} {N : Nat} (h : History t N)
+    (f : Event) : VectorClock N :=
+  fun i => foldMax t.events (fun p => contribution h p f i)
+
+private theorem contribution_self {t : Trace} {N : Nat} (h : History t N)
+    (e : Event) : contribution h e e (h.nodeIndex e) = h.rank e := by
+  simp [contribution, (h.knows_correct e e).2 (Or.inl rfl)]
+
+private theorem contribution_mono {t : Trace} {N : Nat} (h : History t N)
+    {e f : Event} (hef : HappensBefore t e f) (p : Event) (i : Fin N) :
+    contribution h p e i ≤ contribution h p f i := by
+  by_cases hp : h.nodeIndex p = i ∧ h.knows p e = true
+  · have hk : p = e ∨ HappensBefore t p e := (h.knows_correct p e).1 hp.2
+    have hkf : p = f ∨ HappensBefore t p f := by
+      rcases hk with rfl | hpe
+      · exact Or.inr hef
+      · exact Or.inr (HappensBefore.trans hpe hef)
+    have hpf : h.nodeIndex p = i ∧ h.knows p f = true :=
+      ⟨hp.1, (h.knows_correct p f).2 hkf⟩
+    simp [contribution, hp, hpf]
+  · simp [contribution, hp]
+
+theorem sound {t : Trace} {N : Nat} (h : History t N)
+    {e f : Event} (hef : HappensBefore t e f) :
+    lt (clock h e) (clock h f) := by
+  have he := happensBefore_source hef
+  have hf := happensBefore_target hef
+  have hforward := happensBefore_forward hef
+  constructor
+  · intro i
+    apply foldMax_mono
+    intro p _
+    exact contribution_mono h hef p i
+  · refine ⟨h.nodeIndex f, ?_⟩
+    have hright : h.rank f ≤ clock h f (h.nodeIndex f) :=
+      (contribution_self h f) ▸ foldMax_mem t.events
+        (fun p => contribution h p f (h.nodeIndex f)) hf
+    have hleft : clock h e (h.nodeIndex f) < h.rank f := by
+      apply foldMax_lt t.events _ _ (h.rank_positive f hf)
+      intro p hp
+      by_cases hc : h.nodeIndex p = h.nodeIndex f ∧ h.knows p e = true
+      · have hpe : p = e ∨ HappensBefore t p e := (h.knows_correct p e).1 hc.2
+        have hpf : p < f := by
+          rcases hpe with rfl | hpe
+          · exact hforward
+          · exact Nat.lt_trans (happensBefore_forward hpe) hforward
+        have hn : t.node p = t.node f := by
+          rw [h.node_index p hp, h.node_index f hf, hc.1]
+        simpa [contribution, hc] using h.rank_strict p f hp hf hn hpf
+      · simp [contribution, hc]
+        exact h.rank_positive f hf
+    exact Nat.lt_of_lt_of_le hleft hright
+
+theorem le_origin {t : Trace} {N : Nat} (h : History t N)
+    {e f : Event} (he : e ∈ t.events) (hf : f ∈ t.events)
+    (hv : le (clock h e) (clock h f)) : e = f ∨ HappensBefore t e f := by
+  have hself : h.rank e ≤ clock h e (h.nodeIndex e) :=
+    (contribution_self h e) ▸ foldMax_mem t.events
+      (fun p => contribution h p e (h.nodeIndex e)) he
+  have hbound : h.rank e ≤ clock h f (h.nodeIndex e) :=
+    Nat.le_trans hself (hv (h.nodeIndex e))
+  have hpos : 0 < clock h f (h.nodeIndex e) :=
+    Nat.lt_of_lt_of_le (h.rank_positive e he) hbound
+  obtain ⟨p, hp, hval⟩ := foldMax_attains t.events
+    (fun p => contribution h p f (h.nodeIndex e)) hpos
+  have hcontrib : contribution h p f (h.nodeIndex e) = clock h f (h.nodeIndex e) := hval
+  by_cases hc : h.nodeIndex p = h.nodeIndex e ∧ h.knows p f = true
+  · have hrank : h.rank e ≤ h.rank p := by
+      rw [← hcontrib] at hbound
+      simpa [contribution, hc] using hbound
+    have hn : t.node e = t.node p := by
+      rw [h.node_index e he, h.node_index p hp, hc.1]
+    have hep : e ≤ p := h.rank_reflect e p he hp hn hrank
+    have hpf : p = f ∨ HappensBefore t p f := (h.knows_correct p f).1 hc.2
+    rcases Nat.eq_or_lt_of_le hep with heq | hlt
+    · subst p
+      rcases hpf with hsame | hbefore
+      · exact Or.inl hsame
+      · exact Or.inr hbefore
+    · have hl : HappensBefore t e p :=
+        .local_step ⟨he, hp, hn, hlt⟩
+      rcases hpf with rfl | hpf
+      · exact Or.inr hl
+      · exact Or.inr (.trans hl hpf)
+  · have hz : clock h f (h.nodeIndex e) = 0 := by
+      simpa [contribution, hc] using hcontrib.symm
+    exact False.elim ((Nat.ne_of_gt hpos) hz)
+
+theorem complete {t : Trace} {N : Nat} (h : History t N)
+    {e f : Event} (he : e ∈ t.events) (hf : f ∈ t.events)
+    (hv : lt (clock h e) (clock h f)) : HappensBefore t e f := by
+  rcases le_origin h he hf hv.1 with heq | hb
+  · subst f
+    exact False.elim ((lt_irrefl (clock h e)) hv)
+  · exact hb
+
+def pastContribution {t : Trace} {N : Nat} (h : History t N)
+    (p f : Event) (i : Fin N) : Nat :=
+  if p ≠ f ∧ h.nodeIndex p = i ∧ h.knows p f = true then h.rank p else 0
+
+def pastClock {t : Trace} {N : Nat} (h : History t N)
+    (f : Event) : VectorClock N :=
+  fun i => foldMax t.events (fun p => pastContribution h p f i)
+
+private theorem past_le_clock {t : Trace} {N : Nat} (h : History t N)
+    (f : Event) (i : Fin N) : pastClock h f i ≤ clock h f i := by
+  apply foldMax_mono
+  intro p _
+  by_cases hp : p ≠ f ∧ h.nodeIndex p = i ∧ h.knows p f = true
+  · have hc : h.nodeIndex p = i ∧ h.knows p f = true := ⟨hp.2.1, hp.2.2⟩
+    simp [pastContribution, contribution, hp, hc]
+  · simp [pastContribution, hp]
+
+private theorem clock_decompose {t : Trace} {N : Nat} (h : History t N)
+    (f : Event) (hf : f ∈ t.events) (i : Fin N) :
+    clock h f i = max (pastClock h f i)
+      (if h.nodeIndex f = i then h.rank f else 0) := by
+  apply Nat.le_antisymm
+  · apply foldMax_le t.events _ _
+    intro p hp
+    by_cases hpf : p = f
+    · subst p
+      by_cases hi : h.nodeIndex f = i
+      · have hk : h.knows f f = true := (h.knows_correct f f).2 (Or.inl rfl)
+        simp [contribution, pastContribution, hi, hk]
+        exact Nat.le_max_right _ _
+      · simp [contribution, pastContribution, hi]
+    · have hpc : pastContribution h p f i = contribution h p f i := by
+        simp [pastContribution, contribution, hpf]
+      rw [← hpc]
+      exact Nat.le_trans (foldMax_mem t.events
+        (fun q => pastContribution h q f i) hp) (Nat.le_max_left _ _)
+  · apply Nat.max_le_of_le_of_le
+    · exact past_le_clock h f i
+    · by_cases hi : h.nodeIndex f = i
+      · simp [hi]
+        have hm := foldMax_mem t.events
+          (fun p => contribution h p f i) hf
+        have hs : contribution h f f i = h.rank f := by
+          simp [contribution, hi, (h.knows_correct f f).2 (Or.inl rfl)]
+        exact hs ▸ hm
+      · simp [hi]
+
+theorem tick {t : Trace} {N : Nat} (h : History t N)
+    (e : Event) (he : e ∈ t.events)
+    (hrank : h.rank e = pastClock h e (h.nodeIndex e) + 1) :
+    clock h e = increment (pastClock h e) (h.nodeIndex e) := by
+  funext i
+  rw [clock_decompose h e he i]
+  by_cases hi : h.nodeIndex e = i
+  · subst i
+    simp [increment, hrank]
+  · simp [increment, hi, Ne.symm hi]
+
+theorem receive_tick {t : Trace} {N : Nat} (h : History t N)
+    (e : Event) (he : e ∈ t.events) (m : MessageId)
+    (_hr : t.kind e = .receive m)
+    (before message : VectorClock N)
+    (hinput : pastClock h e = merge before message)
+    (hrank : h.rank e = pastClock h e (h.nodeIndex e) + 1) :
+    clock h e = increment (merge before message) (h.nodeIndex e) := by
+  rw [tick h e he hrank, hinput]
+
+theorem local_tick {t : Trace} {N : Nat} (h : History t N)
+    (e : Event) (he : e ∈ t.events)
+    (before : VectorClock N) (hinput : pastClock h e = before)
+    (hrank : h.rank e = pastClock h e (h.nodeIndex e) + 1) :
+    clock h e = increment before (h.nodeIndex e) := by
+  rw [tick h e he hrank, hinput]
+
+theorem iff_happensBefore {t : Trace} {N : Nat} (h : History t N)
+    (e f : Event) (he : e ∈ t.events) (hf : f ∈ t.events) :
+    HappensBefore t e f ↔ lt (clock h e) (clock h f) :=
+  ⟨sound h, complete h he hf⟩
+
+/-- A process register and message payload correctly represent the strict
+causal past. This separates execution input consistency from clock ordering. -/
+structure OperationalHistory (t : Trace) (N : Nat) where
+  history : History t N
+  before : Event → VectorClock N
+  messageClock : MessageId → VectorClock N
+  input_eq : ∀ e, e ∈ t.events → pastClock history e =
+    (match t.kind e with
+     | .receive m => merge (before e) (messageClock m)
+     | _ => before e)
+  rank_next : ∀ e, e ∈ t.events →
+    history.rank e = pastClock history e (history.nodeIndex e) + 1
+  attach : ∀ {e m}, e ∈ t.events → t.kind e = .send m →
+    messageClock m = clock history e
+
+theorem OperationalHistory.clock_tick {t : Trace} {N : Nat}
+    (o : OperationalHistory t N) (e : Event) (he : e ∈ t.events) :
+    clock o.history e = increment
+      (match t.kind e with
+       | .receive m => merge (o.before e) (o.messageClock m)
+       | _ => o.before e) (o.history.nodeIndex e) := by
+  rw [tick o.history e he (o.rank_next e he), o.input_eq e he]
+
+theorem OperationalHistory.operational_iff {t : Trace} {N : Nat}
+    (o : OperationalHistory t N) (e f : Event)
+    (he : e ∈ t.events) (hf : f ∈ t.events) :
+    HappensBefore t e f ↔ lt (clock o.history e) (clock o.history f) :=
+  Canonical.iff_happensBefore o.history e f he hf
+
+theorem concurrent_iff_incomparable {t : Trace} {N : Nat}
+    (h : History t N) (e f : Event)
+    (he : e ∈ t.events) (hf : f ∈ t.events) :
+    Concurrent t e f ↔
+      ¬ le (clock h e) (clock h f) ∧ ¬ le (clock h f) (clock h e) := by
+  constructor
+  · intro hc
+    constructor
+    · intro hle
+      rcases le_origin h he hf hle with heq | hb
+      · exact hc.2.2 heq
+      · exact hc.1 hb
+    · intro hle
+      rcases le_origin h hf he hle with heq | hb
+      · exact hc.2.2 heq.symm
+      · exact hc.2.1 hb
+  · intro hi
+    refine ⟨?_, ?_, ?_⟩
+    · intro hb; exact hi.1 (sound h hb).1
+    · intro hb; exact hi.2 (sound h hb).1
+    · intro heq; subst f; exact hi.1 (le_refl _)
+
+end Harmonia.Causal.Vector.Canonical

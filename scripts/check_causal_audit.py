@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Check the finite causal-clock model, certified source, and Lean axiom audit."""
 
+import hashlib
 import re
 import subprocess
 import sys
@@ -21,7 +22,7 @@ ROOTS = {
     "causalAudit": {"HarmoniaTests.AuditPolicy", "HarmoniaTests.CausalAxiomAudit"},
     "causalAuditRejection": {REJECTION},
 }
-FORBIDDEN = re.compile(r"\b(sorry|admit|sorryAx|unsafe|axiom|native_decide)\b|Classical\s*\.\s*choice")
+FORBIDDEN = re.compile(r"\b(sorry|admit|sorryAx|unsafe|axiom|native_decide)\b|Classical\s*\.\s*choice|\bchoice\b")
 
 
 def name_array(body: str, label: str) -> set[str]:
@@ -61,11 +62,16 @@ def check_static(root: Path) -> None:
         if not module.startswith("Harmonia.Theorems."):
             continue
         source = (root / (module.replace(".", "/") + ".lean")).read_text()
-        imports = re.findall(r"(?m)^import\s+(\S+)", source)
+        imports = [name for line in re.findall(r"(?m)^import[ \t]+(.+)$", source)
+                   for name in line.split()]
         if any(not (name == "Init" or name.startswith("Init.") or
                     name in {"Harmonia.Theorems.Causal", "Harmonia.Theorems.Lamport",
                              "Harmonia.Theorems.VectorClock"}) for name in imports):
             raise ValueError(f"nonstandard causal import in {module}: {imports}")
+    workflow = (root / ".github/workflows/foundations.yml").read_text()
+    if ("lake build causalTest causalAudit causalAuditRejection" not in workflow or
+        "python3 scripts/test_causal_audit.py && python3 scripts/check_causal_audit.py" not in workflow):
+        raise ValueError("causal CI gate missing")
     policy = scrub((root / "HarmoniaTests/AuditPolicy.lean").read_text())
     manifest = re.search(r"\bdef causalSourceModules : Array Name := #\[(.*?)\]", policy, re.S)
     if not manifest or name_array(manifest.group(1), "causal manifest") != inventory:
@@ -78,6 +84,12 @@ def check_static(root: Path) -> None:
     causal_audit = re.search(r"\bdef auditCausal\b(.*?)\bend HarmoniaAudit", policy, re.S)
     if not causal_audit or "info.isUnsafe && range.isSome" not in causal_audit.group(1) or "#audit_causal" not in (root / "HarmoniaTests/AuditPolicy.lean").read_text():
         raise ValueError("causal unsafe or command policy missing")
+    # Pin the full causal auditor body: a dead whitelist line must not let
+    # a widened checker or skipped declaration scan pass static review.
+    causal_contract = re.sub(r"\s+", " ", policy[policy.index("def causalSourceModules"):]).strip()
+    digest = hashlib.sha256(causal_contract.encode()).hexdigest()
+    if digest != "9dfa0be6df0e27d37cb4a8a442860d89985eca6e6fdb19aea01c098924a3790a":
+        raise ValueError("causal audit policy body changed")
     audit_closure = import_closure(root, "HarmoniaTests.CausalAxiomAudit")
     test_closure = import_closure(root, "HarmoniaTests.CausalTest")
     if not inventory <= audit_closure:

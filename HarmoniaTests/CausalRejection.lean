@@ -21,3 +21,19 @@ theorem tainted : True := False.elim foreign
 #guard_msgs in
 #audit_causal
 end Harmonia.Causal.AuditTrap
+
+namespace Harmonia.Causal.AuditTrap
+
+/-- warning: declaration uses 'sorry' -/
+#guard_msgs in
+theorem placeholder : True := sorryAx True false
+/-- error: CAUSAL audit rejected Harmonia.Causal.AuditTrap.placeholder: sorryAx -/
+#guard_msgs in
+#audit_causal_declaration Harmonia.Causal.AuditTrap.placeholder
+
+theorem chosen : True := Classical.choice ⟨trivial⟩
+/-- error: CAUSAL audit rejected Harmonia.Causal.AuditTrap.chosen: Classical.choice -/
+#guard_msgs in
+#audit_causal_declaration Harmonia.Causal.AuditTrap.chosen
+
+end Harmonia.Causal.AuditTrap

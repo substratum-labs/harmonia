@@ -12,7 +12,7 @@ structure Clocking (t : Trace) where
   clock : Event → Nat
   before : Event → Nat
   messageClock : MessageId → Nat
-  local_precedes : ∀ {e f}, t.localEdge e f → clock e ≤ before f
+  local_precedes : ∀ {e f}, ProgramOrder t e f → clock e ≤ before f
   local_tick : ∀ {e}, t.kind e = .internal → clock e = before e + 1
   send_tick : ∀ {e m}, t.kind e = .send m → clock e = before e + 1
   receive_tick : ∀ {e m}, t.kind e = .receive m →
@@ -33,7 +33,7 @@ theorem Clocking.after_before {t : Trace} (c : Clocking t) (e : Event) :
       omega
 
 theorem Clocking.local_sound {t : Trace} (c : Clocking t) {e f : Event}
-    (h : t.localEdge e f) : c.clock e < c.clock f := by
+    (h : ProgramOrder t e f) : c.clock e < c.clock f := by
   have hp := c.local_precedes h
   have ht := c.after_before f
   omega
@@ -48,7 +48,7 @@ theorem Clocking.message_sound {t : Trace} (c : Clocking t) {e f m : Event}
 theorem Clocking.sound {t : Trace} (c : Clocking t) {e f : Event}
     (h : HappensBefore t e f) : c.clock e < c.clock f := by
   induction h with
-  | local_step _ _ he => exact c.local_sound he
+  | local_step he => exact c.local_sound he
   | msg_step _ _ hs hr => exact c.message_sound hs hr
   | trans _ _ ih₁ ih₂ => exact Nat.lt_trans ih₁ ih₂
 
@@ -105,16 +105,17 @@ def independentTrace : Trace where
   nodup := by decide
   node := id
   kind := fun _ => .internal
-  localEdge := fun _ _ => False
-  local_same := by intros; contradiction
-  local_forward := by intros; contradiction
   message_forward := by intros; contradiction
+  send_unique := by intros; contradiction
 
 def independentClock : Clocking independentTrace where
   clock := fun e => e + 1
   before := id
   messageClock := fun _ => 0
-  local_precedes := by intros; contradiction
+  local_precedes := by
+    intro e f h
+    have hn : e = f := h.2.2.1
+    exact False.elim ((Nat.lt_irrefl _) (hn ▸ h.2.2.2))
   local_tick := by intros; rfl
   send_tick := by intros; contradiction
   receive_tick := by intros; contradiction
@@ -123,7 +124,10 @@ def independentClock : Clocking independentTrace where
 theorem independent_no_causality {e f : Event}
     (h : HappensBefore independentTrace e f) : False := by
   induction h with
-  | local_step _ _ he => exact he
+  | local_step he =>
+      have hn : _ = _ := he.2.2.1
+      simp only [independentTrace, id] at hn
+      exact (Nat.ne_of_lt he.2.2.2) hn
   | msg_step _ _ hs _ => cases hs
   | trans _ _ ih _ => exact ih
 

@@ -19,14 +19,16 @@ structure Trace where
   nodup : events.Nodup
   node : Event → Nat
   kind : Event → EventKind
-  localEdge : Event → Event → Prop
-  local_same : ∀ {e f}, localEdge e f → node e = node f
-  local_forward : ∀ {e f}, localEdge e f → e < f
-  message_forward : ∀ {e f m}, kind e = .send m → kind f = .receive m → e < f
+  message_forward : ∀ {e f m}, e ∈ events → f ∈ events →
+    kind e = .send m → kind f = .receive m → e < f
+  send_unique : ∀ {e f m}, e ∈ events → f ∈ events →
+    kind e = .send m → kind f = .send m → e = f
+
+def ProgramOrder (t : Trace) (e f : Event) : Prop :=
+  e ∈ t.events ∧ f ∈ t.events ∧ t.node e = t.node f ∧ e < f
 
 inductive HappensBefore (t : Trace) : Event → Event → Prop where
-  | local_step {e f} : e ∈ t.events → f ∈ t.events →
-      t.localEdge e f → HappensBefore t e f
+  | local_step {e f} : ProgramOrder t e f → HappensBefore t e f
   | msg_step {e f m} : e ∈ t.events → f ∈ t.events →
       t.kind e = .send m → t.kind f = .receive m → HappensBefore t e f
   | trans {e f g} : HappensBefore t e f → HappensBefore t f g →
@@ -35,9 +37,23 @@ inductive HappensBefore (t : Trace) : Event → Event → Prop where
 theorem happensBefore_forward {t : Trace} {e f : Event}
     (h : HappensBefore t e f) : e < f := by
   induction h with
-  | local_step _ _ h => exact t.local_forward h
-  | msg_step _ _ hs hr => exact t.message_forward hs hr
+  | local_step h => exact h.2.2.2
+  | msg_step he hf hs hr => exact t.message_forward he hf hs hr
   | trans _ _ ih₁ ih₂ => exact Nat.lt_trans ih₁ ih₂
+
+theorem happensBefore_source {t : Trace} {e f : Event}
+    (h : HappensBefore t e f) : e ∈ t.events := by
+  induction h with
+  | local_step hp => exact hp.1
+  | msg_step hp _ _ _ => exact hp
+  | trans _ _ ih _ => exact ih
+
+theorem happensBefore_target {t : Trace} {e f : Event}
+    (h : HappensBefore t e f) : f ∈ t.events := by
+  induction h with
+  | local_step hp => exact hp.2.1
+  | msg_step _ hp _ _ => exact hp
+  | trans _ _ _ ih => exact ih
 
 theorem happensBefore_irrefl (t : Trace) (e : Event) :
     ¬ HappensBefore t e e := by
