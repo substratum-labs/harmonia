@@ -127,6 +127,7 @@ inductive BuiltinId where
   | regexMatchEnd | regexGroup | stringReplace | stringJoin | stringSlice
   | stringStartsWith | stringIsSpace | stringIsDigit | stringLength
   | length | stringIndex | arrayIndex | arrayPush | dictGet | dictItems
+  | arrayMap | arrayFind | arraySome | arrayJoin | stringMatch
   | getOrDefault | isFinite | isInteger | abs | isFrozen | freeze
   | setNew | setHas | setAdd | setSize | next | any | enumerate
   deriving DecidableEq, Repr

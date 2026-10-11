@@ -2,8 +2,15 @@ import Harmonia.Applications.Kadmos.Generated.TargetExpressionParser
 
 namespace Harmonia.Applications.Kadmos.Generated
 
-private def render (tokens : List SourceToken) : String :=
-  String.join ((tokens.map SourceToken.text).intersperse " ")
+private def renderAfter (previousStop : Nat) : List SourceToken → String
+  | [] => ""
+  | token :: rest =>
+      (if previousStop == token.start then "" else " ") ++ token.text ++
+        renderAfter token.stop rest
+
+private def render : List SourceToken → String
+  | [] => ""
+  | first :: rest => first.text ++ renderAfter first.stop rest
 
 private def significant (tokens : List SourceToken) : List SourceToken :=
   tokens.filter (fun t => t.kind != .spacing && t.kind != .comment)

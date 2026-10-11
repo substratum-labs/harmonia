@@ -7,6 +7,17 @@ structure ExprOutcome where
   result : Except TargetValue TargetValue
   deriving Repr
 
+structure ArgsOutcome where
+  machine : TargetMachine
+  result : Except TargetValue (List TargetValue)
+  deriving Repr
+
+structure StmtOutcome where
+  machine : TargetMachine
+  frame : TargetFrame
+  control : ControlResult
+  deriving Repr
+
 private def done (m : TargetMachine) (value : TargetValue) : ExprOutcome :=
   ⟨m, .ok value⟩
 
@@ -70,7 +81,11 @@ private def binaryValue (lang : TargetLang) (op : BinaryOp)
 
 private def localValue (m : TargetMachine) (frame : TargetFrame) (name : String) :
     Except TargetError TargetValue :=
-  match frame.locals.lookup name with
+  if name == "this" || name == "self" then
+    match frame.receiver with
+    | some ref => .ok (.object ref)
+    | none => .error (.unboundLocal name)
+  else match frame.locals.lookup name with
   | some ref => readCell m ref
   | none =>
       match frame.captures.lookup name with
@@ -80,8 +95,155 @@ private def localValue (m : TargetMachine) (frame : TargetFrame) (name : String)
           | some ref => readCell m ref
           | none => .error (.unboundLocal name)
 
+private def readPropertyValue (lang : TargetLang) (m : TargetMachine)
+    (receiver : TargetValue) (key : String) : Except TargetError ExprOutcome := do
+  match receiver with
+  | .object ref =>
+      if ref == m.checkerRef then do
+        match readCheckerField m key with
+        | .ok value => return done m value
+        | .error _ => throw (.unboundLocal key)
+      let obj ← objectAt m ref
+      if obj.kind == .jsArray && key == "length" then
+        return done m (.number .jsNumber obj.items.length)
+      if obj.kind == .jsSet && key == "size" then
+        return done m (.number .jsNumber obj.setMembers.length)
+      if obj.kind == .jsArray then
+        let method ← match key with
+          | "push" => .ok .arrayPush | "map" => .ok .arrayMap
+          | "find" => .ok .arrayFind | "some" => .ok .arraySome
+          | "join" => .ok .arrayJoin | _ => .error .unsupportedExpression
+        return done m (.boundBuiltin method receiver)
+      if obj.kind == .pythonDict || obj.kind == .mappingProxy then
+        if key == "get" then return done m (.boundBuiltin .dictGet receiver)
+        if key == "items" then return done m (.boundBuiltin .dictItems receiver)
+      if obj.kind == .pythonList && key == "append" then
+        return done m (.boundBuiltin .arrayPush receiver)
+      match ← readOwn m ref key with
+      | some descriptor =>
+          match descriptor.value with
+          | some value => return done m value
+          | none => throw .badDescriptor
+      | none =>
+          if lang == .ts then return done m .undefined
+          else return exception m "AttributeError" key
+  | .undefined | .null => return exception m "TypeError" "property of nullish value"
+  | .string value =>
+      if lang == .ts && key == "length" then
+        return done m (.number .jsNumber value.toList.length)
+      let method ← match key with
+        | "replace" => .ok .stringReplace
+        | "startsWith" | "startswith" => .ok .stringStartsWith
+        | "slice" => .ok .stringSlice
+        | "match" => .ok .stringMatch
+        | "isspace" => .ok .stringIsSpace
+        | "isdigit" => .ok .stringIsDigit
+        | _ => .error .unsupportedExpression
+      return done m (.boundBuiltin method receiver)
+  | .regexMatch _ =>
+      if key == "end" then return done m (.boundBuiltin .regexMatchEnd receiver)
+      if key == "group" then return done m (.boundBuiltin .regexGroup receiver)
+      throw .unsupportedExpression
+  | .number .pyFloat _ =>
+      if key == "is_integer" then return done m (.boundBuiltin .isInteger receiver)
+      throw .unsupportedExpression
+  | _ => return exception m "TypeError" "property of primitive value"
+
+private def normalizeIndex (lang : TargetLang) (length : Nat) (n : Int) : Option Nat :=
+  let actual := if lang == .python && n < 0 then Int.ofNat length + n else n
+  if 0 ≤ actual && actual < Int.ofNat length then some actual.toNat else none
+
+private def normalizeSliceBound (length : Nat) (n : Int) : Nat :=
+  let actual := if n < 0 then Int.ofNat length + n else n
+  if actual < 0 then 0
+  else if actual > Int.ofNat length then length
+  else actual.toNat
+
+private def makeEntries (lang : TargetLang) (m : TargetMachine)
+    (own : List (String × Descriptor)) : Except TargetError (TargetMachine × List TargetValue) := do
+  let mut machine := m
+  let mut pairs : List TargetValue := []
+  for (key, descriptor) in own do
+    if descriptor.enumerable then
+      match descriptor.value with
+      | some value =>
+          let kind := if lang == .ts then ObjectKind.jsArray else .pythonTuple
+          let proto := if lang == .ts then some machine.objectPrototype else none
+          let (updated, ref) := allocObject machine
+            ⟨kind, proto, [], [.string key, value], [], false, false⟩
+          machine := updated
+          pairs := pairs ++ [.object ref]
+      | none => throw .badDescriptor
+  return (machine, pairs)
+
+private def hostCall (lang : TargetLang) (m : TargetMachine) (id : BuiltinId)
+    (receiver : Option TargetValue) (args : List TargetValue) :
+    Except TargetError ExprOutcome := do
+  match id, receiver, args with
+  | .length, none, [.string s] => return done m (number lang s.toList.length)
+  | .length, none, [.object ref] =>
+      let obj ← objectAt m ref
+      let size := match obj.kind with
+        | .pythonDict | .mappingProxy => obj.own.length
+        | .pythonList | .pythonTuple | .jsArray => obj.items.length
+        | .pythonSet | .jsSet => obj.setMembers.length
+        | _ => 0
+      return done m (number lang size)
+  | .length, _, _ => return exception m "TypeError" "len arity or type"
+  | .objectEntries, none, [.object ref] =>
+      let obj ← objectAt m ref
+      let (updated, pairs) ← makeEntries .ts m obj.own
+      let (final, arrayRef) := allocObject updated
+        ⟨.jsArray, some updated.objectPrototype, [], pairs, [], false, false⟩
+      return done final (.object arrayRef)
+  | .dictItems, some (.object ref), [] =>
+      let obj ← objectAt m ref
+      let (updated, pairs) ← makeEntries .python m obj.own
+      let (final, listRef) := allocObject updated
+        ⟨.pythonList, none, [], pairs, [], false, false⟩
+      return done final (.object listRef)
+  | .dictItems, none, [.object ref] =>
+      let obj ← objectAt m ref
+      let (updated, pairs) ← makeEntries .python m obj.own
+      let (final, listRef) := allocObject updated
+        ⟨.pythonList, none, [], pairs, [], false, false⟩
+      return done final (.object listRef)
+  | _, _, _ => throw (.unsupportedHostPrimitive id)
+
+private def bindOne (lang : TargetLang) (m : TargetMachine)
+    (frame : TargetFrame) (name : String) (value : TargetValue) :
+    Except TargetError (TargetMachine × TargetFrame) := do
+  if lang == .python then
+    match frame.locals.lookup name with
+    | some ref => return (← writeCell m ref value, frame)
+    | none =>
+        let (updated, ref) := allocCell m value true
+        return (updated, { frame with locals := (name, ref) :: frame.locals })
+  else
+    let (updated, ref) := allocCell m value false
+    return (updated, { frame with locals := (name, ref) :: frame.locals })
+
+private def bindLoopValue (lang : TargetLang) (m : TargetMachine)
+    (frame : TargetFrame) (binders : List String) (item : TargetValue) :
+    Except TargetError (TargetMachine × TargetFrame) := do
+  match binders with
+  | [name] => bindOne lang m frame name item
+  | [first, second] =>
+      match item with
+      | .object ref =>
+          let pair ← objectAt m ref
+          match pair.items with
+          | [left, right] =>
+              let (m, frame) ← bindOne lang m frame first left
+              bindOne lang m frame second right
+          | _ => throw .badBinderCardinality
+      | _ => throw .badBinderCardinality
+  | _ => throw .badBinderCardinality
+
 -- The interpreter is deliberately over target syntax only. No source World,
 -- Bridge certificate, sourceEval or reference `interpret` is imported here.
+mutual
+
 def evalExpr (fuel : Nat) (program : TargetProgram) (m : TargetMachine)
     (frame : TargetFrame) (expr : TargetExpr) : Except TargetError ExprOutcome :=
   match fuel with
@@ -95,6 +257,107 @@ def evalExpr (fuel : Nat) (program : TargetProgram) (m : TargetMachine)
     | .string s => .ok (done m (.string s))
     | .local name => do return done m (← localValue m frame name)
     | .global name => do return done m (← localValue m frame name)
+    | .checkerField name => do return done m (← readCheckerField m name)
+    | .postIncrement name => do
+        if program.lang != .ts then throw .unsupportedExpression
+        let address := (frame.locals.lookup name).orElse fun _ =>
+          (frame.captures.lookup name).orElse fun _ => m.globals.lookup name
+        match address with
+        | none => throw (.unboundLocal name)
+        | some ref =>
+            match ← readCell m ref with
+            | .number tag n =>
+                if !safeIntermediate (n + 1) then throw .outsideNumericDomain
+                let updated ← writeCell m ref (.number tag (n + 1))
+                return done updated (.number tag n)
+            | _ => return exception m "TypeError" "postincrement operand"
+    | .builtin id args => do
+        let values ← evalArgValues fuel program m frame args
+        match values.result with
+        | .error e => return ⟨values.machine, .error e⟩
+        | .ok xs => hostCall program.lang values.machine id none xs
+    | .call callee args => do
+        let functionValue ← evalExpr fuel program m frame callee
+        match functionValue.result with
+        | .error e => return ⟨functionValue.machine, .error e⟩
+        | .ok callable =>
+            let values ← evalArgValues fuel program functionValue.machine frame args
+            match values.result with
+            | .error e => return ⟨values.machine, .error e⟩
+            | .ok xs =>
+                match callable with
+                | .builtin id => hostCall program.lang values.machine id none xs
+                | .boundBuiltin id receiver =>
+                    hostCall program.lang values.machine id (some receiver) xs
+                | _ => return exception values.machine "TypeError" "not callable"
+    | .object fields => do
+        let kind := if program.lang == .ts then ObjectKind.jsOrdinary else .pythonDict
+        let proto := if program.lang == .ts then some m.objectPrototype else none
+        let (fresh, ref) := allocObject m ⟨kind, proto, [], [], [], false, false⟩
+        evalObjectFields fuel program fresh frame ref fields
+    | .array items | .tuple items => do
+        let kind := if program.lang == .ts then ObjectKind.jsArray
+          else if expr matches .tuple _ then ObjectKind.pythonTuple else ObjectKind.pythonList
+        let proto := if program.lang == .ts then some m.objectPrototype else none
+        let (fresh, ref) := allocObject m ⟨kind, proto, [], [], [], false, false⟩
+        evalArrayElems fuel program fresh frame ref items
+    | .index receiver key => do
+        let base ← evalExpr fuel program m frame receiver
+        match base.result with
+        | .error e => return ⟨base.machine, .error e⟩
+        | .ok baseValue =>
+            let position ← evalExpr fuel program base.machine frame key
+            match position.result with
+            | .error e => return ⟨position.machine, .error e⟩
+            | .ok (.string field) => readPropertyValue program.lang position.machine baseValue field
+            | .ok (.number _ n) =>
+                match baseValue with
+                | .object ref =>
+                    let obj ← objectAt position.machine ref
+                    match (normalizeIndex program.lang obj.items.length n).bind obj.items.get? with
+                    | some value => return done position.machine value
+                    | none =>
+                        if program.lang == .ts then return done position.machine .undefined
+                        else return exception position.machine "IndexError" "index out of range"
+                | .string s =>
+                    match (normalizeIndex program.lang s.toList.length n).bind s.toList.get? with
+                    | some c => return done position.machine (.string (String.singleton c))
+                    | none => return exception position.machine "IndexError" "string index out of range"
+                | _ => return exception position.machine "TypeError" "not indexable"
+            | .ok _ => return exception position.machine "TypeError" "invalid index"
+    | .slice receiver start stop => do
+        let base ← evalExpr fuel program m frame receiver
+        match base.result with
+        | .error e => return ⟨base.machine, .error e⟩
+        | .ok (.string s) =>
+            let first ← evalExpr fuel program base.machine frame start
+            match first.result with
+            | .error e => return ⟨first.machine, .error e⟩
+            | .ok firstValue =>
+                let last ← evalExpr fuel program first.machine frame stop
+                match last.result with
+                | .error e => return ⟨last.machine, .error e⟩
+                | .ok lastValue =>
+                    match numeric firstValue, numeric lastValue with
+                    | some (_, a), some (_, b) =>
+                        let chars := s.toList
+                        let startIndex := normalizeSliceBound chars.length a
+                        let stopIndex := normalizeSliceBound chars.length b
+                        let len := stopIndex - startIndex
+                        return done last.machine (.string (String.mk ((chars.drop startIndex).take len)))
+                    | _, _ => return exception last.machine "TypeError" "slice index"
+        | .ok _ => return exception base.machine "TypeError" "not sliceable"
+    | .property receiver key => do
+        let value ← evalExpr fuel program m frame receiver
+        match value.result with
+        | .error e => return ⟨value.machine, .error e⟩
+        | .ok v => readPropertyValue program.lang value.machine v key
+    | .optionalProperty receiver key => do
+        let value ← evalExpr fuel program m frame receiver
+        match value.result with
+        | .error e => return ⟨value.machine, .error e⟩
+        | .ok .undefined | .ok .null => return done value.machine .undefined
+        | .ok v => readPropertyValue program.lang value.machine v key
     | .binary op left right => do
         let lhs ← evalExpr fuel program m frame left
         match lhs.result with
@@ -147,5 +410,281 @@ def evalExpr (fuel : Nat) (program : TargetProgram) (m : TargetMachine)
             | some (tag, n) => return done outcome.machine (.number tag (-n))
             | none => return exception outcome.machine "TypeError" "expected number"
     | _ => .error .unsupportedExpression
+
+private def evalObjectFields (fuel : Nat) (program : TargetProgram)
+    (m : TargetMachine) (frame : TargetFrame) (destination : ObjRef)
+    (fields : TargetExpr) : Except TargetError ExprOutcome :=
+  match fuel with
+  | 0 => .error .exhaustedFuel
+  | fuel + 1 =>
+    match fields with
+    | .empty => .ok (done m (.object destination))
+    | .objectEntry key value rest => do
+        let outcome ← evalExpr fuel program m frame value
+        match outcome.result with
+        | .error e => return ⟨outcome.machine, .error e⟩
+        | .ok v =>
+            let updated ← writeOwn outcome.machine destination key v
+            evalObjectFields fuel program updated frame destination rest
+    | .objectSpread source rest => do
+        let outcome ← evalExpr fuel program m frame source
+        match outcome.result with
+        | .error e => return ⟨outcome.machine, .error e⟩
+        | .ok (.object ref) =>
+            let origin ← objectAt outcome.machine ref
+            let mut updated := outcome.machine
+            for (key, descriptor) in origin.own do
+              if descriptor.enumerable then
+                match descriptor.value with
+                | some v => updated ← writeOwn updated destination key v
+                | none => throw .badDescriptor
+            evalObjectFields fuel program updated frame destination rest
+        | .ok _ => return exception outcome.machine "TypeError" "object spread source"
+    | _ => .error .unsupportedExpression
+
+private def evalArrayElems (fuel : Nat) (program : TargetProgram)
+    (m : TargetMachine) (frame : TargetFrame) (destination : ObjRef)
+    (items : TargetExpr) : Except TargetError ExprOutcome :=
+  match fuel with
+  | 0 => .error .exhaustedFuel
+  | fuel + 1 =>
+    match items with
+    | .empty => .ok (done m (.object destination))
+    | .sequence value rest => do
+        let outcome ← evalExpr fuel program m frame value
+        match outcome.result with
+        | .error e => return ⟨outcome.machine, .error e⟩
+        | .ok v =>
+            let obj ← objectAt outcome.machine destination
+            let updated ← replaceObject outcome.machine destination
+              { obj with items := obj.items ++ [v] }
+            evalArrayElems fuel program updated frame destination rest
+    | .arraySpread source rest => do
+        let outcome ← evalExpr fuel program m frame source
+        match outcome.result with
+        | .error e => return ⟨outcome.machine, .error e⟩
+        | .ok (.object ref) =>
+            let origin ← objectAt outcome.machine ref
+            let obj ← objectAt outcome.machine destination
+            let updated ← replaceObject outcome.machine destination
+              { obj with items := obj.items ++ origin.items }
+            evalArrayElems fuel program updated frame destination rest
+        | .ok _ => return exception outcome.machine "TypeError" "array spread source"
+    | _ => .error .unsupportedExpression
+
+private def evalArgValues (fuel : Nat) (program : TargetProgram)
+    (m : TargetMachine) (frame : TargetFrame) (args : TargetExpr) :
+    Except TargetError ArgsOutcome :=
+  match fuel with
+  | 0 => .error .exhaustedFuel
+  | fuel + 1 =>
+    match args with
+    | .empty => .ok ⟨m, .ok []⟩
+    | .sequence first rest => do
+        let value ← evalExpr fuel program m frame first
+        match value.result with
+        | .error e => return ⟨value.machine, .error e⟩
+        | .ok v =>
+            let others ← evalArgValues fuel program value.machine frame rest
+            match others.result with
+            | .error e => return ⟨others.machine, .error e⟩
+            | .ok vs => return ⟨others.machine, .ok (v :: vs)⟩
+    | _ => .error .unsupportedExpression
+
+def execStmt (fuel : Nat) (program : TargetProgram) (m : TargetMachine)
+    (frame : TargetFrame) (stmt : TargetStmt) : Except TargetError StmtOutcome :=
+  match fuel with
+  | 0 => .error .exhaustedFuel
+  | fuel + 1 =>
+    match stmt with
+    | .empty => .ok ⟨m, frame, .normal⟩
+    | .sequence first rest => do
+        let head ← execStmt fuel program m frame first
+        match head.control with
+        | .normal => execStmt fuel program head.machine head.frame rest
+        | _ => return head
+    | .letLocal name mutable value => do
+        let outcome ← evalExpr fuel program m frame value
+        match outcome.result with
+        | .error e => return ⟨outcome.machine, frame, .raised e⟩
+        | .ok v =>
+            let (updated, ref) := allocCell outcome.machine v mutable
+            return ⟨updated, { frame with locals := (name, ref) :: frame.locals }, .normal⟩
+    | .assign (.local name) value => do
+        let outcome ← evalExpr fuel program m frame value
+        match outcome.result with
+        | .error e => return ⟨outcome.machine, frame, .raised e⟩
+        | .ok v =>
+            let address := (frame.locals.lookup name).orElse fun _ =>
+              (frame.captures.lookup name).orElse fun _ => m.globals.lookup name
+            match address with
+            | some ref =>
+                let updated ← writeCell outcome.machine ref v
+                return ⟨updated, frame, .normal⟩
+            | none =>
+                if program.lang == .ts then throw (.unboundLocal name)
+                let (updated, ref) := allocCell outcome.machine v true
+                return ⟨updated, { frame with locals := (name, ref) :: frame.locals }, .normal⟩
+    | .assign (.field name) value => do
+        let outcome ← evalExpr fuel program m frame value
+        match outcome.result with
+        | .error e => return ⟨outcome.machine, frame, .raised e⟩
+        | .ok v =>
+            let updated ← writeCheckerField outcome.machine name v
+            return ⟨updated, frame, .normal⟩
+    | .assign (.property receiver name) value => do
+        let base ← evalExpr fuel program m frame receiver
+        match base.result with
+        | .error e => return ⟨base.machine, frame, .raised e⟩
+        | .ok baseValue =>
+            let outcome ← evalExpr fuel program base.machine frame value
+            match outcome.result with
+            | .error e => return ⟨outcome.machine, frame, .raised e⟩
+            | .ok v =>
+                match baseValue with
+                | .object ref =>
+                    let updated ← if ref == outcome.machine.checkerRef then
+                      writeCheckerField outcome.machine name v
+                      else writeOwn outcome.machine ref name v
+                    return ⟨updated, frame, .normal⟩
+                | _ => return ⟨outcome.machine, frame,
+                    .raised (.exception "TypeError" "invalid property assignment")⟩
+    | .assign (.index receiver key) value => do
+        let base ← evalExpr fuel program m frame receiver
+        match base.result with
+        | .error e => return ⟨base.machine, frame, .raised e⟩
+        | .ok baseValue =>
+            let index ← evalExpr fuel program base.machine frame key
+            match index.result with
+            | .error e => return ⟨index.machine, frame, .raised e⟩
+            | .ok keyValue =>
+                let rhs ← evalExpr fuel program index.machine frame value
+                match rhs.result with
+                | .error e => return ⟨rhs.machine, frame, .raised e⟩
+                | .ok v =>
+                    match baseValue, keyValue with
+                    | .object ref, .string field =>
+                        let updated ← writeOwn rhs.machine ref field v
+                        return ⟨updated, frame, .normal⟩
+                    | _, _ => return ⟨rhs.machine, frame,
+                        .raised (.exception "TypeError" "invalid indexed assignment")⟩
+    | .doExpr expr => do
+        let outcome ← evalExpr fuel program m frame expr
+        match outcome.result with
+        | .error e => return ⟨outcome.machine, frame, .raised e⟩
+        | .ok _ => return ⟨outcome.machine, frame, .normal⟩
+    | .returnValue expr => do
+        let outcome ← evalExpr fuel program m frame expr
+        match outcome.result with
+        | .error e => return ⟨outcome.machine, frame, .raised e⟩
+        | .ok v => return ⟨outcome.machine, frame, .returned v⟩
+    | .returnVoid => .ok ⟨m, frame, .returned .undefined⟩
+    | .throwValue expr => do
+        let outcome ← evalExpr fuel program m frame expr
+        match outcome.result with
+        | .error e => return ⟨outcome.machine, frame, .raised e⟩
+        | .ok v => return ⟨outcome.machine, frame, .raised v⟩
+    | .ifThenElse cond yes no => do
+        let outcome ← evalExpr fuel program m frame cond
+        match outcome.result with
+        | .error e => return ⟨outcome.machine, frame, .raised e⟩
+        | .ok v =>
+            if ← sourceTruthy program.lang outcome.machine v then
+              execStmt fuel program outcome.machine frame yes
+            else execStmt fuel program outcome.machine frame no
+    | .breakTarget target => .ok ⟨m, frame, .broke target⟩
+    | .continueTarget target => .ok ⟨m, frame, .continued target⟩
+    | .whileDo cond body => do
+        let condition ← evalExpr fuel program m frame cond
+        match condition.result with
+        | .error e => return ⟨condition.machine, frame, .raised e⟩
+        | .ok value =>
+            if !(← sourceTruthy program.lang condition.machine value) then
+              return ⟨condition.machine, frame, .normal⟩
+            let result ← execStmt fuel program condition.machine frame body
+            match result.control with
+            | .normal | .continued "loop" =>
+                execStmt fuel program result.machine result.frame (.whileDo cond body)
+            | .broke "loop" => return ⟨result.machine, result.frame, .normal⟩
+            | _ => return result
+    | .forDo binders iterable body => do
+        let source ← evalExpr fuel program m frame iterable
+        match source.result with
+        | .error e => return ⟨source.machine, frame, .raised e⟩
+        | .ok (.object ref) =>
+            let obj ← objectAt source.machine ref
+            match obj.kind with
+            | .jsArray | .pythonList | .pythonTuple =>
+                execForItems fuel program source.machine frame binders obj.items body
+            | _ => return ⟨source.machine, frame,
+                .raised (.exception "TypeError" "not iterable")⟩
+        | .ok _ => return ⟨source.machine, frame,
+            .raised (.exception "TypeError" "not iterable")⟩
+    | .switchOn scrutinee cases => do
+        let value ← evalExpr fuel program m frame scrutinee
+        match value.result with
+        | .error e => return ⟨value.machine, frame, .raised e⟩
+        | .ok v => evalSwitchCases fuel program value.machine frame v false cases
+    | .tryCatchFinally body catchType binder handler cleanup => do
+        let attempted ← execStmt fuel program m frame body
+        let handled ← match attempted.control with
+          | .raised errorValue =>
+              let catches := catchType == some "any" || catchType == some "Exception" ||
+                (match errorValue, catchType with
+                  | .exception className _, some wanted => className == wanted
+                  | _, _ => false)
+              if catches then do
+                let (updated, localFrame) ← match binder with
+                  | none => .ok (attempted.machine, attempted.frame)
+                  | some name =>
+                      let (updated, ref) := allocCell attempted.machine errorValue true
+                      let localFrame := { attempted.frame with locals := (name, ref) :: attempted.frame.locals }
+                      .ok (updated, localFrame)
+                execStmt fuel program updated localFrame handler
+              else .ok attempted
+          | _ => .ok attempted
+        let finalized ← execStmt fuel program handled.machine handled.frame cleanup
+        match finalized.control with
+        | .normal => return ⟨finalized.machine, finalized.frame, handled.control⟩
+        | _ => return finalized
+    | _ => .error .unsupportedStatement
+
+private def evalSwitchCases (fuel : Nat) (program : TargetProgram)
+    (m : TargetMachine) (frame : TargetFrame) (value : TargetValue)
+    (matched : Bool) (cases : TargetStmt) : Except TargetError StmtOutcome :=
+  match fuel with
+  | 0 => .error .exhaustedFuel
+  | fuel + 1 =>
+    match cases with
+    | .empty => .ok ⟨m, frame, .normal⟩
+    | .switchCase label body next =>
+        if matched || value == .string label then do
+          let result ← execStmt fuel program m frame body
+          match result.control with
+          | .normal => evalSwitchCases fuel program result.machine result.frame value true next
+          | .broke "switch" => return ⟨result.machine, result.frame, .normal⟩
+          | _ => return result
+        else evalSwitchCases fuel program m frame value false next
+    | _ => .error .unsupportedStatement
+
+private def execForItems (fuel : Nat) (program : TargetProgram)
+    (m : TargetMachine) (outerFrame : TargetFrame) (binders : List String)
+    (items : List TargetValue) (body : TargetStmt) : Except TargetError StmtOutcome :=
+  match fuel with
+  | 0 => .error .exhaustedFuel
+  | fuel + 1 =>
+    match items with
+    | [] => .ok ⟨m, outerFrame, .normal⟩
+    | item :: rest => do
+        let (boundMachine, loopFrame) ← bindLoopValue program.lang m outerFrame binders item
+        let result ← execStmt fuel program boundMachine loopFrame body
+        let nextFrame := if program.lang == .ts then outerFrame else result.frame
+        match result.control with
+        | .normal | .continued "loop" =>
+            execForItems fuel program result.machine nextFrame binders rest body
+        | .broke "loop" => return ⟨result.machine, nextFrame, .normal⟩
+        | _ => return result
+
+end
 
 end Harmonia.Applications.Kadmos.Generated

@@ -96,3 +96,6 @@ example : (parseTargetExpr .ts "e instanceof Error ? e.message : \"Invalid paylo
 example : (parseTargetExpr .ts "{ code, message }").toOption =
     some (.object (.objectEntry "code" (.local "code")
       (.objectEntry "message" (.local "message") .empty))) := by decide +kernel
+example : (parseTargetExpr .ts "a = = b").toOption = none := by decide +kernel
+example : (parseTargetExpr .ts "a === b").toOption =
+    some (.binary .strictEq (.local "a") (.local "b")) := by decide +kernel

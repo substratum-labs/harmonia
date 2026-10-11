@@ -5,6 +5,17 @@ namespace Harmonia.Applications.Kadmos.Generated
 private def significant (xs : List SourceToken) : List String :=
   (xs.filter (fun t => t.kind != .spacing && t.kind != .comment)).map SourceToken.text
 
+private def joinsAsOperator (left right : String) : Bool :=
+  ([("=", "="), ("!", "="), (">", "="), ("<", "="), ("&", "&"),
+   ("|", "|"), ("?", "?"), ("?", "."), (".", "."), ("+", "+"),
+   ("*", "*"), ("/", "/"), ("=", ">")] : List (String × String)).contains (left, right)
+
+private def validOperatorAdjacency : List SourceToken → Bool
+  | first :: second :: rest =>
+      (!joinsAsOperator first.text second.text || first.stop == second.start) &&
+      validOperatorAdjacency (second :: rest)
+  | _ => true
+
 private def combineSymbols : List String → List String
   | "+" :: "+" :: rest => "++" :: combineSymbols rest
   | "is" :: "not" :: rest => "is not" :: combineSymbols rest
@@ -466,7 +477,10 @@ end
 
 def parseTargetExpr (lang : TargetLang) (source : String) :
     Except ParseError TargetExpr := do
-  let tokens := combineSymbols (significant (← tokenizeSource lang source))
+  let sourceTokens ← tokenizeSource lang source
+  let words := sourceTokens.filter (fun t => t.kind != .spacing && t.kind != .comment)
+  if !validOperatorAdjacency words then throw (.unsupportedSyntax 0)
+  let tokens := combineSymbols (significant sourceTokens)
   let (expr, tail) ← parseExprAt ((tokens.length + 1) * 16) 0 tokens
   if tail.isEmpty then return expr
   else throw (.unsupportedSyntax 0)
