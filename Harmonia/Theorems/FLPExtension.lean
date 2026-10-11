@@ -118,22 +118,21 @@ def CrashDecidingReachable (protocol : Protocol Node Msg Local)
     ∃ events t value, Schedule protocol c events t ∧
       (∀ event ∈ events, event.target ≠ silent) ∧ DecidedIn t value
 
-/-- Adjacent members of the set reached while delaying `e` cannot have
-opposite univalent `e`-images. If `f` acts elsewhere, the diamond joins the
-images. If `f` acts at `e`'s process, a deciding schedule that omits that
-process replays after either image; persistence forces one decision value in
-both. -/
-theorem e_image_neighbor_consistent (protocol : Protocol Node Msg Local)
+/-- If adjacent `e`-images can decide opposite values, one is bivalent.
+This constructive form is stronger than the univalence contradiction: it
+returns a bivalent witness without deciding reachability. -/
+theorem e_image_neighbor_bivalence (protocol : Protocol Node Msg Local)
     (initial c : Config Node Msg Local) (e f : Event Node Msg)
     (haccessible : Reachable protocol initial c)
     (hcrash : CrashDecidingReachable protocol initial)
     (hpersist : DecisionsPersist protocol)
     (he : Enabled c e) (hf : Enabled c f) (hdifferent : f ≠ e)
     (value : Decision)
-    (hleft : IsUnivalent protocol (advance protocol c e) value)
-    (hright : IsUnivalent protocol
+    (hleft : ReachableDecision protocol (advance protocol c e) value)
+    (hright : ReachableDecision protocol
       (advance protocol (advance protocol c f) e) value.flip) :
-    False := by
+    IsBivalent protocol (advance protocol c e) ∨
+      IsBivalent protocol (advance protocol (advance protocol c f) e) := by
   have he' : Enabled (advance protocol c f) e :=
     enabled_after_different_event protocol c e f hdifferent he
   by_cases htarget : f.target = e.target
@@ -157,10 +156,10 @@ theorem e_image_neighbor_consistent (protocol : Protocol Node Msg Local)
       ⟨advance protocol (advance protocol t f) e,
         Schedule.reachable protocol hafterEF.1, hdecFE⟩
     cases value <;> cases crashValue
-    · exact hright.2 hpossibleFE
-    · exact hleft.2 hpossibleE
-    · exact hleft.2 hpossibleE
-    · exact hright.2 hpossibleFE
+    · exact .inr ⟨hpossibleFE, hright⟩
+    · exact .inl ⟨hleft, hpossibleE⟩
+    · exact .inl ⟨hpossibleE, hleft⟩
+    · exact .inr ⟨hright, hpossibleFE⟩
   · have heF : Enabled (advance protocol c e) f :=
       enabled_after_other protocol c e f (Ne.symm htarget) hf
     have hdiamond : advance protocol (advance protocol c e) f =
@@ -170,6 +169,175 @@ theorem e_image_neighbor_consistent (protocol : Protocol Node Msg Local)
         (advance protocol (advance protocol c f) e) := by
       rw [← hdiamond]
       exact .tail (.refl _) f heF
-    exact hleft.2 (reachableDecision_of_reachable protocol hreach hright.1)
+    have hother : ReachableDecision protocol (advance protocol c e) value.flip :=
+      reachableDecision_of_reachable protocol hreach hright
+    cases value with
+    | zero => exact .inl ⟨hleft, hother⟩
+    | one => exact .inl ⟨hother, hleft⟩
+
+/-- Opposite univalent values cannot occur across one e-avoiding step. -/
+theorem e_image_neighbor_consistent (protocol : Protocol Node Msg Local)
+    (initial c : Config Node Msg Local) (e f : Event Node Msg)
+    (haccessible : Reachable protocol initial c)
+    (hcrash : CrashDecidingReachable protocol initial)
+    (hpersist : DecisionsPersist protocol)
+    (he : Enabled c e) (hf : Enabled c f) (hdifferent : f ≠ e)
+    (value : Decision)
+    (hleft : IsUnivalent protocol (advance protocol c e) value)
+    (hright : IsUnivalent protocol
+      (advance protocol (advance protocol c f) e) value.flip) :
+    False := by
+  have hb := e_image_neighbor_bivalence protocol initial c e f haccessible
+    hcrash hpersist he hf hdifferent value hleft.1 hright.1
+  cases hb with
+  | inl h =>
+    cases value with
+    | zero => exact hleft.2 h.2
+    | one => exact hleft.2 h.1
+  | inr h =>
+    cases value with
+    | zero => exact hright.2 h.1
+    | one => exact hright.2 h.2
+
+theorem reachable_decision_of_crash_deciding (protocol : Protocol Node Msg Local)
+    (initial c : Config Node Msg Local)
+    (hcrash : CrashDecidingReachable protocol initial)
+    (hc : Reachable protocol initial c) (silent : Node) :
+    ∃ value, ReachableDecision protocol c value := by
+  obtain ⟨events, t, value, hrun, _, hdec⟩ := hcrash c hc silent
+  exact ⟨value, t, Schedule.reachable protocol hrun, hdec⟩
+
+/-- Along a finite schedule that delays `e`, opposite decision possibilities
+at the initial and final `e`-images force a bivalent image at some prefix.
+The returned prefix is itself a valid schedule and still avoids `e`. -/
+theorem bivalent_e_image_along_schedule (protocol : Protocol Node Msg Local)
+    (initial : Config Node Msg Local) (e : Event Node Msg)
+    (hcrash : CrashDecidingReachable protocol initial)
+    (hpersist : DecisionsPersist protocol)
+    {c d : Config Node Msg Local} {events : List (Event Node Msg)}
+    (hrun : Schedule protocol c events d) :
+    e ∉ events → Reachable protocol initial c → Enabled c e →
+    ∀ value, ReachableDecision protocol (advance protocol c e) value →
+      ReachableDecision protocol (advance protocol d e) value.flip →
+      ∃ before mid, Schedule protocol c before mid ∧ e ∉ before ∧
+        IsBivalent protocol (advance protocol mid e) := by
+  induction hrun with
+  | nil =>
+    intro _ _ _ value hstart hend
+    cases value with
+    | zero => exact ⟨[], _, .nil _, by simp, ⟨hstart, hend⟩⟩
+    | one => exact ⟨[], _, .nil _, by simp, ⟨hend, hstart⟩⟩
+  | @cons c d f hf fs tail ih =>
+    intro havoid haccess he value hstart hend
+    have hneq : f ≠ e := by
+      intro h
+      have hm : e ∈ f :: fs := by simp [h]
+      exact havoid hm
+    have htailAvoid : e ∉ fs := by
+      intro hm
+      exact havoid (List.mem_cons_of_mem f hm)
+    have he' : Enabled (advance protocol c f) e :=
+      enabled_after_different_event protocol c e f hneq he
+    have hnext : Reachable protocol initial (advance protocol c f) :=
+      .tail haccess f hf
+    have himage : Reachable protocol initial (advance protocol (advance protocol c f) e) :=
+      .tail hnext e he'
+    obtain ⟨nextValue, hnextDecision⟩ :=
+      reachable_decision_of_crash_deciding protocol initial
+        (advance protocol (advance protocol c f) e) hcrash himage e.target
+    cases value with
+    | zero =>
+      cases nextValue with
+      | zero =>
+        obtain ⟨before, mid, hbefore, hbeforeAvoid, hb⟩ :=
+          ih htailAvoid hnext he' .zero hnextDecision hend
+        refine ⟨f :: before, mid, .cons f hf hbefore, ?_, hb⟩
+        intro hm
+        cases List.mem_cons.mp hm with
+        | inl h => exact hneq h.symm
+        | inr h => exact hbeforeAvoid h
+      | one =>
+        cases e_image_neighbor_bivalence protocol initial c e f haccess
+            hcrash hpersist he hf hneq .zero hstart hnextDecision with
+        | inl hb => exact ⟨[], c, .nil _, by simp, hb⟩
+        | inr hb =>
+          exact ⟨[f], advance protocol c f, .cons f hf (.nil _),
+            by simp [Ne.symm hneq], hb⟩
+    | one =>
+      cases nextValue with
+      | zero =>
+        cases e_image_neighbor_bivalence protocol initial c e f haccess
+            hcrash hpersist he hf hneq .one hstart hnextDecision with
+        | inl hb => exact ⟨[], c, .nil _, by simp, hb⟩
+        | inr hb =>
+          exact ⟨[f], advance protocol c f, .cons f hf (.nil _),
+            by simp [Ne.symm hneq], hb⟩
+      | one =>
+        obtain ⟨before, mid, hbefore, hbeforeAvoid, hb⟩ :=
+          ih htailAvoid hnext he' .one hnextDecision hend
+        refine ⟨f :: before, mid, .cons f hf hbefore, ?_, hb⟩
+        intro hm
+        cases List.mem_cons.mp hm with
+        | inl h => exact hneq h.symm
+        | inr h => exact hbeforeAvoid h
+
+/-- A reachable decision from `c` yields an e-avoiding prefix whose e-image
+still has that decision possibility. If the original deciding schedule uses
+`e`, cut it at the first occurrence; otherwise apply `e` after the decision,
+using write-once persistence. -/
+theorem e_image_decision_from_reachable (protocol : Protocol Node Msg Local)
+    (hpersist : DecisionsPersist protocol)
+    (c : Config Node Msg Local) (e : Event Node Msg) (he : Enabled c e)
+    (value : Decision) (hv : ReachableDecision protocol c value) :
+    ∃ events d, Schedule protocol c events d ∧ e ∉ events ∧ Enabled d e ∧
+      ReachableDecision protocol (advance protocol d e) value := by
+  obtain ⟨t, hreach, hdec⟩ := hv
+  obtain ⟨events, hrun⟩ := Reachable.schedule protocol hreach
+  by_cases hpresent : e ∈ events
+  · obtain ⟨before, after, mid, _, havoid, hbefore, henabled, hafter⟩ :=
+      schedule_split_first_occurrence protocol hrun e hpresent
+    exact ⟨before, mid, hbefore, havoid, henabled,
+      ⟨t, Schedule.reachable protocol hafter, hdec⟩⟩
+  · have henabled := enabled_after_schedule_avoiding_event protocol hrun e he hpresent
+    have hdec' : DecidedIn (advance protocol t e) value :=
+      hpersist t e value henabled hdec
+    exact ⟨events, t, hrun, hpresent, henabled,
+      ⟨advance protocol t e, .refl _, hdec'⟩⟩
+
+/-- FLP Lemma 3: from a bivalent accessible configuration and any enabled
+event, an adversary can run a finite schedule avoiding that event and then
+apply it while retaining bivalence. The crash-deciding premise is the finite
+form of one-fault termination used by the classical proof; global agreement
+is needed later to turn this extension into a nondeciding fair run. -/
+theorem flp_lemma3_bivalence_step (protocol : Protocol Node Msg Local)
+    (initial c : Config Node Msg Local) (e : Event Node Msg)
+    (haccessible : Reachable protocol initial c)
+    (hcrash : CrashDecidingReachable protocol initial)
+    (hpersist : DecisionsPersist protocol)
+    (hbivalent : IsBivalent protocol c) (he : Enabled c e) :
+    ∃ events d, Schedule protocol c events d ∧ e ∉ events ∧ Enabled d e ∧
+      IsBivalent protocol (advance protocol d e) := by
+  obtain ⟨eventsZero, dZero, hrunZero, havoidZero, _, hzero⟩ :=
+    e_image_decision_from_reachable protocol hpersist c e he .zero hbivalent.1
+  obtain ⟨eventsOne, dOne, hrunOne, havoidOne, _, hone⟩ :=
+    e_image_decision_from_reachable protocol hpersist c e he .one hbivalent.2
+  have himage : Reachable protocol initial (advance protocol c e) :=
+    .tail haccessible e he
+  obtain ⟨startValue, hstart⟩ :=
+    reachable_decision_of_crash_deciding protocol initial
+      (advance protocol c e) hcrash himage e.target
+  cases startValue with
+  | zero =>
+    obtain ⟨before, mid, hbefore, havoid, hb⟩ :=
+      bivalent_e_image_along_schedule protocol initial e hcrash hpersist
+        hrunOne havoidOne haccessible he .zero hstart hone
+    exact ⟨before, mid, hbefore, havoid,
+      enabled_after_schedule_avoiding_event protocol hbefore e he havoid, hb⟩
+  | one =>
+    obtain ⟨before, mid, hbefore, havoid, hb⟩ :=
+      bivalent_e_image_along_schedule protocol initial e hcrash hpersist
+        hrunZero havoidZero haccessible he .one hstart hzero
+    exact ⟨before, mid, hbefore, havoid,
+      enabled_after_schedule_avoiding_event protocol hbefore e he havoid, hb⟩
 
 end Harmonia.FLP
