@@ -59,3 +59,14 @@ a fair policy for selecting process and pending message occurrences. They
 are not consequences of the current unconstrained `send` function.
 
 The historical 2PC/SMT/C modules are not connected to this FLP model.
+
+## Observed checks (2026-10-11, macOS)
+
+- `lake build`: passed.
+- `lake build flpTest flpAuditRejection`: passed, including the isolated
+  `#guard_msgs` rejection fixture.
+- `python3 scripts/test_flp_audit.py`: five self tests passed.
+- `lake build flpAudit`: failed as intended at the explicit
+  `flp_impossibility` declaration check. Its preceding source-wide axiom
+  report counted 89 theorems and observed only `propext` and `Quot.sound`.
+- Linux verification and the final independent reviewer verdict are pending.
