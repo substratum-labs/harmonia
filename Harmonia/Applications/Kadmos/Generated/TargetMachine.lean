@@ -20,6 +20,7 @@ inductive TargetValue where
   | number (tag : NumberTag) (value : Int)
   | object (ref : ObjRef) | closure (ref : ClosureRef)
   | builtin (id : BuiltinId) | regexMatch (value : MatchValue)
+  | exception (className message : String)
   deriving DecidableEq, Repr
 
 structure Descriptor where
@@ -74,6 +75,9 @@ structure TargetFrame where
 
 structure TargetClosure where
   qualifiedName : String
+  params : List ParamSpec
+  pythonDefaults : List (Option TargetValue)
+  body : TargetStmt
   captures : List (String × CellRef)
   receiver : Option ObjRef
   deriving DecidableEq, Repr
@@ -102,6 +106,8 @@ inductive TargetError where
   | invalidTag | wrongArity | badDescriptor | frozenObject
   | unsupportedHostPrimitive (id : BuiltinId)
   | unboundLocal (name : String)
+  | unsupportedExpression
+  | outsideNumericDomain
   | wrongControl | exhaustedFuel
   deriving DecidableEq, Repr
 
@@ -167,7 +173,7 @@ def sourceTruthy (lang : TargetLang) (m : TargetMachine)
   | .bool b => .ok b
   | .number _ n => .ok (n != 0)
   | .string s => .ok (!s.isEmpty)
-  | .closure _ | .builtin _ | .regexMatch _ => .ok true
+  | .closure _ | .builtin _ | .regexMatch _ | .exception _ _ => .ok true
   | .object ref => do
       let o ← objectAt m ref
       if lang == .ts then return true
