@@ -73,3 +73,26 @@ example : (parseTargetExpr .python "0.0").toOption =
     some (.decimal "0.0") := by decide +kernel
 example : (parseTargetExpr .python "token[1:-1]").toOption =
     some (.slice (.local "token") (.integer 1) (.unary .neg (.integer 1))) := by decide +kernel
+example : (parseTargetExpr .ts "new Error(\"INVALID_EXPRESSION\")").toOption =
+    some (.newExpr (.call (.local "Error")
+      (.sequence (.string "INVALID_EXPRESSION") .empty))) := by decide +kernel
+example : (parseTargetExpr .ts "\"Ready\" as WorldState").toOption =
+    some (.typeCast (.string "Ready") "WorldState") := by decide +kernel
+example : (parseTargetExpr .ts "contextDefinitions[name]!.type").toOption =
+    some (.property (.nonNull (.index (.local "contextDefinitions") (.local "name"))) "type") := by decide +kernel
+example : (parseTargetExpr .ts "value as string | number").toOption =
+    some (.typeCast (.local "value") "string|number") := by decide +kernel
+example : (parseTargetExpr .ts "tokens[index++]").toOption =
+    some (.index (.local "tokens") (.postIncrement "index")) := by decide +kernel
+example : (parseTargetExpr .ts "(item) => item.id === snapshotAction").toOption =
+    some (.lambdaExpr ["item"]
+      (.binary .strictEq (.property (.local "item") "id") (.local "snapshotAction"))) := by decide +kernel
+example : (parseTargetExpr .ts "[...snapshotHistory, record]").toOption =
+    some (.array (.arraySpread (.local "snapshotHistory")
+      (.sequence (.local "record") .empty))) := by decide +kernel
+example : (parseTargetExpr .ts "e instanceof Error ? e.message : \"Invalid payload\"").toOption =
+    some (.conditional (.binary .instanceOf (.local "e") (.local "Error"))
+      (.property (.local "e") "message") (.string "Invalid payload")) := by decide +kernel
+example : (parseTargetExpr .ts "{ code, message }").toOption =
+    some (.object (.objectEntry "code" (.local "code")
+      (.objectEntry "message" (.local "message") .empty))) := by decide +kernel

@@ -134,6 +134,7 @@ inductive BuiltinId where
 inductive BinaryOp where
   | add | sub | mul | div | eq | strictEq | ne | strictNe
   | lt | le | gt | ge | inObject | notInObject | isIdentity | isNotIdentity
+  | instanceOf
   deriving DecidableEq, Repr
 
 inductive UnaryOp where
@@ -151,6 +152,8 @@ inductive TargetExpr where
   | index (receiver key : TargetExpr)
   | slice (receiver start stop : TargetExpr)
   | call (callee args : TargetExpr)
+  | newExpr (constructorCall : TargetExpr)
+  | nonNull (value : TargetExpr) | typeCast (value : TargetExpr) (typeSource : String)
   | builtin (id : BuiltinId) (args : TargetExpr)
   | unary (op : UnaryOp) (value : TargetExpr)
   | binary (op : BinaryOp) (left right : TargetExpr)
@@ -187,7 +190,7 @@ structure ParamSpec where
 
 inductive TargetStmt where
   | empty | sequence (first rest : TargetStmt)
-  | letLocal (name : String) (value : TargetExpr)
+  | letLocal (name : String) (mutable : Bool) (value : TargetExpr)
   | nonlocalNames (names : List String)
   | defineFunction (name : String) (params : List ParamSpec) (body : TargetStmt)
   | assign (target : AssignTarget) (value : TargetExpr)
@@ -196,6 +199,8 @@ inductive TargetStmt where
   | ifThenElse (cond : TargetExpr) (yes no : TargetStmt)
   | forDo (binders : List String) (iterable : TargetExpr) (body : TargetStmt)
   | whileDo (cond : TargetExpr) (body : TargetStmt)
+  | switchOn (scrutinee : TargetExpr) (cases : TargetStmt)
+  | switchCase (label : String) (body next : TargetStmt)
   | returnValue (value : TargetExpr) | returnVoid
   | throwValue (value : TargetExpr) | rethrow
   | breakTarget (label : String) | continueTarget (label : String)

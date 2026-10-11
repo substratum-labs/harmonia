@@ -6,6 +6,7 @@ private def significant (xs : List SourceToken) : List String :=
   (xs.filter (fun t => t.kind != .spacing && t.kind != .comment)).map SourceToken.text
 
 private def combineSymbols : List String → List String
+  | "+" :: "+" :: rest => "++" :: combineSymbols rest
   | "is" :: "not" :: rest => "is not" :: combineSymbols rest
   | "not" :: "in" :: rest => "not in" :: combineSymbols rest
   | "." :: "." :: "." :: rest => "..." :: combineSymbols rest
@@ -90,7 +91,7 @@ private def precedence : String → Nat
   | "??" | "||" | "or" => 2
   | "&&" | "and" => 3
   | "==" | "===" | "!=" | "!==" | "is" | "is not" => 4
-  | ">" | ">=" | "<" | "<=" | "in" | "not in" => 5
+  | ">" | ">=" | "<" | "<=" | "in" | "not in" | "instanceof" => 5
   | "+" | "-" => 6
   | "*" | "/" => 7
   | _ => 0
@@ -113,6 +114,7 @@ private def combineBinary (op : String) (left right : TargetExpr) : TargetExpr :
   | "not in" => .binary .notInObject left right
   | "is" => .binary .isIdentity left right
   | "is not" => .binary .isNotIdentity left right
+  | "instanceof" => .binary .instanceOf left right
   | "&&" | "and" => .andThen left right
   | "||" | "or" => .orElse left right
   | "??" => .nullCoalesce left right
@@ -128,6 +130,35 @@ private def parseLambdaParams : List String → Except ParseError (List String �
       if tokenIsIdentifier name then .ok ([name], rest)
       else .error (.unsupportedSyntax 0)
   | _ => .error (.unsupportedSyntax 0)
+
+private def typeBoundary (token : String) : Bool :=
+  ["as", ",", ")", "}", ":", ";", "?", "&&", "||", "??", "+", "-", "*", "/",
+   "==", "===", "!=", "!==", "in", "is"].contains token
+
+private def typeToken (token : String) : Bool :=
+  tokenIsIdentifier token || token.toNat?.isSome ||
+    ["<", ">", "[", "]", "|", ".", ","].contains token ||
+    (quotedContent token).isSome
+
+private def takeCastType (fuel angle bracket : Nat) (acc : List String) :
+    List String → Except ParseError (String × List String)
+  | [] =>
+      if angle == 0 && bracket == 0 && !acc.isEmpty then
+        .ok (String.join acc.reverse, [])
+      else .error (.unsupportedSyntax 0)
+  | token :: rest =>
+      match fuel with
+      | 0 => .error (.unsupportedSyntax 0)
+      | fuel + 1 =>
+          if angle == 0 && bracket == 0 && (typeBoundary token || token == "]" || token == ">") then
+            if acc.isEmpty then .error (.unsupportedSyntax 0)
+            else .ok (String.join acc.reverse, token :: rest)
+          else if !typeToken token then .error (.unsupportedSyntax 0)
+          else if token == "<" then takeCastType fuel (angle + 1) bracket (token :: acc) rest
+          else if token == ">" then takeCastType fuel (angle - 1) bracket (token :: acc) rest
+          else if token == "[" then takeCastType fuel angle (bracket + 1) (token :: acc) rest
+          else if token == "]" then takeCastType fuel angle (bracket - 1) (token :: acc) rest
+          else takeCastType fuel angle bracket (token :: acc) rest
 
 mutual
 
@@ -162,10 +193,17 @@ private def parseHead (fuel : Nat) (tokens : List String) :
   | fuel + 1, "typeof" :: rest => do
       let (value, tail) ← parseExprAt fuel 8 rest
       return (.unary .typeof value, tail)
+  | fuel + 1, "new" :: rest => do
+      let (value, tail) ← parseExprAt fuel 8 rest
+      return (.newExpr value, tail)
   | fuel + 1, "lambda" :: rest => do
       let (params, bodyTokens) ← parseLambdaParams rest
       let (body, tail) ← parseExprAt fuel 0 bodyTokens
       return (.lambdaExpr params body, tail)
+  | fuel + 1, "(" :: name :: ")" :: "=>" :: rest => do
+      if !tokenIsIdentifier name then throw (.unsupportedSyntax 0)
+      let (body, tail) ← parseExprAt fuel 0 rest
+      return (.lambdaExpr [name] body, tail)
   | fuel + 1, "not" :: rest => do
       let (value, tail) ← parseExprAt fuel 8 rest
       return (.unary .not value, tail)
@@ -231,6 +269,10 @@ private def parsePostfix (fuel : Nat) (left : TargetExpr) (tokens : List String)
     Except ParseError (TargetExpr × List String) :=
   match fuel, tokens with
   | 0, _ => .error (.unsupportedSyntax 0)
+  | fuel + 1, "++" :: rest =>
+      match left with
+      | .local name => parsePostfix fuel (.postIncrement name) rest
+      | _ => throw (.unsupportedSyntax 0)
   | fuel + 1, "." :: "#" :: name :: rest =>
       if tokenIsIdentifier name then parsePostfix fuel (.property left ("#" ++ name)) rest
       else throw (.unsupportedSyntax 0)
@@ -240,6 +282,7 @@ private def parsePostfix (fuel : Nat) (left : TargetExpr) (tokens : List String)
   | fuel + 1, "?." :: name :: rest =>
       if tokenIsIdentifier name then parsePostfix fuel (.optionalProperty left name) rest
       else throw (.unsupportedSyntax 0)
+  | fuel + 1, "!" :: rest => parsePostfix fuel (.nonNull left) rest
   | fuel + 1, "(" :: rest => do
       let (args, tail) ← parseArgList fuel rest
       parsePostfix fuel (.call left args) tail
@@ -313,6 +356,14 @@ private def parseObjectFields (fuel : Nat) (tokens : List String) :
           let (other, remaining) ← parseObjectFields fuel after
           return (.objectEntry name value other, remaining)
       | _ => throw (.unsupportedSyntax 0)
+  | fuel + 1, key :: "," :: rest =>
+      if tokenIsIdentifier key then do
+        let (other, remaining) ← parseObjectFields fuel rest
+        return (.objectEntry key (.local key) other, remaining)
+      else throw (.unsupportedSyntax 0)
+  | _, key :: "}" :: rest =>
+      if tokenIsIdentifier key then .ok (.objectEntry key (.local key) .empty, rest)
+      else .error (.unsupportedSyntax 0)
   | _, _ => .error (.unsupportedSyntax 0)
 
 private def parseArrayElems (fuel : Nat) (tokens : List String) :
@@ -320,6 +371,14 @@ private def parseArrayElems (fuel : Nat) (tokens : List String) :
   match fuel, tokens with
   | 0, _ => .error (.unsupportedSyntax 0)
   | _, "]" :: rest => .ok (.empty, rest)
+  | fuel + 1, "..." :: rest => do
+      let (value, tail) ← parseExprAt fuel 0 rest
+      match tail with
+      | "]" :: after => return (.arraySpread value .empty, after)
+      | "," :: after =>
+          let (other, remaining) ← parseArrayElems fuel after
+          return (.arraySpread value other, remaining)
+      | _ => throw (.unsupportedSyntax 0)
   | fuel + 1, _ => do
       let (value, tail) ← parseExprAt fuel 0 tokens
       match tail with
@@ -366,6 +425,9 @@ private def parseRest (fuel minPrec : Nat) (left : TargetExpr) (tokens : List St
   match fuel, tokens with
   | 0, _ => .error (.unsupportedSyntax 0)
   | _, [] => .ok (left, [])
+  | fuel + 1, "as" :: rest => do
+      let (kind, remaining) ← takeCastType (rest.length + 1) 0 0 [] rest
+      parseRest fuel minPrec (.typeCast left kind) remaining
   | fuel + 1, "?" :: rest =>
       if minPrec > 1 then .ok (left, "?" :: rest)
       else do
