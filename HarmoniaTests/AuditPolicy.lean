@@ -219,7 +219,8 @@ namespace HarmoniaAudit
 def flpSourceModules : Array Name := #[
   `Harmonia.Theorems.FLP, `Harmonia.Theorems.FLPInitial,
   `Harmonia.Theorems.FLPIndistinguishability,
-  `Harmonia.Theorems.FLPExtension, `Harmonia.Theorems.FLPBounds,
+  `Harmonia.Theorems.FLPInputs, `Harmonia.Theorems.FLPExtension,
+  `Harmonia.Theorems.FLPBounds,
   `HarmoniaTests.FLPTest,
   `HarmoniaTests.FLPAxiomAudit]
 

@@ -12,6 +12,8 @@ event delivers one buffered copy or performs a silent tick. Sends add natural
 counts; a proved invariant keeps reachable buffers nonnegative when the
 initial buffer is nonnegative. The buffer is commutative, so disjoint process
 events commute exactly even when both send to the same destination.
+The same invariant is proved for every state of an infinite run that starts
+from a nonnegative buffer.
 
 An `InfiniteRun` records an event and configuration at every natural time.
 `Admissible` allows at most one process to stop taking steps. For each pending
@@ -28,10 +30,15 @@ The multiplicity model does not identify individual message instances.
   processes, and a finite deciding trace when any selected process stays
   silent imply an initial bivalent configuration. The concrete replay
   obligation is discharged by `IndistinguishableExcept`.
+- `initial_bivalent_from_binary_inputs` builds that chain from a finite
+  exhaustive node list and an initial-configuration map that preserves every
+  other process's view when one input changes. Weak binary validity supplies
+  opposite endpoint outcomes.
 - `flp_lemma3_bivalence_step`: a bivalent reachable configuration and any
   enabled event admit a finite schedule delaying that event, then applying it
   while retaining bivalence. It assumes `CrashDecidingReachable` and
-  `DecisionsPersist`, both explicit protocol obligations.
+  `DecisionsPersist`, both explicit protocol obligations. The crash premise
+  requires a deciding process distinct from the silent process.
 - `no_uniform_decision_bound`: under agreement and the preceding finite
   obligations, no single event-count bound forces every schedule to decide.
 - `bivalent_stage_not_acc`: the relation of positive bivalence-preserving
@@ -53,10 +60,10 @@ with a proved fair stage policy, or a changed audit policy, is needed before
 the final impossibility claim can be certified. The audit deliberately names
 `flp_impossibility` so it remains red while that declaration is absent.
 
-Additional model obligations for a faithful universal theorem include a
-finite or enumerable process/message domain, finite support of each send, and
-a fair policy for selecting process and pending message occurrences. They
-are not consequences of the current unconstrained `send` function.
+Additional model obligations for a faithful universal theorem include an
+enumerable process/message domain, finite support of each send, and a fair
+policy for selecting process and pending message occurrences. They are not
+consequences of the current unconstrained `send` function.
 
 The historical 2PC/SMT/C modules are not connected to this FLP model.
 
@@ -68,5 +75,5 @@ The historical 2PC/SMT/C modules are not connected to this FLP model.
 - `python3 scripts/test_flp_audit.py`: five self tests passed.
 - `lake build flpAudit`: failed as intended at the explicit
   `flp_impossibility` declaration check. Its preceding source-wide axiom
-  report counted 89 theorems and observed only `propext` and `Quot.sound`.
+  report counted 96 theorems and observed only `propext` and `Quot.sound`.
 - Linux verification and the final independent reviewer verdict are pending.

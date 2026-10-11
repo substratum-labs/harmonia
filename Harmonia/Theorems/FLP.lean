@@ -337,6 +337,12 @@ theorem run_reachable (p : Protocol Node Msg Local)
     rw [r.evolves t]
     exact .tail ih (r.event t) (r.enabled t)
 
+theorem run_nonnegative_buffer (p : Protocol Node Msg Local)
+    (initial : Config Node Msg Local) (r : InfiniteRun p initial)
+    (hinitial : NonnegativeBuffer initial) (t : Nat) :
+    NonnegativeBuffer (r.state t) :=
+  nonnegative_buffer_reachable p (run_reachable p initial r t) hinitial
+
 /-- The final contradiction once a fair bivalence-preserving adversary has
 been constructed. The construction of such an adversary is the hard FLP
 extension-and-scheduling obligation, not part of this theorem's hypotheses. -/

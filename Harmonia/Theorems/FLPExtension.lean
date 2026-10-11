@@ -115,8 +115,9 @@ consequence of the finite transition semantics alone. -/
 def CrashDecidingReachable (protocol : Protocol Node Msg Local)
     (initial : Config Node Msg Local) : Prop :=
   ∀ c, Reachable protocol initial c → ∀ silent,
-    ∃ events t value, Schedule protocol c events t ∧
-      (∀ event ∈ events, event.target ≠ silent) ∧ DecidedIn t value
+    ∃ events t q value, Schedule protocol c events t ∧
+      (∀ event ∈ events, event.target ≠ silent) ∧ q ≠ silent ∧
+        t.decision q = some value
 
 /-- If adjacent `e`-images can decide opposite values, one is bivalent.
 This constructive form is stronger than the univalence contradiction: it
@@ -136,8 +137,9 @@ theorem e_image_neighbor_bivalence (protocol : Protocol Node Msg Local)
   have he' : Enabled (advance protocol c f) e :=
     enabled_after_different_event protocol c e f hdifferent he
   by_cases htarget : f.target = e.target
-  · obtain ⟨events, t, crashValue, hrun, hother, hdec⟩ :=
+  · obtain ⟨events, t, q, crashValue, hrun, hother, _, hdecQ⟩ :=
       hcrash c haccessible e.target
+    have hdec : DecidedIn t crashValue := ⟨q, hdecQ⟩
     have hafterE := flp_lemma1_schedule protocol hrun e he hother
     have hafterF := flp_lemma1_schedule protocol hrun f hf (by
       intro event hm
@@ -204,8 +206,8 @@ theorem reachable_decision_of_crash_deciding (protocol : Protocol Node Msg Local
     (hcrash : CrashDecidingReachable protocol initial)
     (hc : Reachable protocol initial c) (silent : Node) :
     ∃ value, ReachableDecision protocol c value := by
-  obtain ⟨events, t, value, hrun, _, hdec⟩ := hcrash c hc silent
-  exact ⟨value, t, Schedule.reachable protocol hrun, hdec⟩
+  obtain ⟨events, t, q, value, hrun, _, _, hdec⟩ := hcrash c hc silent
+  exact ⟨value, t, Schedule.reachable protocol hrun, ⟨q, hdec⟩⟩
 
 /-- Along a finite schedule that delays `e`, opposite decision possibilities
 at the initial and final `e`-images force a bivalent image at some prefix.
