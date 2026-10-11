@@ -61,6 +61,9 @@ lean_lib kadmosBridgeAuditRejection where
 lean_lib kadmosGeneratedK02LexerTest where
   roots := #[`HarmoniaTests.KadmosGeneratedK02Lexer]
 
+lean_lib kadmosGeneratedK02MachineTest where
+  roots := #[`HarmoniaTests.KadmosGeneratedK02Machine]
+
 lean_lib quorumTest where
   roots := #[`HarmoniaTests.QuorumTest]
 
