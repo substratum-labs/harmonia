@@ -1,6 +1,6 @@
 # T-398: K-02 generated BALANCE/DEBIT correspondence design
 
-Status: **current-source design for parent-owned independent physical preflight; no T-398 product, theorem, test or CI implementation exists.** This document supersedes, without rewriting history, `2026-10-06-generated-implementation-correspondence-design.md` and its plan/receipt. Those files describe historical Harmonia T-396, which is now **T-398** in the project ledger. Castor T-396 is unrelated. Yong explicitly resumed T-398 on 2026-10-11 after the old three-REVISE pause; the review counter is reset only for this redesigned K-02 task. Parent owns Grok and integration. Implementation requires an actual current-source preflight ACCEPT.
+Status: **accepted K-02 scope, partially implemented; universal correspondence remains unproved.** Parent obtained current-source physical Grok R1 ACCEPT for the original design at `2948ffc23c6d381f3cbb46fb66a8dddf12342687`, then selected option 1 at implementation checkpoint source `8a95c49822fe1b0cd5cb0e39b08c58e538a76f31`: independent checked syntax validation plus compositional execution simulation. The [proof-strategy design](2026-10-11-t398-k02-checked-syntax-and-simulation-design.md) and [revised plan](../plans/2026-10-11-t398-k02-generated-correspondence.md) govern the remaining work pending parent-owned proof-strategy preflight. Existing complete-source parse facts, balance certificates, finite target traces and one closed TS DEBIT30 theorem are partial evidence, not a code-correctness theorem. This document supersedes the 2026-10-06 historical Harmonia T-396 design; Castor T-396 is unrelated. Parent owns Grok and integration.
 
 ## Purpose and exact sources
 
@@ -38,7 +38,7 @@ This route is technically **high risk**. Each target is about 18–19 KB and con
 
 ## Exact certificate and operational interfaces
 
-New Init-only modules live in `Harmonia/Applications/Kadmos/Generated/`. Define an ordered `JSONValue` (object as ordered key/value list), tagged `TargetValue` (JS number, Python int/float, bool/string/null/undefined, object/closure/builtin/match references), `ObjRef`/`CellRef`/`ClosureRef`, and a heap with own data/accessor descriptors, enumerable/writable/configurable/frozen flags, array/list/set/mappingproxy kinds, prototype reference, match spans/groups and distinct Python backing attributes. `TargetMachine` contains global cells, lexical frame stack, shared cell heap, object heap, intrinsics, checker slots (`state`, `context`, `history`, `undo`, `busy`, `constructorSeed`), fuel and any Python instance attributes. In Python `_busy` must map to `checker.busy`; `__state/__context/__history/__undo/__constructor_seed` map to the corresponding slots. TS `#busy/#constructorSeed` map likewise. A getter returns **updated machine plus value** because copied context may allocate a new reference. `logicalChecker` dereferences data and deliberately forgets clone identities only after helpers finish.
+New Init-only modules live in `Harmonia/Applications/Kadmos/Generated/`. Define an ordered `JSONValue` (object as ordered key/value list), tagged `TargetValue` (JS number, Python int/float, bool/string/null/undefined, object/closure/builtin/match references), `ObjRef`/`CellRef`/`ClosureRef`, and a heap with own data/accessor descriptors, enumerable/writable/configurable/frozen flags, array/list/set/mappingproxy kinds, prototype reference, match spans/groups and distinct Python backing attributes. `TargetMachine` contains global cells, lexical frame stack, shared cell heap, object heap, intrinsics, checker slots (`state`, `context`, `history`, `undo`, `busy`, `constructorSeed`), fuel and any Python instance attributes. In Python `_busy` must map to `checker.busy`; `__state/__context/__history/__undo/__constructor_seed` map to the corresponding slots. TS `#busy/#constructorSeed` map likewise. A getter returns **updated machine plus value** because copied context may allocate a new reference. The current `logicalChecker` dereferences context/history containers but leaves history elements and undo as raw values/references; the option 1 checked content view must dereference these after actual clone/freeze operations.
 
 `TargetExpr` has literals, local/cell/field/property/index lookup, call/lambda with captured **cell locations**, postincrement, primitive operation and lazy `&&/||/??/conditional`. `TargetOp` has declaration/assignment, expression statement, if/for/while/switch, return/throw/rethrow, targeted break/continue, try/catch/finally. `ControlResult` distinguishes normal, returned value, targeted break/continue and raised exception; a return inside bounds/effect loop exits its function, switch break leaves the Pratt while running, finally clears the same busy bit. JS default parameter expressions evaluate at each omitted/**undefined** argument call (fresh seen Set); Python defaults are bound at definition time. Method receiver is implicit. Qualified lexical names disambiguate `step.rollback`/`reset.rollback` and nested sanitizer copy versus imported `copy.deepcopy`. `sourceTruthy` handles actual JS/Python false cases, objects/functions and empty Python containers; lazy and/or return operand values, `??` is nullish-only; generated `booleanWorld`/`_boolean` remains a parsed strict-Bool helper.
 
@@ -46,7 +46,7 @@ Closed source operations must include JS `JSON.parse` for **both** world/default
 
 The minimum **data and execution schema** is fixed for preflight. `TargetLang = ts | python`; `NumberTag = jsNumber | pyInt | pyFloat`. `TargetValue` is a tagged scalar (`undefined/null/bool/string/number`), `ObjRef`, `ClosureRef`, builtin or `MatchValue{full,start,stop,groups}`. `Descriptor` records value versus get/set and enumerable/writable/configurable flags. `HeapObject` records language kind (`jsOrdinary/jsArray/jsSet/pythonDict/pythonList/pythonTuple/pythonSet/mappingProxy/regexPattern`), `Option ObjRef` prototype, ordered own descriptors/items/set members and frozen flag. `CellHeap` maps fresh `CellRef` to values, so recursive Pratt `parse` closures share the outer index/position cell while each call allocates fresh parameters/locals. `TargetFrame` has qualified function name, remaining statements, local/captured cell addresses and control result (`normal/returned/broke target/continued target/raised`). `TargetMachine` has globals, frames, cells, object heap, shared `Object.prototype` intrinsic, checker and fuel. Checker slots are `state : String`, `context/history : ObjRef`, `undo : Option ObjRef`, `constructorSeed : Option ObjRef`, `busy : Bool`, plus Python instance attributes that are not mapped backing slots. TS `#busy` and Python `_busy` dispatch **to this one slot**; Python `__constructor_seed` dispatches to `constructorSeed`. No copied capture values or second busy bit.
 
-`TargetSeed` and `TargetRequest` have the exact fields in the interface block below are **allocation recipes**. `canonicalBalanceSeed` allocates an own enumerable data descriptor with `balance` tagged `.jsNumber b` or `.pyInt b`; `canonicalDebitRequest` allocates action/payload in order with absent directive, payload amount tagged `.jsNumber n` or `.pyInt n`. `TargetObservation` retains allowed, previous/current state, context ref, directive and violation code/trace; `TargetOutcome` carries postmachine and observation. `targetProjection lang` checks the target numeric tag, dereferences the returned context and retains only allowed/current state/ordered integer context/directive, while separate lemmas prove target violation code and full logical checker frame/savepoint shape. `sourceProjection` maps the Lean Result into the same mathematical carrier; a malformed target projection returns an error rather than silently coercing a value. Getter signatures return `(updatedMachine, TargetValue)` so a copied reference lives in the returned heap.
+`TargetSeed` and `TargetRequest` are allocation recipes. `canonicalBalanceSeed` allocates an own enumerable data descriptor with `balance` tagged `.jsNumber b` or `.pyInt b`; `canonicalDebitRequest` allocates action/payload in order with absent directive, payload amount tagged `.jsNumber n` or `.pyInt n`. `TargetOutcome` carries postmachine and raw verdict value. `targetProjection lang` checks the target numeric tag, dereferences the verdict/context and retains only allowed/current state/ordered integer context/directive; separate lemmas must prove violation code and full logical checker frame/savepoint shape. `balanceSourceProjection` maps the Lean Result into the same mathematical carrier; a malformed target projection returns an error rather than silently coercing a value. Getter signatures return `(updatedMachine, TargetValue)` so a copied reference lives in the returned heap.
 
 `TargetProgram` contains neutral ordered `worldData` **and `contextDefaultsData`**, module initialization, TS class fields, constructor, reset, getters, selected step and a qualified function map. `TargetExpr` supports literal/local/field/property/index/call/closure, lazy and/or/??/conditional, postincrement and closed primitive operations; `TargetStmt` supports declaration/assignment, expression statement, if/for/while/switch, targeted break/continue, return/throw/rethrow and try/catch/finally. Every selected user function (`evaluateWorld`/`evaluate_world`, sanitizer, `_safe_integer`, bounds, invariants, `_freeze`, nested parser/copy/rollback) is represented by these statements and executed by a generic interpreter, **not** by a primitive named after the function. A `SurfaceExec` relation for recognized `.find/.some/.map`, Python `next` and switch proves desugaring meaning preservation. A caller method's `self`/`this` is the current checker receiver and not an explicit parameter; default expressions follow JS call-time omitted/undefined or Python definition-time behavior. Store projections compare logical contents after clone/freeze completes, never physical heap identity.
 
@@ -62,108 +62,12 @@ The **closed primitive contract inventory** required before proof includes these
 
 The parent preflight should reject a plan that simply matches the helper text then returns an ideal `guardCheck`/`effectCheck`/`sanitize`/`boundsCheck` outcome. A parser/operation matrix generated from **the actual complete K-02 emitted files** must list each reached call with its AST node and primitive rule or parsed callee body; no generic "host runtime handles it" entry for a user helper. The prior R3's two final holes are explicit here: Python `_busy` aliases the checker busy cell, and anchored match-at-offset plus `.end()` is a source operation with a progress theorem.
 
-Binding and theorem interfaces (names and dependent dimensions are fixed; implementer may split modules without changing their meaning):
+## Implemented interface and remaining theorem interface
 
-```lean
-def parseGenerated (lang : TargetLang) (source : String) : Except ParseError TargetProgram
-inductive SourceParses : TargetLang → String → TargetProgram → Prop
-theorem parseGenerated_sound {lang source program}
-  (h : parseGenerated lang source = .ok program) : SourceParses lang source program
-theorem SourceParses.unique {lang source p q}
-  (hp : SourceParses lang source p) (hq : SourceParses lang source q) : p = q
+The preceding requirements are the accepted behavioral scope. The current code uses `TargetRequest = ⟨lang, shape, transitionId, amount⟩` as an allocation recipe, `TargetOutcome = ⟨machine, verdict : TargetValue⟩`, and `logicalChecker lang machine` returns a **shallow** history list/undo reference. `targetProjection lang outcome` dereferences the returned verdict. The accepted preimplementation sketch with a separate `TargetObservation`, a wider request and a content-level `CheckerData` was not implemented and must not be cited as an existing interface. The [option 1 proof design](2026-10-11-t398-k02-checked-syntax-and-simulation-design.md) defines the checked content view and exact universal theorem shape, and the [revised plan](../plans/2026-10-11-t398-k02-generated-correspondence.md) names the current modules/test roots.
 
-def checkGenerated (lang : TargetLang) (source : String) (raw : Bridge.RawWorld)
-  (candidate : World raw.states.length raw.context.length raw.fields.length raw.transitions.length) :
-  Except CertError TargetProgram
--- checkGenerated invokes checkBridge raw candidate; no arbitrary-dimension cast.
-structure Normalized where
-  allowed : Bool
-  currentState : String
-  context : List (String × Int)
-  directive : Option String
-def sourceProjection (r : Result 1 1) : Normalized
-def targetProjection (lang : TargetLang) (out : TargetOutcome) :
-  Except TargetError Normalized
-inductive RequestShape | ordinaryRecord | exactDict
-structure TargetSeed where
-  lang : TargetLang
-  shape : RequestShape
-  balance : Int
-  extraFields : List (String × TargetValue)
-  proxy : Bool
-  accessor : Bool
-structure TargetRequest where
-  lang : TargetLang
-  shape : RequestShape
-  action : String
-  amount : Int
-  proposedDirectivePresent : Bool
-  proposedDirective : Option String
-  extraFields : List (String × TargetValue)
-  proxy : Bool
-  accessor : Bool
-structure TargetObservation where
-  allowed : Bool
-  previousState : String
-  currentState : String
-  context : ObjRef
-  directiveAllowed : Option String
-  violationCode : Option String
-  trace : Option ObjRef
-structure TargetOutcome where
-  machine : TargetMachine
-  observation : TargetObservation
-structure LogicalRecord where
-  step : Nat
-  state : String
-  action : String
-  payload : List (String × Int)
-  proposedDirectivePresent : Bool
-  proposedDirective : Option String
-structure LogicalSnapshot where
-  state : String
-  context : List (String × Int)
-  history : List LogicalRecord
-structure CheckerData where
-  state : String
-  context : List (String × Int)
-  history : List LogicalRecord
-  undo : Option LogicalSnapshot
-  constructorSeed : List (String × Int)
-def logicalChecker (m : TargetMachine) : Except TargetError CheckerData
-def logicalBalance (m : TargetMachine) : Except TargetError Int
-def canonicalBalanceSeed (lang : TargetLang) (b : Int) : TargetSeed
-def canonicalDebitRequest (lang : TargetLang) (n : Int) : TargetRequest
-def targetConstruct (program : TargetProgram) (seed : TargetSeed) :
-  Except TargetError TargetMachine
-def targetGetContext (program : TargetProgram) (m : TargetMachine) :
-  Except TargetError (TargetMachine × TargetValue)
-def targetStep (program : TargetProgram) (m : TargetMachine) (req : TargetRequest) :
-  Except TargetError TargetOutcome
-
-theorem k02_balance_one_call (lang : TargetLang) (source : String)
-  (program : TargetProgram)
-  (hc : checkGenerated lang source BridgeFixtures.balanceRaw
-    BridgeFixtures.balanceCandidate = .ok program)
-  (b n : Int) (hb : 0 ≤ b ∧ b ≤ S) (hn : safeInt n) :
-  ∃ m out before, targetConstruct program (canonicalBalanceSeed lang b) = .ok m ∧
-    logicalChecker m = .ok before ∧
-    targetStep program m (canonicalDebitRequest lang n) = .ok out ∧
-    targetProjection lang out = .ok (sourceProjection
-      (interpret BridgeFixtures.balanceCandidate
-        (generatedBalanceState b) (generatedBalanceRequest n))) ∧
-    out.machine.checker.state = "Ready" ∧ out.machine.checker.busy = false ∧
-    (n ≤ 0 → out.observation.violationCode = some "GUARD_FAILED" ∧
-      logicalChecker out.machine = .ok before) ∧
-    (0 < n ∧ n ≤ b → out.observation.allowed = true ∧
-      logicalBalance out.machine = .ok (b - n) ∧
-      acceptedHistoryShape lang b n m out.machine) ∧
-    (n > b → out.observation.violationCode = some "INVALID_BOUNDS" ∧
-      logicalChecker out.machine = .ok before)
-```
-
-`generatedBalanceState/Request` are new names, distinct from old `Balance.lean`. `CheckerData` is the logical record of phase, ordered integer context, accepted-history records, optional pre-call savepoint and constructor seed. `logicalChecker` dereferences state/context/history/undo/seed into `Except TargetError CheckerData`, and `logicalBalance` requires exactly one balance value with the correct language numeric tag; both reject malformed references instead of supplying an ideal output. The theorem carries a successful pre-call `before` witness, so rejection frame equality cannot hold merely because both projections error. `acceptedHistoryShape` is a **conclusion-only** predicate defined as exactly one logical accepted record (step 1, Ready, DEBIT, sanitized amount, absent directive), plus the pre-call Ready/b/empty-history savepoint in TS `#undo` and Python `__undo`, and no change to constructor seed. It does not demand cloned heap identity. The displayed theorem states the three result cases explicitly, not via an assumed target result. The source/model three cases are proved symbolically from `Interpreter.lean` and `balanceCandidate`, and target cases from execution of the parsed AST. `targetConstruct`'s existence is in the **conclusion**, preventing vacuity. Constructor witness for every b derives context descriptors, unfrozen/mutable empty history, canonical globals, seed b and busy false from parsed K-02 code. Order default constructor/getter result is a separate closed kernel fact; order STEP remains finite evidence, not a theorem here. No `native_decide`, `sorry`, `admit`, `sorryAx`, custom axiom or helper-correctness assumption in certified roots.
+`checkGenerated lang source raw candidate` keeps precisely dependent dimensions `World raw.states.length raw.context.length raw.fields.length raw.transitions.length` and must invoke an independently validated `parseGenerated`; its present nonvacuity facts establish no parser soundness. `SourceParses` must be an independent inductive source-span/AST relation with validator soundness and uniqueness. The target theorem must conclude `targetConstruct` and `targetStep` success for **every** `0≤b≤S` and safe signed n from the actual emitted balance source, prove the three model cases by `balanceCandidate`, establish the normalized observation and logical frame/savepoint/finalizer facts, and use no fabricated prestore/target result. The target semantics modules do not import the source interpreter; the final correspondence module alone combines both sides. Order default constructor/getter result remains a separate closed goal; order STEP stays finite evidence.
 
 ## Acceptance and implementation boundary
 
-A later accepted implementation must track exact K-02 emitted TS/Python source and port files for both fixtures, a strict byte/provenance checker, Lean source literal round trip, four closed certificates, nonvacuity witnesses, universal one-call theorem in both languages, malformed-host-input rejection outside the supported request profile, negative **source** mutations (at minimum effect `-`→`+`, guard `>`→`>=`, `_busy` mapping/finalizer, regex offset/end, constructor seed/default, bounds/invariant order) that fail certification or yield a kernel-diagnosed mismatch, and isolated generated-source audit/unused-axiom traps. Old Kadmos Application inventory scans all Applications; register exact new modules. Bridge audit grows only for real import closure, never blanket old namespace. Foundation 52 and Distributed 336/594 remain separate observations, not fixed old Application totals. Run serial `lake build`, dedicated Foundation/Distributed/World/Bridge/Quorum/CAP plus new targets and inventory/self-tests, fresh affected axiom audits, actual TS strict typecheck, Python import/execution, macOS local probes and hosted Linux exact-head CI. Record model/host assumptions and exact source IDs. No product/test/CI code begins in this invocation; no merge before reviewed integration.
+The current partial implementation already tracks exact K-02 emitted TS/Python source and port files for both fixtures, a strict byte/provenance checker, Lean source literal round trip, four closed parse-success facts, two balance nonvacuity witnesses, one closed TS step, and isolated generated-source audit/unused-axiom traps. Acceptance still requires independent syntax soundness, constructor and universal one-call theorems in both languages, negative **source** mutations (at minimum effect `-`→`+`, guard `>`→`>=`, `_busy` mapping/finalizer, regex offset/end, constructor seed/default, bounds/invariant order) that fail certification or yield a kernel-diagnosed mismatch, and final physical Mac/Linux evidence. Old Kadmos Application inventory scans all Applications; register exact new modules. Bridge audit grows only for real import closure, never blanket old namespace. Foundation 52 and Distributed 336/594 remain separate observations, not fixed old Application totals. Run serial `lake build`, dedicated Foundation/Distributed/World/Bridge/Quorum/CAP plus new targets and inventory/self-tests, fresh affected axiom audits, actual TS strict typecheck, Python import/execution, macOS local probes and hosted Linux exact-head CI. Record model/host assumptions and exact source IDs. This proof-strategy revision adds documents only; no merge before reviewed integration.
