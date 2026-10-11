@@ -13,12 +13,15 @@ class FLPAuditTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
-        for name in (
-            "lakefile.lean", "Harmonia/Theorems/FLP.lean",
+        names = [
+            "lakefile.lean",
             "Harmonia/Core/TransitionSystem.lean", "Harmonia/Core/Execution.lean",
             "HarmoniaTests/AuditPolicy.lean", "HarmoniaTests/FLPTest.lean",
             "HarmoniaTests/FLPAxiomAudit.lean", "HarmoniaTests/FLPRejection.lean",
-        ):
+        ]
+        names.extend(str(path.relative_to(audit.ROOT)) for path in
+                     (audit.ROOT / "Harmonia/Theorems").glob("FLP*.lean"))
+        for name in names:
             target = self.root / name
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(audit.ROOT / name, target)

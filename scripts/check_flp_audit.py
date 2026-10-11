@@ -14,6 +14,9 @@ from check_distributed_audit import import_closure, module_name, scrub
 ROOT = Path(__file__).resolve().parents[1]
 CERTIFIED = {
     "Harmonia.Theorems.FLP",
+    "Harmonia.Theorems.FLPInitial",
+    "Harmonia.Theorems.FLPIndistinguishability",
+    "Harmonia.Theorems.FLPExtension",
     "HarmoniaTests.FLPTest",
     "HarmoniaTests.FLPAxiomAudit",
 }
@@ -50,7 +53,7 @@ def check_static(root: Path) -> None:
             raise ValueError(f"incorrect roots for {target}: {sorted(actual)}")
 
     theorem_files = set((root / "Harmonia/Theorems/FLP").rglob("*.lean"))
-    theorem_files.add(root / "Harmonia/Theorems/FLP.lean")
+    theorem_files.update((root / "Harmonia/Theorems").glob("FLP*.lean"))
     probe_files = {p for p in (root / "HarmoniaTests").rglob("*.lean")
                    if p.relative_to(root / "HarmoniaTests").parts[0].startswith("FLP")}
     inventory = {module_name(root, p) for p in theorem_files | probe_files}

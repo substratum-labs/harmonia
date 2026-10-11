@@ -217,7 +217,9 @@ elab "#audit_cap" : command => HarmoniaAudit.auditCap
 namespace HarmoniaAudit
 
 def flpSourceModules : Array Name := #[
-  `Harmonia.Theorems.FLP, `HarmoniaTests.FLPTest,
+  `Harmonia.Theorems.FLP, `Harmonia.Theorems.FLPInitial,
+  `Harmonia.Theorems.FLPIndistinguishability,
+  `Harmonia.Theorems.FLPExtension, `HarmoniaTests.FLPTest,
   `HarmoniaTests.FLPAxiomAudit]
 
 def flpDeclaration (env : Environment) (n : Name) : Bool :=
