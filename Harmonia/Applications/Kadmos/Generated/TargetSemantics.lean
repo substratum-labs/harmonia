@@ -1899,11 +1899,11 @@ private def installTSMethods (program : TargetProgram) (m : TargetMachine)
   let (updated, methods) := installTSMethodsGo m moduleFrame program.functions
   { updated with classMethods := methods }
 
-def targetConstruct (program : TargetProgram) (seed : TargetSeed) :
+def targetConstructWithFuel (fuel : Nat) (program : TargetProgram) (seed : TargetSeed) :
     Except TargetError TargetMachine := do
   if seed.lang != program.lang then throw .invalidTag
   let moduleFrame : TargetFrame := ⟨"module", [], [], [], none, .normal⟩
-  let moduleResult ← execStmt 20000 program (initialHostMachine program.lang)
+  let moduleResult ← execStmt fuel program (initialHostMachine program.lang)
     moduleFrame program.moduleInit
   if moduleResult.control != .normal then throw .wrongControl
   let machine ←
@@ -1912,7 +1912,7 @@ def targetConstruct (program : TargetProgram) (seed : TargetSeed) :
       let fieldsFrame : TargetFrame :=
         ⟨"WorldChecker.fields", [], [], moduleResult.frame.locals,
           some withMethods.checkerRef, .normal⟩
-      let fields ← execStmt 20000 program withMethods fieldsFrame program.classFields
+      let fields ← execStmt fuel program withMethods fieldsFrame program.classFields
       if fields.control != .normal then throw .wrongControl
       pure fields.machine
     else .ok moduleResult.machine
@@ -1928,10 +1928,14 @@ def targetConstruct (program : TargetProgram) (seed : TargetSeed) :
   let actualCall : TargetExpr :=
     .call (.property (.local receiverName) methodName)
       (.sequence (.local "initialContext") .empty)
-  let result ← evalExpr 20000 program withArgument argumentFrame actualCall
+  let result ← evalExpr fuel program withArgument argumentFrame actualCall
   match result.result with
   | .ok _ => return result.machine
   | .error e => throw (.sourceException e)
+
+def targetConstruct (program : TargetProgram) (seed : TargetSeed) :
+    Except TargetError TargetMachine :=
+  targetConstructWithFuel 100 program seed
 
 structure TargetRequest where
   lang : TargetLang
@@ -1948,7 +1952,7 @@ structure TargetOutcome where
   verdict : TargetValue
   deriving DecidableEq, Repr
 
-def targetStep (program : TargetProgram) (machine : TargetMachine)
+def targetStepWithFuel (fuel : Nat) (program : TargetProgram) (machine : TargetMachine)
     (request : TargetRequest) : Except TargetError TargetOutcome := do
   if request.lang != program.lang || !safeIntermediate request.amount then
     throw .outsideNumericDomain
@@ -1972,9 +1976,13 @@ def targetStep (program : TargetProgram) (machine : TargetMachine)
   let expression : TargetExpr :=
     .call (.property (.local receiverName) "step")
       (.sequence (.local "request") .empty)
-  let result ← evalExpr 20000 program withCell frame expression
+  let result ← evalExpr fuel program withCell frame expression
   match result.result with
   | .ok verdict => return ⟨result.machine, verdict⟩
   | .error e => throw (.sourceException e)
+
+def targetStep (program : TargetProgram) (machine : TargetMachine)
+    (request : TargetRequest) : Except TargetError TargetOutcome :=
+  targetStepWithFuel 100 program machine request
 
 end Harmonia.Applications.Kadmos.Generated

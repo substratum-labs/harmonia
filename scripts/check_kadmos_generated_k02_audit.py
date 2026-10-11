@@ -28,6 +28,7 @@ TEST_TARGETS = (
     'kadmosGeneratedK02CertificateTest',
     'kadmosGeneratedK02BalanceTSCertificateTest',
     'kadmosGeneratedK02BalancePythonCertificateTest',
+    'kadmosGeneratedK02BalanceTSStepTest',
 )
 AUDIT_TARGET = 'kadmosGeneratedK02Audit'
 REJECTION_TARGET = 'kadmosGeneratedK02AuditRejection'

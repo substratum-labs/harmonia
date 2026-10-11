@@ -33,7 +33,7 @@ class GeneratedK02InventoryTests(unittest.TestCase):
     def test_clean_inventory(self):
         result = check(self.root)
         self.assertEqual(result['generated_modules'], 13)
-        self.assertEqual(result['generated_tests'], 17)
+        self.assertEqual(result['generated_tests'], 18)
 
     def test_nested_product_cannot_escape(self):
         path = self.root / 'Harmonia/Applications/Kadmos/Generated/Nested/Hidden.lean'
@@ -50,7 +50,7 @@ class GeneratedK02InventoryTests(unittest.TestCase):
 
     def test_missing_certified_import_is_rejected(self):
         self.change('HarmoniaTests/KadmosGeneratedK02AxiomAudit.lean',
-                    'import Harmonia.Applications.Kadmos.Generated.TargetObservation\n', '')
+                    'import HarmoniaTests.KadmosGeneratedK02BalanceTSStep\n', '')
         with self.assertRaisesRegex(AuditInventoryError, 'unimported'):
             check(self.root)
 

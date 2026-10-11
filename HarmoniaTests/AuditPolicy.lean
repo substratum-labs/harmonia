@@ -196,6 +196,7 @@ def kadmosGeneratedK02SourceModules : Array Name := #[
   `HarmoniaTests.KadmosGeneratedK02Certificate,
   `HarmoniaTests.KadmosGeneratedK02BalanceTSCertificate,
   `HarmoniaTests.KadmosGeneratedK02BalancePythonCertificate,
+  `HarmoniaTests.KadmosGeneratedK02BalanceTSStep,
   `HarmoniaTests.KadmosGeneratedK02AxiomAudit]
 
 def kadmosGeneratedK02Declaration (env : Environment) (n : Name) : Bool :=

@@ -16,5 +16,6 @@ import HarmoniaTests.KadmosGeneratedK02OrderPythonParse
 import HarmoniaTests.KadmosGeneratedK02Certificate
 import HarmoniaTests.KadmosGeneratedK02BalanceTSCertificate
 import HarmoniaTests.KadmosGeneratedK02BalancePythonCertificate
+import HarmoniaTests.KadmosGeneratedK02BalanceTSStep
 
 #audit_kadmos_generated_k02

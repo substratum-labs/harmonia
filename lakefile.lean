@@ -100,6 +100,9 @@ lean_lib kadmosGeneratedK02BalanceTSCertificateTest where
 lean_lib kadmosGeneratedK02BalancePythonCertificateTest where
   roots := #[`HarmoniaTests.KadmosGeneratedK02BalancePythonCertificate]
 
+lean_lib kadmosGeneratedK02BalanceTSStepTest where
+  roots := #[`HarmoniaTests.KadmosGeneratedK02BalanceTSStep]
+
 lean_lib kadmosGeneratedK02Audit where
   roots := #[`HarmoniaTests.AuditPolicy, `HarmoniaTests.KadmosGeneratedK02AxiomAudit]
 
