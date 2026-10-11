@@ -93,12 +93,64 @@ example : (execStmt 80 tsProgram TargetMachine.empty frame switchControl).map
 private def busyMachine : TargetMachine :=
   { TargetMachine.empty with checker :=
     { TargetMachine.empty.checker with busy := true } }
+
+private def caughtReturnWithExitingFinally : TargetStmt :=
+  .tryCatchFinally (.throwValue (.string "boom")) (some "any") none
+    (.returnValue (.integer 1)) (.returnValue (.integer 2))
+
+theorem kadmos_generated_caught_return_finally_ts :
+    (execStmt 20 tsProgram busyMachine frame caughtReturnWithExitingFinally).toOption.map
+      StmtOutcome.control = some (.returned (.number .jsNumber 2)) := by
+  decide +kernel
+
+theorem kadmos_generated_caught_return_finally_python :
+    (execStmt 20 pyProgram busyMachine frame caughtReturnWithExitingFinally).toOption.map
+      StmtOutcome.control = some (.returned (.number .pyInt 2)) := by
+  decide +kernel
+
+private def caughtRethrowWithFinally : TargetStmt :=
+  .tryCatchFinally (.throwValue (.string "boom")) (some "any") none
+    .rethrow (.assign (.field "busy") (.bool false))
+
+theorem kadmos_generated_caught_rethrow_finally_ts :
+    (execStmt 20 tsProgram busyMachine frame caughtRethrowWithFinally).toOption.map
+      (fun out => (out.control, out.machine.checker.busy)) =
+        some (.raised (.string "boom"), false) := by
+  decide +kernel
+
+theorem kadmos_generated_caught_rethrow_finally_python :
+    (execStmt 20 pyProgram busyMachine frame caughtRethrowWithFinally).toOption.map
+      (fun out => (out.control, out.machine.checker.busy)) =
+        some (.raised (.string "boom"), false) := by
+  decide +kernel
+
+private def caughtReturnWithNormalFinally : TargetStmt :=
+  .tryCatchFinally (.throwValue (.string "boom")) (some "any") none
+    (.returnValue (.integer 1)) (.assign (.field "busy") (.bool false))
+
+theorem kadmos_generated_caught_return_normal_finally_ts :
+    (execStmt 20 tsProgram busyMachine frame caughtReturnWithNormalFinally).toOption.map
+      (fun out => (out.control, out.machine.checker.busy)) =
+        some (.returned (.number .jsNumber 1), false) := by
+  decide +kernel
+
+theorem kadmos_generated_caught_return_normal_finally_python :
+    (execStmt 20 pyProgram busyMachine frame caughtReturnWithNormalFinally).toOption.map
+      (fun out => (out.control, out.machine.checker.busy)) =
+        some (.returned (.number .pyInt 1), false) := by
+  decide +kernel
+
 private def finallyControl : TargetStmt :=
   .tryCatchFinally (.returnValue (.integer 7)) none none .empty
     (.assign (.field "busy") (.bool false))
 example : (execStmt 40 tsProgram busyMachine frame finallyControl).map
     (fun out => (out.control, out.machine.checker.busy)) =
     .ok (.returned (.number .jsNumber 7), false) := by decide +kernel
+theorem kadmos_generated_normal_return_finally_python :
+    (execStmt 40 pyProgram busyMachine frame finallyControl).toOption.map
+      (fun out => (out.control, out.machine.checker.busy)) =
+      some (.returned (.number .pyInt 7), false) := by
+  decide +kernel
 private def boundFrame : TargetFrame :=
   { frame with receiver := some busyMachine.checkerRef }
 private def actualBusyFinally : TargetStmt :=

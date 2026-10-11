@@ -1612,7 +1612,7 @@ def execStmt (fuel : Nat) (program : TargetProgram) (m : TargetMachine)
                       .ok (updated, localFrame)
                 let activeFrame := { localFrame with control := .raised errorValue }
                 let handled ← execStmt fuel program updated activeFrame handler
-                return { handled with frame := { handled.frame with control := .normal } }
+                pure { handled with frame := { handled.frame with control := .normal } }
               else .ok attempted
           | _ => .ok attempted
         let finalized ← execStmt fuel program handled.machine handled.frame cleanup
