@@ -2,7 +2,7 @@ import Harmonia.Applications.Kadmos.Generated.TargetMachine
 import Harmonia.Applications.Kadmos.Generated.TargetJSON
 import Harmonia.Applications.Kadmos.Generated.TargetRegex
 
-set_option maxHeartbeats 1000000
+set_option maxHeartbeats 5000000
 
 namespace Harmonia.Applications.Kadmos.Generated
 
@@ -233,10 +233,15 @@ private def readPropertyValue (lang : TargetLang) (m : TargetMachine)
                 | none => throw .badDescriptor
             | none => throw (.unboundLocal key)
       let obj ← objectAt m ref
+      if ref == m.objectPrototype && key == "toString" then
+        return done m (.builtin .objectPrototypeToStringCall)
       if obj.kind == .jsArray && key == "length" then
         return done m (.number .jsNumber obj.items.length)
       if obj.kind == .jsSet && key == "size" then
         return done m (.number .jsNumber obj.setMembers.length)
+      if obj.kind == .jsSet || obj.kind == .pythonSet then
+        if key == "has" then return done m (.boundBuiltin .setHas receiver)
+        if key == "add" then return done m (.boundBuiltin .setAdd receiver)
       if obj.kind == .jsArray then
         let method ← match key with
           | "push" => .ok .arrayPush | "map" => .ok .arrayMap
@@ -287,6 +292,12 @@ private def readPropertyValue (lang : TargetLang) (m : TargetMachine)
   | .builtin .dict =>
       if key == "items" then return done m (.builtin .dictItems)
       throw .unsupportedExpression
+  | .builtin .objectPrototypeToStringCall =>
+      if key == "call" then return done m (.builtin .objectPrototypeToStringCall)
+      throw .unsupportedExpression
+  | .exception _ message =>
+      if key == "message" then return done m (.string message)
+      return exception m "TypeError" "exception property"
   | _ => return exception m "TypeError" "property of primitive value"
 
 private def normalizeIndex (lang : TargetLang) (length : Nat) (n : Int) : Option Nat :=
@@ -497,6 +508,49 @@ private def hostCall (lang : TargetLang) (m : TargetMachine) (id : BuiltinId)
   | .objectHasOwn, none, [.object ref, .string key] =>
       let own ← readOwn m ref key
       return done m (.bool own.isSome)
+  | .objectCreate, none, [.null] =>
+      let (updated, ref) := allocObject m
+        ⟨.jsNullPrototype, none, [], [], [], false, false⟩
+      return done updated (.object ref)
+  | .objectGetOwnNames, none, [.object ref] =>
+      let obj ← objectAt m ref
+      let names := obj.own.map (fun entry => TargetValue.string entry.1)
+      let (updated, namesRef) := allocObject m
+        ⟨.jsArray, some m.objectPrototype, [], names, [], false, false⟩
+      return done updated (.object namesRef)
+  | .freeze, none, [.object ref] =>
+      let obj ← objectAt m ref
+      let own := obj.own.map (fun entry =>
+        (entry.1, { entry.2 with writable := false, configurable := false }))
+      let updated ← replaceObject m ref { obj with own := own, frozen := true }
+      return done updated (.object ref)
+  | .isFrozen, none, [.object ref] =>
+      let obj ← objectAt m ref
+      return done m (.bool obj.frozen)
+  | .isinstance, none, [value, .object typeRef] =>
+      let types ← objectAt m typeRef
+      if types.kind != .pythonTuple then
+        return exception m "TypeError" "isinstance types"
+      let matchesType (typeValue : TargetValue) : Bool :=
+        match value, typeValue with
+        | .object ref, .builtin typeId =>
+            match (objectAt m ref).toOption with
+            | none => false
+            | some obj =>
+                (typeId == .list && obj.kind == .pythonList) ||
+                (typeId == .tuple && obj.kind == .pythonTuple) ||
+                (typeId == .set && obj.kind == .pythonSet) ||
+                (typeId == .dict && obj.kind == .pythonDict)
+        | .exception className _, .builtin .newRuntimeError =>
+            className == "RuntimeError"
+        | _, _ => false
+      return done m (.bool (types.items.any matchesType))
+  | .isinstance, none, [value, .builtin typeId] =>
+      let matchesType := match value, typeId with
+        | .exception className _, .newRuntimeError => className == "RuntimeError"
+        | .exception className _, .newValueError => className == "ValueError"
+        | _, _ => false
+      return done m (.bool matchesType)
   | .arrayIsArray, none, [.object ref] =>
       let obj ← objectAt m ref
       return done m (.bool (obj.kind == .jsArray))
@@ -525,6 +579,20 @@ private def hostCall (lang : TargetLang) (m : TargetMachine) (id : BuiltinId)
             [], [], false, false⟩
         current ← writeOwn withEntry resultRef key (.object entryRef)
       return done current (.object resultRef)
+  | .objectOwnDescriptor, none, [.object ref, .string key] =>
+      match ← readOwn m ref key with
+      | none => return done m .undefined
+      | some descriptor =>
+          let (updated, descriptorRef) := allocObject m
+            ⟨.jsOrdinary, some m.objectPrototype,
+              [("value", hostDescriptor (descriptor.value.getD .undefined)),
+               ("get", hostDescriptor (descriptor.get.map TargetValue.closure |>.getD .undefined)),
+               ("set", hostDescriptor (descriptor.set.map TargetValue.closure |>.getD .undefined)),
+               ("enumerable", hostDescriptor (.bool descriptor.enumerable)),
+               ("writable", hostDescriptor (.bool descriptor.writable)),
+               ("configurable", hostDescriptor (.bool descriptor.configurable))],
+              [], [], false, false⟩
+          return done updated (.object descriptorRef)
   | .objectDefineProperty, none, [.object targetRef, .string key, .object descriptorRef] =>
       let target ← objectAt m targetRef
       if target.frozen then return exception m "TypeError" "frozen target"
@@ -629,6 +697,18 @@ private def hostCall (lang : TargetLang) (m : TargetMachine) (id : BuiltinId)
       if pattern == "/^[A-Za-z_][A-Za-z_0-9]*$/" then
         return done m (.bool (identifierFullMatch source))
       throw .unsupportedExpression
+  | .regexExec, some (.object ref), [.string source] =>
+      let pattern ← regexSource m ref
+      if pattern != "/^([A-Za-z_][A-Za-z_0-9]*)\\s*=\\s*(.+)$/" then
+        throw .unsupportedExpression
+      match effectFullMatch source with
+      | none => return done m .null
+      | some result =>
+          let items := TargetValue.string result.full ::
+            (result.groups.map fun g => g.map TargetValue.string |>.getD .undefined)
+          let (updated, matchRef) := allocObject m
+            ⟨.jsArray, some m.objectPrototype, [], items, [], false, false⟩
+          return done updated (.object matchRef)
   | .regexMatchEnd, some (.regexMatch result), [] =>
       return done m (.number .pyInt result.stop)
   | .regexGroup, some (.regexMatch result), [] =>
@@ -646,6 +726,11 @@ private def hostCall (lang : TargetLang) (m : TargetMachine) (id : BuiltinId)
         (fun c => c == ' ' || c == '\t' || c == '\n' || c == '\r')))
   | .stringIsDigit, some (.string s), [] =>
       return done m (.bool (!s.isEmpty && s.toList.all Char.isDigit))
+  | .stringSlice, some (.string s), [.number _ first, .number _ last] =>
+      let chars := s.toList
+      let startIndex := normalizeSliceBound chars.length first
+      let stopIndex := normalizeSliceBound chars.length last
+      return done m (.string (String.mk ((chars.drop startIndex).take (stopIndex - startIndex))))
   | .stringStartsWith, some (.string s), [.string leading] =>
       return done m (.bool (s.startsWith leading))
   | .stringMatch, some (.string source), [.object regexRef] =>
@@ -711,6 +796,37 @@ private def hostCall (lang : TargetLang) (m : TargetMachine) (id : BuiltinId)
       let (updated, ref) := allocObject m
         ⟨.pythonDict, none, source.own, [], [], false, false⟩
       return done updated (.object ref)
+  | .setNew, none, [] =>
+      let (updated, ref) := allocObject m
+        ⟨.jsSet, some m.objectPrototype, [], [], [], false, false⟩
+      return done updated (.object ref)
+  | .set, none, [] =>
+      let (updated, ref) := allocObject m
+        ⟨.pythonSet, none, [], [], [], false, false⟩
+      return done updated (.object ref)
+  | .setHas, some (.object ref), [value] =>
+      let obj ← objectAt m ref
+      if obj.kind != .jsSet && obj.kind != .pythonSet then
+        return exception m "TypeError" "set target"
+      return done m (.bool (obj.setMembers.contains value))
+  | .setAdd, some (.object ref), [value] =>
+      let obj ← objectAt m ref
+      if obj.kind != .jsSet && obj.kind != .pythonSet then
+        return exception m "TypeError" "set target"
+      let members := if obj.setMembers.contains value then obj.setMembers
+        else obj.setMembers ++ [value]
+      let updated ← replaceObject m ref { obj with setMembers := members }
+      return done updated (.object ref)
+  | .objectIdentity, none, [.object ref] =>
+      return done m (.number .pyInt ref)
+  | .objectPrototypeToStringCall, none, [.object ref] =>
+      let obj ← objectAt m ref
+      let tag := match obj.kind with
+        | .jsOrdinary | .jsNullPrototype => "[object Object]"
+        | .jsArray => "[object Array]"
+        | .jsSet => "[object Set]"
+        | _ => "[object Object]"
+      return done m (.string tag)
   | _, _, _ => throw (.unsupportedHostPrimitive id)
 
 private def bindOne (lang : TargetLang) (m : TargetMachine)
@@ -769,6 +885,8 @@ def evalExpr (fuel : Nat) (program : TargetProgram) (m : TargetMachine)
           ⟨.regexPattern, some m.objectPrototype,
             [("source", hostDescriptor (.string source))], [], [], false, false⟩
         return done updated (.object ref)
+    | .newExpr constructorCall => evalExpr fuel program m frame constructorCall
+    | .formatted parts => evalFormattedParts fuel program m frame parts ""
     | .local name => do return done m (← localValue m frame name)
     | .global name => do return done m (← localValue m frame name)
     | .checkerField name => do return done m (← readCheckerField m name)
@@ -819,7 +937,9 @@ def evalExpr (fuel : Nat) (program : TargetProgram) (m : TargetMachine)
                     else if id == .list then consumeIterable fuel program values.machine .pythonList xs
                     else hostCall program.lang values.machine id none xs
                 | .boundBuiltin id receiver =>
-                    hostCall program.lang values.machine id (some receiver) xs
+                    if id == .arrayFind || id == .arraySome || id == .arrayMap then
+                      evalArrayMethod fuel program values.machine id receiver xs
+                    else hostCall program.lang values.machine id (some receiver) xs
                 | .closure ref => callClosure fuel program values.machine ref xs
                 | .object ref =>
                     match values.machine.callableObjects.lookup ref with
@@ -853,6 +973,23 @@ def evalExpr (fuel : Nat) (program : TargetProgram) (m : TargetMachine)
                 frame.locals ++ frame.captures, frame.receiver, .normal⟩
             evalDictCompItems fuel program updated compFrame dest binders
               sourceObj.items keyExpr valueExpr filter
+        | .ok _ => return exception source.machine "TypeError" "comprehension iterable"
+    | .listComprehension valueExpr binders iterable filter => do
+        if program.lang != .python then throw .unsupportedExpression
+        let source ← evalExpr fuel program m frame iterable
+        match source.result with
+        | .error e => return ⟨source.machine, .error e⟩
+        | .ok (.object sourceRef) =>
+            let sourceObj ← objectAt source.machine sourceRef
+            if sourceObj.kind != .pythonList && sourceObj.kind != .pythonTuple then
+              return exception source.machine "TypeError" "comprehension iterable"
+            let (updated, dest) := allocObject source.machine
+              ⟨.pythonList, none, [], [], [], false, false⟩
+            let compFrame : TargetFrame :=
+              ⟨frame.qualifiedName ++ ".listComp", [], [],
+                frame.locals ++ frame.captures, frame.receiver, .normal⟩
+            evalListCompItems fuel program updated compFrame dest binders
+              sourceObj.items valueExpr filter
         | .ok _ => return exception source.machine "TypeError" "comprehension iterable"
     | .generator valueExpr binders iterable filter => do
         if program.lang != .python then throw .unsupportedExpression
@@ -937,7 +1074,19 @@ def evalExpr (fuel : Nat) (program : TargetProgram) (m : TargetMachine)
             let rhs ← evalExpr fuel program lhs.machine frame right
             match rhs.result with
             | .error e => return ⟨rhs.machine, .error e⟩
-            | .ok rv => return ⟨rhs.machine, ← binaryValue program.lang rhs.machine op lv rv⟩
+            | .ok rv =>
+                if program.lang == .python && op == .add then
+                  match lv, rv with
+                  | .object leftRef, .object rightRef =>
+                      let leftObj ← objectAt rhs.machine leftRef
+                      let rightObj ← objectAt rhs.machine rightRef
+                      if leftObj.kind == .pythonList && rightObj.kind == .pythonList then
+                        let (updated, ref) := allocObject rhs.machine
+                          ⟨.pythonList, none, [], leftObj.items ++ rightObj.items,
+                            [], false, false⟩
+                        return done updated (.object ref)
+                  | _, _ => pure ()
+                return ⟨rhs.machine, ← binaryValue program.lang rhs.machine op lv rv⟩
     | .andThen left right => do
         let lhs ← evalExpr fuel program m frame left
         match lhs.result with
@@ -1106,7 +1255,7 @@ private def evalDictCompItems (fuel : Nat) (program : TargetProgram)
         | .ok false =>
             evalDictCompItems fuel program afterFilter boundFrame destination
               binders rest keyExpr valueExpr filter
-        | .ok true =>
+        | .ok true => do
             let key ← evalExpr fuel program afterFilter boundFrame keyExpr
             match key.result with
             | .error e => return ⟨key.machine, .error e⟩
@@ -1119,6 +1268,97 @@ private def evalDictCompItems (fuel : Nat) (program : TargetProgram)
                     evalDictCompItems fuel program updated boundFrame destination
                       binders rest keyExpr valueExpr filter
             | .ok _ => return exception key.machine "TypeError" "dict key"
+
+private def evalListCompItems (fuel : Nat) (program : TargetProgram)
+    (m : TargetMachine) (frame : TargetFrame) (destination : ObjRef)
+    (binders : List String) (items : List TargetValue)
+    (valueExpr filter : TargetExpr) : Except TargetError ExprOutcome :=
+  match fuel with
+  | 0 => .error .exhaustedFuel
+  | fuel + 1 =>
+    match items with
+    | [] => .ok (done m (.object destination))
+    | item :: rest => do
+        let (boundMachine, boundFrame) ← bindLoopValue .python m frame binders item
+        let (afterFilter, includeItem) ← evalCompFilter fuel program boundMachine boundFrame filter
+        match includeItem with
+        | .error e => return ⟨afterFilter, .error e⟩
+        | .ok false =>
+            evalListCompItems fuel program afterFilter boundFrame destination binders rest valueExpr filter
+        | .ok true => do
+            let value ← evalExpr fuel program afterFilter boundFrame valueExpr
+            match value.result with
+            | .error e => return ⟨value.machine, .error e⟩
+            | .ok v =>
+                let obj ← objectAt value.machine destination
+                let updated ← replaceObject value.machine destination
+                  { obj with items := obj.items ++ [v] }
+                evalListCompItems fuel program updated boundFrame destination
+                  binders rest valueExpr filter
+
+private def evalArrayMethod (fuel : Nat) (program : TargetProgram)
+    (m : TargetMachine) (id : BuiltinId) (receiver : TargetValue)
+    (args : List TargetValue) : Except TargetError ExprOutcome := do
+  match receiver, args with
+  | .object arrayRef, [.closure callbackRef] =>
+      let obj ← objectAt m arrayRef
+      if obj.kind != .jsArray then return exception m "TypeError" "array callback target"
+      evalArrayMethodItems fuel program m id callbackRef obj.items []
+  | _, _ => return exception m "TypeError" "array callback arguments"
+
+private def evalArrayMethodItems (fuel : Nat) (program : TargetProgram)
+    (m : TargetMachine) (id : BuiltinId) (callbackRef : ClosureRef)
+    (items acc : List TargetValue) : Except TargetError ExprOutcome :=
+  match fuel with
+  | 0 => .error .exhaustedFuel
+  | fuel + 1 =>
+      match items with
+      | [] =>
+          if id == .arraySome then .ok (done m (.bool false))
+          else if id == .arrayFind then .ok (done m .undefined)
+          else
+            let (updated, ref) := allocObject m
+              ⟨.jsArray, some m.objectPrototype, [], acc, [], false, false⟩
+            .ok (done updated (.object ref))
+      | item :: rest => do
+          let callback ← callClosure fuel program m callbackRef [item]
+          match callback.result with
+          | .error e => return ⟨callback.machine, .error e⟩
+          | .ok value =>
+              if id == .arrayMap then
+                evalArrayMethodItems fuel program callback.machine id callbackRef rest
+                  (acc ++ [value])
+              else if ← sourceTruthy .ts callback.machine value then
+                return done callback.machine
+                  (if id == .arraySome then .bool true else item)
+              else evalArrayMethodItems fuel program callback.machine id callbackRef rest acc
+
+private def evalFormattedParts (fuel : Nat) (program : TargetProgram)
+    (m : TargetMachine) (frame : TargetFrame) (parts : TargetExpr)
+    (acc : String) : Except TargetError ExprOutcome :=
+  match fuel with
+  | 0 => .error .exhaustedFuel
+  | fuel + 1 =>
+      match parts with
+      | .empty => .ok (done m (.string acc))
+      | .formatPart literal value rest => do
+          if value == .empty then
+            evalFormattedParts fuel program m frame rest (acc ++ literal)
+          else
+            let result ← evalExpr fuel program m frame value
+            match result.result with
+            | .error e => return ⟨result.machine, .error e⟩
+            | .ok v =>
+                let rendered ← match v with
+                  | .string s => .ok s
+                  | .number _ n => .ok (toString n)
+                  | .bool true => .ok (if program.lang == .ts then "true" else "True")
+                  | .bool false => .ok (if program.lang == .ts then "false" else "False")
+                  | .null => .ok (if program.lang == .ts then "null" else "None")
+                  | _ => .error .unsupportedExpression
+                evalFormattedParts fuel program result.machine frame rest
+                  (acc ++ literal ++ rendered)
+      | _ => .error .unsupportedExpression
 
 def execStmt (fuel : Nat) (program : TargetProgram) (m : TargetMachine)
     (frame : TargetFrame) (stmt : TargetStmt) : Except TargetError StmtOutcome :=
@@ -1540,7 +1780,7 @@ private def consumeGenerator (fuel : Nat) (program : TargetProgram)
 end
 
 inductive RequestShape where
-  | ordinaryRecord | exactDict
+  | ordinaryRecord | exactDict | noArgument
   deriving DecidableEq, Repr
 
 structure TargetSeed where
@@ -1556,8 +1796,12 @@ def canonicalBalanceSeed (lang : TargetLang) (balance : Int) : TargetSeed :=
   ⟨lang, if lang == .ts then .ordinaryRecord else .exactDict,
     balance, [], false, false⟩
 
+def defaultContextSeed (lang : TargetLang) : TargetSeed :=
+  ⟨lang, .noArgument, 0, [], false, false⟩
+
 private def allocateSeed (m : TargetMachine) (seed : TargetSeed) :
     Except TargetError (TargetMachine × TargetValue) := do
+  if seed.shape == .noArgument then return (m, .null)
   if !safeIntermediate seed.balance then throw .outsideNumericDomain
   if (seed.lang == .ts && seed.shape != .ordinaryRecord) ||
       (seed.lang == .python && seed.shape != .exactDict) then throw .invalidTag
@@ -1623,6 +1867,50 @@ def targetConstruct (program : TargetProgram) (seed : TargetSeed) :
   let result ← evalExpr 20000 program withArgument argumentFrame actualCall
   match result.result with
   | .ok _ => return result.machine
+  | .error e => throw (.sourceException e)
+
+structure TargetRequest where
+  lang : TargetLang
+  shape : RequestShape
+  transitionId : String
+  amount : Int
+  deriving DecidableEq, Repr
+
+def canonicalDebitRequest (lang : TargetLang) (n : Int) : TargetRequest :=
+  ⟨lang, if lang == .ts then .ordinaryRecord else .exactDict, "DEBIT", n⟩
+
+structure TargetOutcome where
+  machine : TargetMachine
+  verdict : TargetValue
+  deriving DecidableEq, Repr
+
+def targetStep (program : TargetProgram) (machine : TargetMachine)
+    (request : TargetRequest) : Except TargetError TargetOutcome := do
+  if request.lang != program.lang || !safeIntermediate request.amount then
+    throw .outsideNumericDomain
+  if (request.lang == .ts && request.shape != .ordinaryRecord) ||
+      (request.lang == .python && request.shape != .exactDict) then
+    throw .invalidTag
+  let kind := if request.lang == .ts then ObjectKind.jsOrdinary else .pythonDict
+  let proto := if request.lang == .ts then some machine.objectPrototype else none
+  let (withPayload, payloadRef) := allocObject machine
+    ⟨kind, proto, [("amount", hostDescriptor (number request.lang request.amount))],
+      [], [], false, false⟩
+  let (withRequest, requestRef) := allocObject withPayload
+    ⟨kind, proto,
+      [("transitionId", hostDescriptor (.string request.transitionId)),
+       ("eventPayload", hostDescriptor (.object payloadRef))],
+      [], [], false, false⟩
+  let receiverName := if request.lang == .ts then "this" else "self"
+  let (withCell, cell) := allocCell withRequest (.object requestRef) true
+  let frame : TargetFrame :=
+    ⟨"step-call", [], [("request", cell)], [], some withCell.checkerRef, .normal⟩
+  let expression : TargetExpr :=
+    .call (.property (.local receiverName) "step")
+      (.sequence (.local "request") .empty)
+  let result ← evalExpr 20000 program withCell frame expression
+  match result.result with
+  | .ok verdict => return ⟨result.machine, verdict⟩
   | .error e => throw (.sourceException e)
 
 end Harmonia.Applications.Kadmos.Generated
