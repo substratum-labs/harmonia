@@ -84,3 +84,12 @@ lean_lib flpAudit where
 
 lean_lib flpAuditRejection where
   roots := #[`HarmoniaTests.FLPRejection]
+
+lean_lib causalTest where
+  roots := #[`HarmoniaTests.CausalTest]
+
+lean_lib causalAudit where
+  roots := #[`HarmoniaTests.AuditPolicy, `HarmoniaTests.CausalAxiomAudit]
+
+lean_lib causalAuditRejection where
+  roots := #[`HarmoniaTests.CausalRejection]
