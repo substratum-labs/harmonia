@@ -167,7 +167,7 @@ private def binaryValue (lang : TargetLang) (m : TargetMachine) (op : BinaryOp)
             | _ => .error .unsupportedExpression
         | .string haystack =>
             match left with
-            | .string needle => .ok (needle.isEmpty || (haystack.splitOn needle).length > 1)
+            | .string needle => .ok (needle.isEmpty || (haystack.splitSourceOn needle).length > 1)
             | _ => .ok false
         | _ => .error .unsupportedExpression
       bool (if op == .inObject then present else !present)
@@ -756,7 +756,7 @@ private def hostCall (lang : TargetLang) (m : TargetMachine) (id : BuiltinId)
       return done m (.string (separator.intercalate pieces))
   | .stringReplace, some (.string source), [.string needle, .string replacement] =>
       if needle.isEmpty then throw .unsupportedExpression
-      return done m (.string (replacement.intercalate (source.splitOn needle)))
+      return done m (.string (replacement.intercalate (source.splitSourceOn needle)))
   | .stringReplace, some (.string source), [.object regexRef, .string replacement] =>
       let pattern ← regexSource m regexRef
       if pattern == "/\\s+/g" && replacement == "" then
@@ -764,7 +764,7 @@ private def hostCall (lang : TargetLang) (m : TargetMachine) (id : BuiltinId)
           c != ' ' && c != '\t' && c != '\n' && c != '\r')
         return done m (.string (String.mk kept))
       else if pattern == "/\\\\'/g" then
-        return done m (.string (replacement.intercalate (source.splitOn "\\'")))
+        return done m (.string (replacement.intercalate (source.splitSourceOn "\\'")))
       else throw .unsupportedExpression
   | .arrayPush, some (.object ref), [value] =>
       let obj ← objectAt m ref

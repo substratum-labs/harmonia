@@ -16,7 +16,7 @@ private def classifyLine (line : String) : Option PythonLine :=
   else some ⟨leading.length, trimmed⟩
 
 def pythonLines (source : String) : List PythonLine :=
-  (source.splitOn "\n").filterMap classifyLine
+  (source.splitSourceOn "\n").filterMap classifyLine
 
 private def withoutColon (s : String) : Except ParseError String :=
   match s.toList.reverse with
@@ -98,16 +98,16 @@ private def validBinder (s : String) : Bool :=
 
 private def parseForHeader (s : String) : Except ParseError (List String × TargetExpr) := do
   let noColon ← withoutColon (s.drop 4)
-  match noColon.splitOn " in " with
+  match noColon.splitSourceOn " in " with
   | [binderText, iterableText] =>
-      let binders := (binderText.splitOn ",").map trimSpaces
+      let binders := (binderText.splitSourceOn ",").map trimSpaces
       if binders.isEmpty || !binders.all validBinder then throw (.unsupportedSyntax 0)
       return (binders, ← parseTargetExpr .python iterableText)
   | _ => throw (.unsupportedSyntax 0)
 
 private def parseExceptHeader (s : String) : Except ParseError (Option String × Option String) := do
   let text ← withoutColon (s.drop 7)
-  match text.splitOn " as " with
+  match text.splitSourceOn " as " with
   | [kind] =>
       if validBinder kind then return (some kind, none)
       else throw (.unsupportedSyntax 0)
@@ -117,7 +117,7 @@ private def parseExceptHeader (s : String) : Except ParseError (Option String ×
   | _ => throw (.unsupportedSyntax 0)
 
 private def parseParameter (source : String) : Except ParseError ParamSpec := do
-  let parts := source.splitOn "="
+  let parts := source.splitSourceOn "="
   let (namePart, defaultPart) ← match parts with
     | [name] => .ok (name, none)
     | [name, value] => .ok (name, some value)
@@ -149,11 +149,11 @@ private def splitParams (s : String) : Except ParseError (List String) :=
 
 private def parseDefHeader (source : String) : Except ParseError (String × List ParamSpec) := do
   if !source.endsWith ":" then throw (.unsupportedSyntax 0)
-  match (source.drop 4).splitOn "(" with
+  match (source.drop 4).splitSourceOn "(" with
   | [name, tail] =>
       let name := trimSpaces name
       if !validBinder name then throw (.unsupportedSyntax 0)
-      match tail.splitOn ")" with
+      match tail.splitSourceOn ")" with
       | [params, _returnAnnotation] =>
           let paramSpecs ← if params.isEmpty then .ok []
             else (← splitParams params).mapM parseParameter
@@ -163,14 +163,14 @@ private def parseDefHeader (source : String) : Except ParseError (String × List
 
 private def parseImportLine (source : String) : Except ParseError TargetStmt := do
   if source.startsWith "import " then
-    match (source.drop 7).splitOn " as " with
+    match (source.drop 7).splitSourceOn " as " with
     | [name] => return .importModule name name
     | [name, alias] => return .importModule name alias
     | _ => throw (.unsupportedSyntax 0)
   else if source.startsWith "from " then
-    match (source.drop 5).splitOn " import " with
+    match (source.drop 5).splitSourceOn " import " with
     | [moduleName, binding] =>
-        match binding.splitOn " as " with
+        match binding.splitSourceOn " as " with
         | [name] => return .fromImport moduleName name name
         | [name, alias] => return .fromImport moduleName name alias
         | _ => throw (.unsupportedSyntax 0)
@@ -239,10 +239,10 @@ private def parsePythonStatement (fuel indent : Nat) (source : String)
         return (← parseImportLine source, lines)
       else if source.startsWith "class " then do
         if !source.endsWith ":" then throw (.unsupportedSyntax 0)
-        match (source.drop 6).splitOn "(" with
+        match (source.drop 6).splitSourceOn "(" with
         | [name, tail] =>
             if !validBinder name then throw (.unsupportedSyntax 0)
-            match tail.splitOn ")" with
+            match tail.splitSourceOn ")" with
             | [baseText, ":"] =>
                 let base ← parseTargetExpr .python baseText
                 let (body, after) ← parsePythonSuite fuel (indent + 4) lines
@@ -293,7 +293,7 @@ private def parsePythonStatement (fuel indent : Nat) (source : String)
       else if source == "break" then return (.breakTarget "loop", lines)
       else if source == "continue" then return (.continueTarget "loop", lines)
       else if source.startsWith "nonlocal " then do
-        let names := ((source.drop 9).splitOn ",").map trimSpaces
+        let names := ((source.drop 9).splitSourceOn ",").map trimSpaces
         if names.isEmpty || !names.all validBinder then throw (.unsupportedSyntax 0)
         return (.nonlocalNames names, lines)
       else do
@@ -306,8 +306,8 @@ private def parsePythonStatement (fuel indent : Nat) (source : String)
             match ← splitAssignment source with
             | some (left, right) =>
                 let left ← stripAnnotation left
-                let lhs ← if (left.splitOn ",").length > 1 then do
-                    let names := (left.splitOn ",").map trimSpaces
+                let lhs ← if (left.splitSourceOn ",").length > 1 then do
+                    let names := (left.splitSourceOn ",").map trimSpaces
                     if !names.all validBinder then throw (.unsupportedSyntax 0)
                     .ok (AssignTarget.tupleLocals names)
                   else assignmentTarget (← parseTargetExpr .python left)
@@ -319,14 +319,40 @@ private def parsePythonStatement (fuel indent : Nat) (source : String)
 
 end
 
-def parsePythonBlock (source : String) (indent : Nat) : Except ParseError TargetStmt := do
-  let lines := pythonLines source
+def parsePythonLines (lines : List PythonLine) (indent : Nat) :
+    Except ParseError TargetStmt := do
   let (body, rest) ← parsePythonSuite (lines.length * 2 + 1) indent lines
   if rest.isEmpty then return body
   else throw (.unsupportedSyntax 0)
 
+def parsePythonBlock (source : String) (indent : Nat) : Except ParseError TargetStmt :=
+  parsePythonLines (pythonLines source) indent
+
+private def splitPythonTopLevelAux (fuel : Nat) (current : List PythonLine)
+    (chunks : List (List PythonLine)) (remaining : List PythonLine) :
+    List (List PythonLine) :=
+  match fuel with
+  | 0 => ((if current.isEmpty then chunks else current.reverse :: chunks).reverse)
+  | fuel + 1 =>
+      match remaining with
+      | [] => (if current.isEmpty then chunks else current.reverse :: chunks).reverse
+      | line :: rest =>
+          if line.indent == 0 && !current.isEmpty then
+            splitPythonTopLevelAux fuel [line] (current.reverse :: chunks) rest
+          else splitPythonTopLevelAux fuel (line :: current) chunks rest
+
+def splitPythonTopLevel (lines : List PythonLine) : List (List PythonLine) :=
+  splitPythonTopLevelAux (lines.length + 1) [] [] lines
+
+private def parsePythonChunks : List (List PythonLine) → Except ParseError TargetStmt
+  | [] => .ok .empty
+  | chunk :: rest => do
+      let first ← parsePythonLines chunk 0
+      let tail ← parsePythonChunks rest
+      return .sequence first tail
+
 def parsePythonProgram (source : String) : Except ParseError TargetProgram := do
-  let moduleBody ← parsePythonBlock source 0
+  let moduleBody ← parsePythonChunks (splitPythonTopLevel (pythonLines source))
   return ⟨.python, moduleBody, .empty, [], .local "_WORLD", .local "_DEFAULTS"⟩
 
 end Harmonia.Applications.Kadmos.Generated

@@ -44,7 +44,7 @@ private def tokenIsIdentifier (s : String) : Bool :=
       cs.all (fun x => x.isAlphanum || x == '_' || x == '$')
 
 private def decimalToken (s : String) : Bool :=
-  match s.splitOn "." with
+  match s.splitSourceOn "." with
   | [whole, fraction] => !whole.isEmpty && !fraction.isEmpty &&
       whole.toList.all Char.isDigit && fraction.toList.all Char.isDigit
   | _ => false

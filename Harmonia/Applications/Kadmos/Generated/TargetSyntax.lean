@@ -4,6 +4,30 @@ set_option maxHeartbeats 1000000
 
 namespace Harmonia.Applications.Kadmos.Generated
 
+private def splitSourceChars (fuel : Nat) (remaining needle current : List Char)
+    (result : List String) : List String :=
+  match fuel with
+  | 0 => (String.mk current.reverse :: result).reverse
+  | fuel + 1 =>
+      if needle.isPrefixOf remaining then
+        splitSourceChars fuel (remaining.drop needle.length) needle []
+          (String.mk current.reverse :: result)
+      else
+        match remaining with
+        | [] => (String.mk current.reverse :: result).reverse
+        | first :: rest =>
+            splitSourceChars fuel rest needle (first :: current) result
+
+/-- Kernel-reducible splitting for the restricted source parser. The separator
+    is always a nonempty fixed grammar token in the generated fixtures. -/
+def splitSourceOn (source separator : String) : List String :=
+  let needle := separator.toList
+  if needle.isEmpty then [source]
+  else splitSourceChars (source.toList.length + 1) source.toList needle [] []
+
+def _root_.String.splitSourceOn (source separator : String) : List String :=
+  Harmonia.Applications.Kadmos.Generated.splitSourceOn source separator
+
 inductive TargetLang where | ts | python deriving DecidableEq, Repr
 
 inductive TokenKind where

@@ -1,6 +1,12 @@
 import Harmonia.Applications.Kadmos.Generated.TargetStatementParser
+import Harmonia.Applications.Kadmos.Generated.Fixtures
 
 open Harmonia.Applications.Kadmos.Generated
+open Harmonia.Applications.Kadmos.GeneratedFixtures
+
+example : "a,,b,".splitSourceOn "," = ["a", "", "b", ""] := by decide +kernel
+example : "x in y".splitSourceOn " in " = ["x", "y"] := by decide +kernel
+example : (pythonLines balancePySource).length = 362 := by decide +kernel
 
 private def booleanBody :=
   "    if type(value) is not bool:\n" ++

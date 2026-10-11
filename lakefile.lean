@@ -79,6 +79,18 @@ lean_lib kadmosGeneratedK02SemanticsTest where
 lean_lib kadmosGeneratedK02ProgramParserTest where
   roots := #[`HarmoniaTests.KadmosGeneratedK02ProgramParser]
 
+lean_lib kadmosGeneratedK02BalanceTSParseTest where
+  roots := #[`HarmoniaTests.KadmosGeneratedK02BalanceTSParse]
+
+lean_lib kadmosGeneratedK02BalancePythonParseTest where
+  roots := #[`HarmoniaTests.KadmosGeneratedK02BalancePythonParse]
+
+lean_lib kadmosGeneratedK02OrderTSParseTest where
+  roots := #[`HarmoniaTests.KadmosGeneratedK02OrderTSParse]
+
+lean_lib kadmosGeneratedK02OrderPythonParseTest where
+  roots := #[`HarmoniaTests.KadmosGeneratedK02OrderPythonParse]
+
 lean_lib kadmosGeneratedK02JSONTest where
   roots := #[`HarmoniaTests.KadmosGeneratedK02JSON]
 
