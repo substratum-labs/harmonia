@@ -58,6 +58,19 @@ def kadmosWorldSourceModules : Array Name := #[
   `Harmonia.Applications.Kadmos.Balance, `Harmonia.Applications.Kadmos.Bridge.Syntax,
   `Harmonia.Applications.Kadmos.Bridge.Certificate,
   `Harmonia.Applications.Kadmos.Bridge.Fixtures,
+  `Harmonia.Applications.Kadmos.Generated.BalanceModel,
+  `Harmonia.Applications.Kadmos.Generated.Fixtures,
+  `Harmonia.Applications.Kadmos.Generated.TargetCertificate,
+  `Harmonia.Applications.Kadmos.Generated.TargetExpressionParser,
+  `Harmonia.Applications.Kadmos.Generated.TargetJSON,
+  `Harmonia.Applications.Kadmos.Generated.TargetMachine,
+  `Harmonia.Applications.Kadmos.Generated.TargetObservation,
+  `Harmonia.Applications.Kadmos.Generated.TargetProgramParser,
+  `Harmonia.Applications.Kadmos.Generated.TargetRegex,
+  `Harmonia.Applications.Kadmos.Generated.TargetSemantics,
+  `Harmonia.Applications.Kadmos.Generated.TargetStatementParser,
+  `Harmonia.Applications.Kadmos.Generated.TargetSyntax,
+  `Harmonia.Applications.Kadmos.Generated.TargetTSStatementParser,
   `HarmoniaTests.KadmosWorldIR,
   `HarmoniaTests.KadmosWorldInterpreter, `HarmoniaTests.KadmosWorldBalance,
   `HarmoniaTests.KadmosWorldAxiomAudit]
@@ -150,6 +163,50 @@ elab "#audit_kadmos_bridge" : command => do
   let env ← getEnv
   HarmoniaAudit.auditSelected (HarmoniaAudit.kadmosBridgeDeclaration env) "kadmos bridge" true
     "KADMOS BRIDGE AUDIT PASS"
+
+namespace HarmoniaAudit
+
+def kadmosGeneratedK02SourceModules : Array Name := #[
+  `Harmonia.Applications.Kadmos.Generated.BalanceModel,
+  `Harmonia.Applications.Kadmos.Generated.Fixtures,
+  `Harmonia.Applications.Kadmos.Generated.TargetCertificate,
+  `Harmonia.Applications.Kadmos.Generated.TargetExpressionParser,
+  `Harmonia.Applications.Kadmos.Generated.TargetJSON,
+  `Harmonia.Applications.Kadmos.Generated.TargetMachine,
+  `Harmonia.Applications.Kadmos.Generated.TargetObservation,
+  `Harmonia.Applications.Kadmos.Generated.TargetProgramParser,
+  `Harmonia.Applications.Kadmos.Generated.TargetRegex,
+  `Harmonia.Applications.Kadmos.Generated.TargetSemantics,
+  `Harmonia.Applications.Kadmos.Generated.TargetStatementParser,
+  `Harmonia.Applications.Kadmos.Generated.TargetSyntax,
+  `Harmonia.Applications.Kadmos.Generated.TargetTSStatementParser,
+  `HarmoniaTests.KadmosGeneratedK02Lexer,
+  `HarmoniaTests.KadmosGeneratedK02Machine,
+  `HarmoniaTests.KadmosGeneratedK02ExpressionParser,
+  `HarmoniaTests.KadmosGeneratedK02StatementParser,
+  `HarmoniaTests.KadmosGeneratedK02TSParser,
+  `HarmoniaTests.KadmosGeneratedK02Semantics,
+  `HarmoniaTests.KadmosGeneratedK02ProgramParser,
+  `HarmoniaTests.KadmosGeneratedK02JSON,
+  `HarmoniaTests.KadmosGeneratedK02Regex,
+  `HarmoniaTests.KadmosGeneratedK02BalanceTSParse,
+  `HarmoniaTests.KadmosGeneratedK02BalancePythonParse,
+  `HarmoniaTests.KadmosGeneratedK02OrderTSParse,
+  `HarmoniaTests.KadmosGeneratedK02OrderPythonParse,
+  `HarmoniaTests.KadmosGeneratedK02Certificate,
+  `HarmoniaTests.KadmosGeneratedK02BalanceTSCertificate,
+  `HarmoniaTests.KadmosGeneratedK02BalancePythonCertificate,
+  `HarmoniaTests.KadmosGeneratedK02AxiomAudit]
+
+def kadmosGeneratedK02Declaration (env : Environment) (n : Name) : Bool :=
+  kadmosGeneratedK02SourceModules.contains (sourceModule env n)
+
+end HarmoniaAudit
+
+elab "#audit_kadmos_generated_k02" : command => do
+  let env ← getEnv
+  HarmoniaAudit.auditSelected (HarmoniaAudit.kadmosGeneratedK02Declaration env)
+    "kadmos generated K-02" true "KADMOS GENERATED K-02 AUDIT PASS"
 
 namespace HarmoniaAudit
 

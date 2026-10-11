@@ -94,6 +94,13 @@ class KadmosInventoryTests(unittest.TestCase):
         self.write('Harmonia.Applications.Kadmos.World', '-- axiom sorry\n/- native_decide /- nested -/ -/\ndef text := "sorryAx"\n')
         check(self.root)
 
+    def test_quote_character_literal_does_not_hide_axiom(self):
+        self.write('Harmonia.Applications.Kadmos.World', 'def quote : Char := \'"\'\n')
+        check(self.root)
+        self.write('Harmonia.Applications.Kadmos.World', 'def quote : Char := \'"\'\naxiom hidden : Nat\n')
+        with self.assertRaisesRegex(AuditInventoryError, 'forbidden certified source token axiom'):
+            check(self.root)
+
     def test_missing_project_import(self):
         self.write('Harmonia.Applications.Kadmos.World', 'import Harmonia.Applications.Kadmos.Absent\n')
         with self.assertRaisesRegex(AuditInventoryError, 'missing project import'):

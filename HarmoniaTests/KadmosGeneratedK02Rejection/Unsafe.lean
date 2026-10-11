@@ -1,0 +1,3 @@
+namespace KadmosGeneratedK02EscapedUnsafe
+unsafe axiom unused : Nat
+end KadmosGeneratedK02EscapedUnsafe

@@ -100,6 +100,14 @@ lean_lib kadmosGeneratedK02BalanceTSCertificateTest where
 lean_lib kadmosGeneratedK02BalancePythonCertificateTest where
   roots := #[`HarmoniaTests.KadmosGeneratedK02BalancePythonCertificate]
 
+lean_lib kadmosGeneratedK02Audit where
+  roots := #[`HarmoniaTests.AuditPolicy, `HarmoniaTests.KadmosGeneratedK02AxiomAudit]
+
+lean_lib kadmosGeneratedK02AuditRejection where
+  roots := #[`HarmoniaTests.KadmosGeneratedK02Rejection.Unused,
+    `HarmoniaTests.KadmosGeneratedK02Rejection.Unsafe,
+    `HarmoniaTests.KadmosGeneratedK02AuditRejection]
+
 lean_lib kadmosGeneratedK02JSONTest where
   roots := #[`HarmoniaTests.KadmosGeneratedK02JSON]
 

@@ -36,6 +36,9 @@ def scrub(source):
             stop = source.find('\n', i)
             if stop == -1: stop = len(source)
             out.extend(' ' * (stop - i)); i = stop
+        elif source.startswith("'\"'", i):
+            # Lean's quote character literal is not the start of a string.
+            out.extend('   '); i += 3
         elif source[i] == '"':
             out.append(' '); i += 1
             closed = False

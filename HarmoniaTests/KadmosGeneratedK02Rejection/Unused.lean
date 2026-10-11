@@ -1,0 +1,3 @@
+namespace KadmosGeneratedK02EscapedTrap
+axiom unused : Nat
+end KadmosGeneratedK02EscapedTrap
