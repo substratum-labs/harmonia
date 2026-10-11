@@ -239,10 +239,16 @@ private def parsePythonStatement (fuel indent : Nat) (source : String)
         return (← parseImportLine source, lines)
       else if source.startsWith "class " then do
         if !source.endsWith ":" then throw (.unsupportedSyntax 0)
-        let name := ((source.drop 6).splitOn "(").headD ""
-        if !validBinder name then throw (.unsupportedSyntax 0)
-        let (body, after) ← parsePythonSuite fuel (indent + 4) lines
-        return (.defineClass name body, after)
+        match (source.drop 6).splitOn "(" with
+        | [name, tail] =>
+            if !validBinder name then throw (.unsupportedSyntax 0)
+            match tail.splitOn ")" with
+            | [baseText, ":"] =>
+                let base ← parseTargetExpr .python baseText
+                let (body, after) ← parsePythonSuite fuel (indent + 4) lines
+                return (.defineClass name base body, after)
+            | _ => throw (.unsupportedSyntax 0)
+        | _ => throw (.unsupportedSyntax 0)
       else if source == "@property" then do
         match lines with
         | header :: rest => do

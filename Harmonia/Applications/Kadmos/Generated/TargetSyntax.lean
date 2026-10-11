@@ -121,7 +121,10 @@ inductive BuiltinId where
   | jsonParse | jsonLoads | number | float | int | typeof | type | isinstance
   | objectPrototype | objectPrototypeToStringCall | objectGetPrototypeOf
   | objectCreate | objectEntries | objectHasOwn | objectOwnDescriptors
+  | objectOwnDescriptor | objectGetOwnNames
   | objectDefineProperty | arrayIsArray | nodeIsProxy | structuredClone
+  | jsIsSafeInteger | newError | newValueError | newRuntimeError | newOverflowError
+  | strType | boolType | noneType | pyObject
   | deepCopy | dict | list | tuple | set | mappingProxy | objectIdentity
   | regexCompile | regexMatchAt | regexFullmatch | regexExec | regexTest
   | regexMatchEnd | regexGroup | stringReplace | stringJoin | stringSlice
@@ -195,7 +198,7 @@ inductive TargetStmt where
   | nonlocalNames (names : List String)
   | importModule (moduleName alias : String)
   | fromImport (moduleName name alias : String)
-  | defineClass (name : String) (body : TargetStmt)
+  | defineClass (name : String) (base : TargetExpr) (body : TargetStmt)
   | defineGetter (name : String) (body : TargetStmt)
   | defineFunction (name : String) (params : List ParamSpec) (body : TargetStmt)
   | assign (target : AssignTarget) (value : TargetExpr)

@@ -21,6 +21,7 @@ inductive TargetValue where
   | undefined | null | bool (value : Bool) | string (value : String)
   | number (tag : NumberTag) (value : Int)
   | object (ref : ObjRef) | closure (ref : ClosureRef)
+  | classConstructor (name : String)
   | builtin (id : BuiltinId) | boundBuiltin (id : BuiltinId) (receiver : TargetValue)
   | regexMatch (value : MatchValue)
   | exception (className message : String)
@@ -38,7 +39,7 @@ structure Descriptor where
 inductive ObjectKind where
   | jsOrdinary | jsArray | jsSet | jsPrototype | jsNullPrototype
   | pythonDict | pythonList | pythonTuple | pythonSet | mappingProxy
-  | pythonOrdinary | regexPattern
+  | pythonOrdinary | pythonGenerator | regexPattern
   deriving DecidableEq, Repr
 
 structure HeapObject where
@@ -85,6 +86,14 @@ structure TargetClosure where
   receiver : Option ObjRef
   deriving DecidableEq, Repr
 
+structure GeneratorState where
+  valueExpr : TargetExpr
+  binders : List String
+  filterExpr : TargetExpr
+  remaining : List TargetValue
+  frame : TargetFrame
+  deriving DecidableEq, Repr
+
 structure TargetMachine where
   globals : List (String × CellRef)
   frames : List TargetFrame
@@ -92,30 +101,36 @@ structure TargetMachine where
   writableCells : List (CellRef × Bool)
   objects : List (ObjRef × HeapObject)
   closures : List (ClosureRef × TargetClosure)
+  generators : List (ObjRef × GeneratorState)
   nextCell : CellRef
   nextObject : ObjRef
   nextClosure : ClosureRef
   objectPrototype : ObjRef
   checkerRef : ObjRef
+  classMethods : List (String × ClosureRef)
+  callableObjects : List (ObjRef × BuiltinId)
   checker : TargetStore
   fuel : Nat
   deriving DecidableEq, Repr
 
 def TargetMachine.empty : TargetMachine :=
   ⟨[], [], [], [], [(0, ⟨.jsPrototype, none, [], [], [], true, false⟩),
-    (1, ⟨.pythonOrdinary, none, [], [], [], false, false⟩)], [], 0, 2, 0, 0, 1,
+    (1, ⟨.pythonOrdinary, none, [], [], [], false, false⟩)], [], [], 0, 2, 0, 0, 1, [], [],
    ⟨"", 0, 0, none, none, false, []⟩, 0⟩
 
 inductive TargetError where
   | danglingObject (ref : ObjRef)
   | danglingCell (ref : CellRef)
   | danglingClosure (ref : ClosureRef)
+  | danglingGenerator (ref : ObjRef)
   | immutableCell (ref : CellRef)
   | invalidTag | wrongArity | badDescriptor | frozenObject
   | unsupportedHostPrimitive (id : BuiltinId)
+  | sourceException (value : TargetValue)
   | unboundLocal (name : String)
   | unsupportedExpression
   | unsupportedStatement
+  | unsupportedNode (description : String)
   | badBinderCardinality
   | outsideNumericDomain
   | wrongControl | exhaustedFuel
@@ -206,6 +221,19 @@ def allocClosure (m : TargetMachine) (closure : TargetClosure) :
   let withClosure := { m with closures := (ref, closure) :: m.closures }
   ({ withClosure with nextClosure := ref + 1 }, ref)
 
+def generatorAt (m : TargetMachine) (ref : ObjRef) :
+    Except TargetError GeneratorState :=
+  match m.generators.lookup ref with
+  | some state => .ok state
+  | none => .error (.danglingGenerator ref)
+
+def replaceGenerator (m : TargetMachine) (ref : ObjRef) (state : GeneratorState) :
+    Except TargetError TargetMachine := do
+  let _ ← generatorAt m ref
+  let updated := m.generators.map fun entry =>
+    (entry.1, if entry.1 == ref then state else entry.2)
+  return { m with generators := updated }
+
 def readOwn (m : TargetMachine) (ref : ObjRef) (key : String) :
     Except TargetError (Option Descriptor) := do
   let o ← objectAt m ref
@@ -245,7 +273,8 @@ def sourceTruthy (lang : TargetLang) (m : TargetMachine)
   | .bool b => .ok b
   | .number _ n => .ok (n != 0)
   | .string s => .ok (!s.isEmpty)
-  | .closure _ | .builtin _ | .boundBuiltin _ _ | .regexMatch _ | .exception _ _ => .ok true
+  | .closure _ | .classConstructor _ | .builtin _ | .boundBuiltin _ _
+  | .regexMatch _ | .exception _ _ => .ok true
   | .object ref => do
       let o ← objectAt m ref
       if lang == .ts then return true

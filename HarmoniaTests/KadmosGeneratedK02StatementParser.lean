@@ -74,3 +74,9 @@ example : (parsePythonBlock
      "    return minimum\n") 0).toOption.isSome = true := by decide +kernel
 example : (parsePythonProgram
     "import json\ndef f(x: int = 0) -> int:\n    return x\n").toOption.isSome = true := by decide +kernel
+example : (parsePythonBlock
+    "class WorldChecker(IWorldChecker):\n    def get_state(self):\n        return self.__state\n" 0).toOption =
+    some (.sequence (.defineClass "WorldChecker" (.local "IWorldChecker")
+      (.sequence (.defineFunction "get_state" []
+        (.sequence (.returnValue (.property (.local "self") "__state")) .empty)) .empty))
+      .empty) := by decide +kernel

@@ -165,6 +165,129 @@ example : (evalExpr 40 pyProgram TargetMachine.empty frame
     (.builtin .float (.sequence (.integer 30) .empty))).toOption.bind
       (fun out => out.result.toOption) = some (.number .pyFloat 30) := by decide +kernel
 example : (evalExpr 40 pyProgram TargetMachine.empty frame
+    (.builtin .float (.sequence (.string "0") .empty))).toOption.bind
+      (fun out => out.result.toOption) = some (.number .pyFloat 0) := by decide +kernel
+example : (evalExpr 40 tsProgram TargetMachine.empty frame
+    (.builtin .number (.sequence (.string "0") .empty))).toOption.bind
+      (fun out => out.result.toOption) = some (.number .jsNumber 0) := by decide +kernel
+example : (evalExpr 40 tsProgram (initialHostMachine .ts) frame
+    (.call (.local "Number") (.sequence (.string "0") .empty))).toOption.bind
+      (fun out => out.result.toOption) = some (.number .jsNumber 0) := by decide +kernel
+example : (evalExpr 40 pyProgram TargetMachine.empty frame
     (.call (.property (.builtin .float (.sequence (.integer 30) .empty)) "is_integer")
       .empty)).toOption.bind (fun out => out.result.toOption) =
       some (.bool true) := by decide +kernel
+example : (evalExpr 80 tsProgram TargetMachine.empty frame
+    (.property (.builtin .jsonParse
+      (.sequence (.string "{\"balance\":100}") .empty)) "balance")).toOption.bind
+      (fun out => out.result.toOption) = some (.number .jsNumber 100) := by decide +kernel
+example : (evalExpr 80 tsProgram (initialHostMachine .ts) frame
+    (.property (.call (.property (.local "JSON") "parse")
+      (.sequence (.string "{\"balance\":100}") .empty)) "balance")).toOption.bind
+      (fun out => out.result.toOption) = some (.number .jsNumber 100) := by decide +kernel
+example : (evalExpr 20 tsProgram TargetMachine.empty frame
+    (.typeCast (.string "Ready") "WorldState")).toOption.bind
+      (fun out => out.result.toOption) = some (.string "Ready") := by decide +kernel
+example : (execStmt 40 pyProgram TargetMachine.empty frame
+    (.tryCatchFinally (.throwValue (.string "e")) (some "any") none
+      .rethrow .empty)).toOption.map StmtOutcome.control =
+      some (.raised (.string "e")) := by decide +kernel
+private def classCall : TargetStmt :=
+  .sequence (.fromImport "ports" "IWorldChecker" "IWorldChecker")
+    (.sequence (.defineClass "WorldChecker" (.local "IWorldChecker")
+      (.defineFunction "get_state" [] (.returnValue (.string "Ready"))))
+      (.returnValue (.call (.property (.local "self") "get_state") .empty)))
+example : (execStmt 100 pyProgram (initialHostMachine .python)
+    { frame with receiver := some TargetMachine.empty.checkerRef } classCall).toOption.map
+      StmtOutcome.control = some (.returned (.string "Ready")) := by decide +kernel
+example : (evalExpr 80 pyProgram (initialHostMachine .python) frame
+    (.binary .isIdentity
+      (.builtin .type (.sequence (.object (.objectEntry "balance" (.integer 100) .empty)) .empty))
+      (.local "dict"))).toOption.bind (fun out => out.result.toOption) =
+      some (.bool true) := by decide +kernel
+private def typeTupleMembership : TargetExpr :=
+  .binary .inObject
+    (.builtin .type (.sequence (.integer 30) .empty))
+    (.tuple (.sequence (.local "int") (.sequence (.local "float") .empty)))
+example : (evalExpr 80 pyProgram (initialHostMachine .python) frame
+    typeTupleMembership).toOption.bind (fun out => out.result.toOption) =
+      some (.bool true) := by decide +kernel
+example : (evalExpr 120 pyProgram (initialHostMachine .python) frame
+    (.index (.dictComprehension (.local "k") (.local "v") ["k", "v"]
+      (.call (.property (.object (.objectEntry "balance" (.integer 100) .empty)) "items") .empty)
+      .empty) (.string "balance"))).toOption.bind (fun out => out.result.toOption) =
+      some (.number .pyInt 100) := by decide +kernel
+example : (evalExpr 160 pyProgram (initialHostMachine .python) frame
+    (.call (.local "next") (.sequence
+      (.generator (.binary .div (.integer 10)
+        (.binary .sub (.integer 2) (.local "x"))) ["x"]
+        (.array (.sequence (.integer 1) (.sequence (.integer 2) .empty))) .empty)
+      .empty))).toOption.bind (fun out => out.result.toOption) =
+      some (.number .pyInt 10) := by decide +kernel
+example : (evalExpr 160 pyProgram (initialHostMachine .python) frame
+    (.call (.local "tuple") (.sequence
+      (.generator (.local "x") ["x"]
+        (.array (.sequence (.integer 1) (.sequence (.integer 2) .empty))) .empty)
+      .empty))).toOption.bind (fun out =>
+      out.result.toOption.bind (fun value => match value with
+        | .object ref => (objectAt out.machine ref).toOption.map HeapObject.items
+        | _ => none)) =
+      some [.number .pyInt 1, .number .pyInt 2] := by decide +kernel
+example : (evalExpr 80 pyProgram (initialHostMachine .python) frame
+    (.builtin .mappingProxy (.sequence
+      (.object (.objectEntry "balance" (.integer 100) .empty)) .empty))).toOption.bind
+      (fun out => out.result.toOption.bind (fun value => match value with
+        | .object ref => (objectAt out.machine ref).toOption.map HeapObject.kind
+        | _ => none)) = some .mappingProxy := by decide +kernel
+example : (evalExpr 80 pyProgram (initialHostMachine .python) frame
+    (.call (.property (.object (.objectEntry "balance" (.integer 100) .empty)) "get")
+      (.sequence (.string "missing") (.sequence (.integer 7) .empty)))).toOption.bind
+      (fun out => out.result.toOption) = some (.number .pyInt 7) := by decide +kernel
+example : (evalExpr 80 pyProgram (initialHostMachine .python) frame
+    (.builtin .regexCompile (.sequence (.string "[A-Za-z_]+") .empty))).toOption.bind
+      (fun out => out.result.toOption.bind (fun value => match value with
+        | .object ref => (objectAt out.machine ref).toOption.map HeapObject.kind
+        | _ => none)) = some .regexPattern := by decide +kernel
+example : (evalExpr 120 pyProgram (initialHostMachine .python) frame
+    (.call (.property (.builtin .regexCompile
+      (.sequence (.string pythonTokenPattern) .empty)) "match")
+      (.sequence (.string "balance >= 0") (.sequence (.integer 0) .empty)))).toOption.bind
+      (fun out => out.result.toOption.map (fun value => match value with
+        | .regexMatch result => (result.full, result.stop)
+        | _ => ("", 0))) = some ("balance", 7) := by decide +kernel
+private def appendToken : TargetStmt :=
+  .sequence (.letLocal "tokens" true (.array .empty))
+    (.sequence (.doExpr (.call (.property (.local "tokens") "append")
+      (.sequence (.string "balance") .empty)))
+      (.returnValue (.index (.local "tokens") (.integer 0))))
+example : (execStmt 80 pyProgram TargetMachine.empty frame appendToken).toOption.map
+    StmtOutcome.control = some (.returned (.string "balance")) := by decide +kernel
+private def nonlocalPosition : TargetStmt :=
+  .sequence (.letLocal "position" true (.integer 0))
+    (.sequence (.defineFunction "parse" []
+      (.sequence (.nonlocalNames ["position"])
+        (.augment (.local "position") .add (.integer 1))))
+      (.sequence (.doExpr (.call (.local "parse") .empty))
+        (.returnValue (.local "position"))))
+example : (execStmt 120 pyProgram TargetMachine.empty frame nonlocalPosition).toOption.map
+    StmtOutcome.control = some (.returned (.number .pyInt 1)) := by decide +kernel
+example : (evalExpr 80 pyProgram (initialHostMachine .python) frame
+    (.call (.local "object") .empty)).toOption.bind
+      (fun out => out.result.toOption.bind (fun value => match value with
+        | .object ref => (objectAt out.machine ref).toOption.map HeapObject.kind
+        | _ => none)) = some .pythonOrdinary := by decide +kernel
+example : (evalExpr 80 pyProgram (initialHostMachine .python) frame
+    (.index (.call (.local "dict") (.sequence
+      (.object (.objectEntry "balance" (.integer 100) .empty)) .empty))
+      (.string "balance"))).toOption.bind (fun out => out.result.toOption) =
+      some (.number .pyInt 100) := by decide +kernel
+private def copiedFrame : TargetStmt :=
+  .sequence (.letLocal "original" true
+    (.object (.objectEntry "balance" (.integer 100) .empty)))
+    (.sequence (.letLocal "copied" true
+      (.builtin .deepCopy (.sequence (.local "original") .empty)))
+      (.sequence (.assign (.index (.local "copied") (.string "balance"))
+        (.integer 70))
+        (.returnValue (.index (.local "original") (.string "balance")))))
+example : (execStmt 120 pyProgram TargetMachine.empty frame copiedFrame).toOption.map
+    StmtOutcome.control = some (.returned (.number .pyInt 100)) := by decide +kernel
