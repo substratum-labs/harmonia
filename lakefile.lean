@@ -91,6 +91,15 @@ lean_lib kadmosGeneratedK02OrderTSParseTest where
 lean_lib kadmosGeneratedK02OrderPythonParseTest where
   roots := #[`HarmoniaTests.KadmosGeneratedK02OrderPythonParse]
 
+lean_lib kadmosGeneratedK02CertificateTest where
+  roots := #[`HarmoniaTests.KadmosGeneratedK02Certificate]
+
+lean_lib kadmosGeneratedK02BalanceTSCertificateTest where
+  roots := #[`HarmoniaTests.KadmosGeneratedK02BalanceTSCertificate]
+
+lean_lib kadmosGeneratedK02BalancePythonCertificateTest where
+  roots := #[`HarmoniaTests.KadmosGeneratedK02BalancePythonCertificate]
+
 lean_lib kadmosGeneratedK02JSONTest where
   roots := #[`HarmoniaTests.KadmosGeneratedK02JSON]
 

@@ -195,6 +195,18 @@ private def binaryValue (lang : TargetLang) (m : TargetMachine) (op : BinaryOp)
           | _ => .ok (.error (.exception "TypeError" "unsupported operands"))
       | _, _ => .ok (.error (.exception "TypeError" "expected numeric operands"))
 
+theorem binary_sub_js_safe (m : TargetMachine) (b n : Int)
+    (h : (b - n).natAbs ≤ 9007199254740991) :
+    binaryValue .ts m .sub (.number .jsNumber b) (.number .jsNumber n) =
+      .ok (.ok (.number .jsNumber (b - n))) := by
+  simp [binaryValue, numeric, resultTag, safeIntermediate, h]
+
+theorem binary_sub_py_float_safe (m : TargetMachine) (b n : Int)
+    (h : (b - n).natAbs ≤ 9007199254740991) :
+    binaryValue .python m .sub (.number .pyFloat b) (.number .pyFloat n) =
+      .ok (.ok (.number .pyFloat (b - n))) := by
+  simp [binaryValue, numeric, resultTag, safeIntermediate, h]
+
 private def localValue (m : TargetMachine) (frame : TargetFrame) (name : String) :
     Except TargetError TargetValue :=
   if name == "this" || name == "self" then
@@ -828,6 +840,22 @@ private def hostCall (lang : TargetLang) (m : TargetMachine) (id : BuiltinId)
         | _ => "[object Object]"
       return done m (.string tag)
   | _, _, _ => throw (.unsupportedHostPrimitive id)
+
+theorem host_float_exact (m : TargetMachine) (n : Int)
+    (h : n.natAbs ≤ 9007199254740991) :
+    hostCall .python m .float none [.number .pyInt n] =
+      .ok (done m (.number .pyFloat n)) := by
+  unfold hostCall
+  simp only [safeIntermediate, h, ↓reduceIte]
+  rfl
+
+theorem host_int_exact (m : TargetMachine) (n : Int)
+    (h : n.natAbs ≤ 9007199254740991) :
+    hostCall .python m .int none [.number .pyFloat n] =
+      .ok (done m (.number .pyInt n)) := by
+  unfold hostCall
+  simp only [safeIntermediate, h, ↓reduceIte]
+  rfl
 
 private def bindOne (lang : TargetLang) (m : TargetMachine)
     (frame : TargetFrame) (name : String) (value : TargetValue) :
@@ -1778,6 +1806,42 @@ private def consumeGenerator (fuel : Nat) (program : TargetProgram)
       | .error e => return ⟨result.machine, .error e⟩
 
 end
+
+theorem eval_sub_js_safe (program : TargetProgram) (hLang : program.lang = .ts)
+    (m : TargetMachine) (frame : TargetFrame) (b n : Int)
+    (h : (b - n).natAbs ≤ 9007199254740991) :
+    (evalExpr 20 program m frame
+      (.binary .sub (.integer b) (.integer n))).toOption.bind
+        (fun out => out.result.toOption) = some (.number .jsNumber (b - n)) := by
+  simp [evalExpr, number, done, hLang, binary_sub_js_safe, h,
+    Bind.bind, Pure.pure, Functor.map, Except.bind, Except.pure, Except.map]
+  rfl
+
+theorem eval_float_from_py_int (program : TargetProgram)
+    (hLang : program.lang = .python) (m : TargetMachine)
+    (frame : TargetFrame) (n : Int)
+    (h : n.natAbs ≤ 9007199254740991) :
+    (evalExpr 20 program m frame
+      (.builtin .float (.sequence (.integer n) .empty))).toOption.bind
+        (fun out => out.result.toOption) = some (.number .pyFloat n) := by
+  simp [evalExpr, evalArgValues, number, done, hLang, host_float_exact, h,
+    Bind.bind, Pure.pure, Functor.map, Except.bind, Except.pure, Except.map]
+  rfl
+
+theorem eval_sub_py_float_safe (program : TargetProgram)
+    (hLang : program.lang = .python) (m : TargetMachine)
+    (frame : TargetFrame) (b n : Int)
+    (hb : b.natAbs ≤ 9007199254740991)
+    (hn : n.natAbs ≤ 9007199254740991)
+    (hd : (b - n).natAbs ≤ 9007199254740991) :
+    (evalExpr 20 program m frame
+      (.binary .sub (.builtin .float (.sequence (.integer b) .empty))
+        (.builtin .float (.sequence (.integer n) .empty)))).toOption.bind
+        (fun out => out.result.toOption) = some (.number .pyFloat (b - n)) := by
+  simp [evalExpr, evalArgValues, number, done, hLang,
+    host_float_exact, binary_sub_py_float_safe, hb, hn, hd,
+    Bind.bind, Pure.pure, Functor.map, Except.bind, Except.pure, Except.map]
+  rfl
 
 inductive RequestShape where
   | ordinaryRecord | exactDict | noArgument

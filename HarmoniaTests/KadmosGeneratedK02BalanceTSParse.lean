@@ -7,4 +7,5 @@ open Harmonia.Applications.Kadmos.GeneratedFixtures
 set_option maxRecDepth 65536
 set_option maxHeartbeats 10000000
 
-example : (parseGenerated .ts balanceTsSource).toOption.isSome = true := by decide +kernel
+theorem kadmos_k02_balance_ts_parses :
+    (parseGenerated .ts balanceTsSource).toOption.isSome = true := by decide +kernel
