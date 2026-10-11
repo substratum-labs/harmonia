@@ -85,8 +85,9 @@ private def scan (lang : TargetLang) (fuel offset : Nat) (input : List Char)
       scan lang fuel (offset + len) (cs.dropWhile (· != '\n'))
         (⟨.comment, String.mk (c :: tail), offset, offset + len⟩ :: acc)
     else if lang == .ts && c == '/' &&
-            ((acc.dropWhile (·.kind == .spacing)).head?.map
-              (fun t => t.kind == .punctuation && ["=", "(", "!"].contains t.text) == some true) then do
+            (acc.dropWhile (·.kind == .spacing)).head?.map
+              (fun t => t.kind == .punctuation && ["=", "(", "!", ",", ":"].contains t.text)
+              != some false then do
       let (regex, tail, stop) ← scanRegex (cs.length + 1) (offset + 1) false cs ['/']
       let flags := tail.takeWhile Char.isAlpha
       let after := tail.dropWhile Char.isAlpha
@@ -117,15 +118,16 @@ inductive BuiltinId where
 
 inductive BinaryOp where
   | add | sub | mul | div | eq | strictEq | ne | strictNe
-  | lt | le | gt | ge | inObject | isIdentity
+  | lt | le | gt | ge | inObject | notInObject | isIdentity | isNotIdentity
   deriving DecidableEq, Repr
 
 inductive UnaryOp where
-  | not | neg | positive
+  | not | neg | positive | typeof
   deriving DecidableEq, Repr
 
 inductive TargetExpr where
   | empty | sequence (first rest : TargetExpr)
+  | regexLiteral (source : String)
   | undefined | null | bool (b : Bool) | integer (n : Int) | string (s : String)
   | local (name : String) | checkerField (name : String) | global (name : String)
   | property (receiver : TargetExpr) (name : String)
@@ -140,7 +142,8 @@ inductive TargetExpr where
   | conditional (cond yes no : TargetExpr)
   | object (fields : TargetExpr) | objectEntry (key : String) (value rest : TargetExpr)
   | objectSpread (value rest : TargetExpr)
-  | array (items : TargetExpr) | arraySpread (value rest : TargetExpr)
+  | array (items : TargetExpr) | tuple (items : TargetExpr)
+  | arraySpread (value rest : TargetExpr)
   | postIncrement (name : String)
   | closure (qualifiedName : String)
   | listComprehension (value : TargetExpr) (binders : List String)
