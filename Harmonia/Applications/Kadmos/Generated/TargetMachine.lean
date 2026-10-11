@@ -109,6 +109,7 @@ def TargetMachine.empty : TargetMachine :=
 inductive TargetError where
   | danglingObject (ref : ObjRef)
   | danglingCell (ref : CellRef)
+  | danglingClosure (ref : ClosureRef)
   | immutableCell (ref : CellRef)
   | invalidTag | wrongArity | badDescriptor | frozenObject
   | unsupportedHostPrimitive (id : BuiltinId)
@@ -192,6 +193,18 @@ def allocCell (m : TargetMachine) (value : TargetValue) (mutable : Bool) :
   let withValue := { m with cells := (ref, value) :: m.cells }
   let withPermission := { withValue with writableCells := (ref, mutable) :: m.writableCells }
   ({ withPermission with nextCell := ref + 1 }, ref)
+
+def closureAt (m : TargetMachine) (ref : ClosureRef) :
+    Except TargetError TargetClosure :=
+  match m.closures.lookup ref with
+  | some closure => .ok closure
+  | none => .error (.danglingClosure ref)
+
+def allocClosure (m : TargetMachine) (closure : TargetClosure) :
+    TargetMachine × ClosureRef :=
+  let ref := m.nextClosure
+  let withClosure := { m with closures := (ref, closure) :: m.closures }
+  ({ withClosure with nextClosure := ref + 1 }, ref)
 
 def readOwn (m : TargetMachine) (ref : ObjRef) (key : String) :
     Except TargetError (Option Descriptor) := do

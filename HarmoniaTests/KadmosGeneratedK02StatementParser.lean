@@ -63,3 +63,14 @@ example : (parsePythonBlock
     ("        nonlocal position\n" ++
      "        position += 1\n" ++
      "        break\n") 8).toOption.isSome = true := by decide +kernel
+example : (parsePythonBlock
+    ("import json\nfrom __future__ import annotations\n" ++
+     "class WorldChecker(IWorldChecker):\n" ++
+     "    @property\n" ++
+     "    def state(self) -> str:\n" ++
+     "        return self.__state\n") 0).toOption.isSome = true := by decide +kernel
+example : (parsePythonBlock
+    ("def f(environment: dict[str, Any], minimum: int = 0) -> Any:\n" ++
+     "    return minimum\n") 0).toOption.isSome = true := by decide +kernel
+example : (parsePythonProgram
+    "import json\ndef f(x: int = 0) -> int:\n    return x\n").toOption.isSome = true := by decide +kernel

@@ -1,5 +1,7 @@
 import Harmonia.Applications.Kadmos.Generated.TargetMachine
 
+set_option maxHeartbeats 1000000
+
 namespace Harmonia.Applications.Kadmos.Generated
 
 structure ExprOutcome where
@@ -16,6 +18,17 @@ structure StmtOutcome where
   machine : TargetMachine
   frame : TargetFrame
   control : ControlResult
+  deriving Repr
+
+structure DefaultsOutcome where
+  machine : TargetMachine
+  result : Except TargetValue (List (Option TargetValue))
+  deriving Repr
+
+structure BindOutcome where
+  machine : TargetMachine
+  frame : TargetFrame
+  result : Except TargetValue Unit
   deriving Repr
 
 private def done (m : TargetMachine) (value : TargetValue) : ExprOutcome :=
@@ -102,7 +115,13 @@ private def readPropertyValue (lang : TargetLang) (m : TargetMachine)
       if ref == m.checkerRef then do
         match readCheckerField m key with
         | .ok value => return done m value
-        | .error _ => throw (.unboundLocal key)
+        | .error _ =>
+            match ← readOwn m ref key with
+            | some descriptor =>
+                match descriptor.value with
+                | some value => return done m value
+                | none => throw .badDescriptor
+            | none => throw (.unboundLocal key)
       let obj ← objectAt m ref
       if obj.kind == .jsArray && key == "length" then
         return done m (.number .jsNumber obj.items.length)
@@ -190,6 +209,16 @@ private def hostCall (lang : TargetLang) (m : TargetMachine) (id : BuiltinId)
         | _ => 0
       return done m (number lang size)
   | .length, _, _ => return exception m "TypeError" "len arity or type"
+  | .float, none, [.number _ n] =>
+      if !safeIntermediate n then throw .outsideNumericDomain
+      return done m (.number .pyFloat n)
+  | .int, none, [.number _ n] =>
+      if !safeIntermediate n then throw .outsideNumericDomain
+      return done m (.number .pyInt n)
+  | .isInteger, some (.number .pyFloat _), [] => return done m (.bool true)
+  | .isInteger, some (.number .pyInt _), [] => return done m (.bool true)
+  | .isFinite, none, [.number _ _] => return done m (.bool true)
+  | .abs, none, [.number tag n] => return done m (.number tag n.natAbs)
   | .objectEntries, none, [.object ref] =>
       let obj ← objectAt m ref
       let (updated, pairs) ← makeEntries .ts m obj.own
@@ -240,6 +269,11 @@ private def bindLoopValue (lang : TargetLang) (m : TargetMachine)
       | _ => throw .badBinderCardinality
   | _ => throw .badBinderCardinality
 
+private def sealCell (m : TargetMachine) (ref : CellRef) : TargetMachine :=
+  let permissions := m.writableCells.map fun entry =>
+    (entry.1, if entry.1 == ref then false else entry.2)
+  { m with writableCells := permissions }
+
 -- The interpreter is deliberately over target syntax only. No source World,
 -- Bridge certificate, sourceEval or reference `interpret` is imported here.
 mutual
@@ -276,6 +310,15 @@ def evalExpr (fuel : Nat) (program : TargetProgram) (m : TargetMachine)
         match values.result with
         | .error e => return ⟨values.machine, .error e⟩
         | .ok xs => hostCall program.lang values.machine id none xs
+    | .lambdaExpr names body =>
+        let params := names.map (fun name => (⟨name, none⟩ : ParamSpec))
+        let defaults := names.map (fun _ => (none : Option TargetValue))
+        let captures := frame.locals ++ frame.captures
+        let closure : TargetClosure :=
+          ⟨frame.qualifiedName ++ ".lambda", params, defaults,
+            .returnValue body, captures, frame.receiver⟩
+        let (updated, ref) := allocClosure m closure
+        .ok (done updated (.closure ref))
     | .call callee args => do
         let functionValue ← evalExpr fuel program m frame callee
         match functionValue.result with
@@ -289,6 +332,7 @@ def evalExpr (fuel : Nat) (program : TargetProgram) (m : TargetMachine)
                 | .builtin id => hostCall program.lang values.machine id none xs
                 | .boundBuiltin id receiver =>
                     hostCall program.lang values.machine id (some receiver) xs
+                | .closure ref => callClosure fuel program values.machine ref xs
                 | _ => return exception values.machine "TypeError" "not callable"
     | .object fields => do
         let kind := if program.lang == .ts then ObjectKind.jsOrdinary else .pythonDict
@@ -510,6 +554,20 @@ def execStmt (fuel : Nat) (program : TargetProgram) (m : TargetMachine)
         | .ok v =>
             let (updated, ref) := allocCell outcome.machine v mutable
             return ⟨updated, { frame with locals := (name, ref) :: frame.locals }, .normal⟩
+    | .defineFunction name params body => do
+        let evaluated ← evalDefaults fuel program m frame params
+        match evaluated.result with
+        | .error e => return ⟨evaluated.machine, frame, .raised e⟩
+        | .ok defaults =>
+            let (withCell, cell) := allocCell evaluated.machine .undefined true
+            let captures := (name, cell) :: frame.locals ++ frame.captures
+            let closure : TargetClosure :=
+              ⟨frame.qualifiedName ++ "." ++ name, params, defaults, body,
+                captures, frame.receiver⟩
+            let (withClosure, ref) := allocClosure withCell closure
+            let withValue ← writeCell withClosure cell (.closure ref)
+            let final := if program.lang == .ts then sealCell withValue cell else withValue
+            return ⟨final, { frame with locals := (name, cell) :: frame.locals }, .normal⟩
     | .assign (.local name) value => do
         let outcome ← evalExpr fuel program m frame value
         match outcome.result with
@@ -684,6 +742,91 @@ private def execForItems (fuel : Nat) (program : TargetProgram)
             execForItems fuel program result.machine nextFrame binders rest body
         | .broke "loop" => return ⟨result.machine, nextFrame, .normal⟩
         | _ => return result
+
+private def evalOneDefault (fuel : Nat) (program : TargetProgram)
+    (m : TargetMachine) (frame : TargetFrame) (param : ParamSpec) :
+    Except TargetError (TargetMachine × Except TargetValue (Option TargetValue)) := do
+  if program.lang == .python then
+    match param.defaultValue with
+    | some expr =>
+        let outcome ← evalExpr fuel program m frame expr
+        match outcome.result with
+        | .error e => return (outcome.machine, .error e)
+        | .ok value => return (outcome.machine, .ok (some value))
+    | none => return (m, .ok none)
+  else return (m, .ok none)
+
+private def evalDefaults (fuel : Nat) (program : TargetProgram)
+    (m : TargetMachine) (frame : TargetFrame) (params : List ParamSpec) :
+    Except TargetError DefaultsOutcome :=
+  match fuel with
+  | 0 => .error .exhaustedFuel
+  | fuel + 1 =>
+    match params with
+    | [] => .ok ⟨m, .ok []⟩
+    | param :: rest => do
+        let first ← evalOneDefault fuel program m frame param
+        match first with
+        | (updated, .error e) => return ⟨updated, .error e⟩
+        | (updated, .ok value) =>
+            let tail ← evalDefaults fuel program updated frame rest
+            match tail.result with
+            | .error e => return ⟨tail.machine, .error e⟩
+            | .ok values => return ⟨tail.machine, .ok (value :: values)⟩
+
+private def bindCallParams (fuel : Nat) (program : TargetProgram)
+    (m : TargetMachine) (frame : TargetFrame) (params : List ParamSpec)
+    (defaults : List (Option TargetValue)) (args : List TargetValue) :
+    Except TargetError BindOutcome :=
+  match fuel with
+  | 0 => .error .exhaustedFuel
+  | fuel + 1 =>
+    match params with
+    | [] =>
+        if program.lang == .python && !args.isEmpty then
+          .ok ⟨m, frame, .error (.exception "TypeError" "too many arguments")⟩
+        else .ok ⟨m, frame, .ok ()⟩
+    | param :: rest => do
+        let provided := args.head?
+        let needsDefault := provided.isNone ||
+          (program.lang == .ts && provided == some .undefined)
+        let selected ←
+          if !needsDefault then .ok (m, .ok (provided.getD .undefined))
+          else if program.lang == .python then
+            match defaults.head?.join with
+            | some value => .ok (m, .ok value)
+            | none => .ok (m, .error (.exception "TypeError" "missing argument"))
+          else
+            match param.defaultValue with
+            | some expr => do
+                let outcome ← evalExpr fuel program m frame expr
+                .ok (outcome.machine, outcome.result)
+            | none => .ok (m, .ok .undefined)
+        match selected with
+        | (updated, .error e) => return ⟨updated, frame, .error e⟩
+        | (updated, .ok value) =>
+            let (withCell, ref) := allocCell updated value true
+            let nextFrame := { frame with locals := (param.name, ref) :: frame.locals }
+            bindCallParams fuel program withCell nextFrame rest (defaults.drop 1)
+              (if provided.isSome then args.drop 1 else args)
+
+private def callClosure (fuel : Nat) (program : TargetProgram)
+    (m : TargetMachine) (ref : ClosureRef) (args : List TargetValue) :
+    Except TargetError ExprOutcome := do
+  let closure ← closureAt m ref
+  let newFrame : TargetFrame :=
+    ⟨closure.qualifiedName, [], [], closure.captures, closure.receiver, .normal⟩
+  let bindings ← bindCallParams fuel program m newFrame closure.params
+    closure.pythonDefaults args
+  match bindings.result with
+  | .error e => return ⟨bindings.machine, .error e⟩
+  | .ok _ =>
+      let executed ← execStmt fuel program bindings.machine bindings.frame closure.body
+      match executed.control with
+      | .returned value => return done executed.machine value
+      | .normal => return done executed.machine (if program.lang == .ts then .undefined else .null)
+      | .raised value => return ⟨executed.machine, .error value⟩
+      | _ => throw .wrongControl
 
 end
 

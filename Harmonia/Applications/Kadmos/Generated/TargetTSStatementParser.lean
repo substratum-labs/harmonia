@@ -135,12 +135,22 @@ private def parseSimpleStatement (tokens : List SourceToken) : Except ParseError
       return .assign target value
   | none => return .doExpr (← parseTargetExpr .ts (render tokens))
 
-private def takeParamTokens (acc : List SourceToken) : List SourceToken →
-    List SourceToken × List SourceToken
-  | [] => (acc.reverse, [])
+private def takeParamTokens (angle square : Nat) (acc : List SourceToken) :
+    List SourceToken → Except ParseError (List SourceToken × List SourceToken)
+  | [] =>
+      if angle == 0 && square == 0 then .ok (acc.reverse, [])
+      else .error (.unsupportedSyntax 0)
   | token :: rest =>
-      if token.text == "," then (acc.reverse, rest)
-      else takeParamTokens (token :: acc) rest
+      if token.text == "," && angle == 0 && square == 0 then .ok (acc.reverse, rest)
+      else if token.text == "<" then takeParamTokens (angle + 1) square (token :: acc) rest
+      else if token.text == ">" then
+        if angle == 0 then .error (.unsupportedSyntax token.start)
+        else takeParamTokens (angle - 1) square (token :: acc) rest
+      else if token.text == "[" then takeParamTokens angle (square + 1) (token :: acc) rest
+      else if token.text == "]" then
+        if square == 0 then .error (.unsupportedSyntax token.start)
+        else takeParamTokens angle (square - 1) (token :: acc) rest
+      else takeParamTokens angle square (token :: acc) rest
 
 private def parseArrowParam (tokens : List SourceToken) : Except ParseError ParamSpec := do
   match tokens with
@@ -156,7 +166,7 @@ private def parseArrowParams : Nat → List SourceToken → Except ParseError (L
   | _, [] => .ok []
   | 0, _ => .error (.unsupportedSyntax 0)
   | fuel + 1, tokens => do
-      let (first, rest) := takeParamTokens [] tokens
+      let (first, rest) ← takeParamTokens 0 0 [] tokens
       let param ← parseArrowParam first
       return param :: (← parseArrowParams fuel rest)
 
@@ -357,5 +367,128 @@ end
 def parseTSBlock (source : String) : Except ParseError TargetStmt := do
   let tokens := significant (← tokenizeSource .ts source)
   parseBlockTokens ((tokens.length + 1) * 16) tokens
+
+private def dropToToken (name : String) : List SourceToken → Except ParseError (List SourceToken)
+  | [] => .error (.unsupportedSyntax 0)
+  | token :: rest =>
+      if token.text == name then .ok rest
+      else dropToToken name rest
+
+private def parseFunctionHead (qualifiedPrefix : String) (name : SourceToken)
+    (header : List SourceToken) : Except ParseError (TargetFunction × List SourceToken) := do
+  if name.kind != .identifier then throw (.unsupportedSyntax name.start)
+  let afterOpen ← dropToToken "(" header
+  let (paramTokens, afterParams) ← takeDelimited (afterOpen.length + 1)
+    "(" ")" 1 [] afterOpen
+  let params ← parseArrowParams (paramTokens.length + 1) paramTokens
+  let afterBrace ← dropToToken "{" afterParams
+  let (bodyTokens, tail) ← takeDelimited (afterBrace.length + 1)
+    "{" "}" 1 [] afterBrace
+  let body ← parseBlockTokens ((bodyTokens.length + 1) * 16) bodyTokens
+  return (⟨qualifiedPrefix ++ name.text, params, body⟩, tail)
+
+private def parseImportStatement (tokens : List SourceToken) : Except ParseError TargetStmt := do
+  match tokens with
+  | first :: second :: rest =>
+      if first.text != "import" then throw (.unsupportedSyntax first.start)
+      if second.text == "type" then return .empty
+      match second :: rest with
+      | openBrace :: imported :: asToken :: alias :: closeBrace :: fromToken :: source :: [] =>
+          if openBrace.text != "{" || asToken.text != "as" || closeBrace.text != "}" ||
+              fromToken.text != "from" || imported.kind != .identifier ||
+              alias.kind != .identifier then throw (.unsupportedSyntax first.start)
+          match ← parseTargetExpr .ts source.text with
+          | .string moduleName => return .fromImport moduleName imported.text alias.text
+          | _ => throw (.unsupportedSyntax source.start)
+      | _ => throw (.unsupportedSyntax first.start)
+  | _ => throw (.unsupportedSyntax 0)
+
+private def parseClassField (tokens : List SourceToken) : Except ParseError TargetStmt := do
+  match tokens with
+  | hash :: name :: rest =>
+      if hash.text != "#" || name.kind != .identifier then throw (.unsupportedSyntax 0)
+      match splitAssignment (0, 0, 0) [] rest with
+      | some (_, valueTokens) =>
+          let value ← parseTargetExpr .ts (render valueTokens)
+          return .assign (.field ("#" ++ name.text)) value
+      | none => throw (.unsupportedSyntax 0)
+  | _ => throw (.unsupportedSyntax 0)
+
+private def parseClassMembers : Nat → List SourceToken →
+    Except ParseError (TargetStmt × List TargetFunction)
+  | _, [] => .ok (.empty, [])
+  | 0, _ => .error (.unsupportedSyntax 0)
+  | fuel + 1, token :: rest => do
+      if token.text == "#" then
+        let (fieldTokens, tail) ← takeStatement (rest.length + 2)
+          (0, 0, 0) [] (token :: rest)
+        let field ← parseClassField fieldTokens
+        let (others, functions) ← parseClassMembers fuel tail
+        return (.sequence field others, functions)
+      else
+        let (methodName, methodHeader) ←
+          if token.text == "private" then
+            match rest with
+            | name :: header => .ok (name, header)
+            | [] => .error (.unsupportedSyntax 0)
+          else .ok (token, rest)
+        let (method, tail) ← parseFunctionHead "WorldChecker." methodName methodHeader
+        let (fields, functions) ← parseClassMembers fuel tail
+        return (fields, method :: functions)
+
+private structure TSModuleParts where
+  moduleInit : TargetStmt
+  classFields : TargetStmt
+  functions : List TargetFunction
+
+private def parseTSTopLevel : Nat → List SourceToken → Except ParseError TSModuleParts
+  | _, [] => .ok ⟨.empty, .empty, []⟩
+  | 0, _ => .error (.unsupportedSyntax 0)
+  | fuel + 1, first :: rest => do
+      if first.text == "import" then
+        let (statement, tail) ← takeStatement (rest.length + 2)
+          (0, 0, 0) [] (first :: rest)
+        let imported ← parseImportStatement statement
+        let others ← parseTSTopLevel fuel tail
+        return ⟨.sequence imported others.moduleInit, others.classFields, others.functions⟩
+      else if first.text == "type" then
+        let (_, tail) ← takeStatement (rest.length + 2) (0, 0, 0) [] (first :: rest)
+        parseTSTopLevel fuel tail
+      else if first.text == "const" || first.text == "let" then
+        let (statement, tail) ← takeStatement (rest.length + 2)
+          (0, 0, 0) [] (first :: rest)
+        let declaration ← parseSimpleStatement statement
+        let others ← parseTSTopLevel fuel tail
+        return ⟨.sequence declaration others.moduleInit, others.classFields, others.functions⟩
+      else if first.text == "function" then
+        match rest with
+        | name :: header =>
+            let (function, tail) ← parseFunctionHead "" name header
+            let others ← parseTSTopLevel fuel tail
+            let declaration := TargetStmt.defineFunction function.qualifiedName
+              function.params function.body
+            return ⟨.sequence declaration others.moduleInit, others.classFields,
+              function :: others.functions⟩
+        | [] => throw (.unsupportedSyntax 0)
+      else if first.text == "export" then
+        match rest with
+        | keyword :: name :: header =>
+            if keyword.text != "class" || name.text != "WorldChecker" then
+              throw (.unsupportedSyntax first.start)
+            let afterBrace ← dropToToken "{" header
+            let (bodyTokens, tail) ← takeDelimited (afterBrace.length + 1)
+              "{" "}" 1 [] afterBrace
+            let (fields, methods) ← parseClassMembers (bodyTokens.length + 1) bodyTokens
+            let others ← parseTSTopLevel fuel tail
+            return ⟨others.moduleInit, .sequence fields others.classFields,
+              methods ++ others.functions⟩
+        | _ => throw (.unsupportedSyntax 0)
+      else throw (.unsupportedSyntax first.start)
+
+def parseTSProgram (source : String) : Except ParseError TargetProgram := do
+  let tokens := significant (← tokenizeSource .ts source)
+  let parts ← parseTSTopLevel (tokens.length + 1) tokens
+  return ⟨.ts, parts.moduleInit, parts.classFields, parts.functions,
+    .local "world", .local "contextDefaults"⟩
 
 end Harmonia.Applications.Kadmos.Generated

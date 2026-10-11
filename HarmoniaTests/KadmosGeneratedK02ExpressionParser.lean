@@ -76,6 +76,8 @@ example : (parseTargetExpr .python "token[1:-1]").toOption =
 example : (parseTargetExpr .ts "new Error(\"INVALID_EXPRESSION\")").toOption =
     some (.newExpr (.call (.local "Error")
       (.sequence (.string "INVALID_EXPRESSION") .empty))) := by decide +kernel
+example : (parseTargetExpr .ts "new Set<object>()").toOption =
+    some (.newExpr (.call (.local "Set") .empty)) := by decide +kernel
 example : (parseTargetExpr .ts "\"Ready\" as WorldState").toOption =
     some (.typeCast (.string "Ready") "WorldState") := by decide +kernel
 example : (parseTargetExpr .ts "contextDefinitions[name]!.type").toOption =

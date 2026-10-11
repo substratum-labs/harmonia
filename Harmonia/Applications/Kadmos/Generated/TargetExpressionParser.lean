@@ -171,6 +171,16 @@ private def takeCastType (fuel angle bracket : Nat) (acc : List String) :
           else if token == "]" then takeCastType fuel angle (bracket - 1) (token :: acc) rest
           else takeCastType fuel angle bracket (token :: acc) rest
 
+private def dropGenericType : Nat → Nat → List String → Except ParseError (List String)
+  | 0, _, _ => .error (.unsupportedSyntax 0)
+  | _, _, [] => .error (.unsupportedSyntax 0)
+  | fuel + 1, depth, token :: rest =>
+      if token == ">" && depth == 1 then .ok rest
+      else if token == "<" then dropGenericType fuel (depth + 1) rest
+      else if token == ">" then dropGenericType fuel (depth - 1) rest
+      else if typeToken token then dropGenericType fuel depth rest
+      else .error (.unsupportedSyntax 0)
+
 mutual
 
 private def parseFormatParts (fuel : Nat) (lang : TargetLang) (chars : List Char) :
@@ -204,6 +214,14 @@ private def parseHead (fuel : Nat) (tokens : List String) :
   | fuel + 1, "typeof" :: rest => do
       let (value, tail) ← parseExprAt fuel 8 rest
       return (.unary .typeof value, tail)
+  | fuel + 1, "new" :: name :: "<" :: rest => do
+      if !tokenIsIdentifier name then throw (.unsupportedSyntax 0)
+      let afterType ← dropGenericType (rest.length + 1) 1 rest
+      match afterType with
+      | "(" :: afterOpen =>
+          let (args, tail) ← parseArgList fuel afterOpen
+          return (.newExpr (.call (.local name) args), tail)
+      | _ => throw (.unsupportedSyntax 0)
   | fuel + 1, "new" :: rest => do
       let (value, tail) ← parseExprAt fuel 8 rest
       return (.newExpr value, tail)

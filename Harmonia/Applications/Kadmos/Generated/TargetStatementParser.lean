@@ -130,6 +130,23 @@ private def parseParameter (source : String) : Except ParseError ParamSpec := do
       Except ParseError (Option TargetExpr))
   return ⟨name, value⟩
 
+private def splitParamsAux (depth : Nat) (current : List Char) (acc : List String) :
+    List Char → Except ParseError (List String)
+  | [] =>
+      if depth == 0 then .ok ((String.mk current.reverse :: acc).reverse)
+      else .error (.unsupportedSyntax 0)
+  | '[' :: rest => splitParamsAux (depth + 1) ('[' :: current) acc rest
+  | ']' :: rest =>
+      if depth == 0 then .error (.unsupportedSyntax 0)
+      else splitParamsAux (depth - 1) (']' :: current) acc rest
+  | ',' :: rest =>
+      if depth == 0 then splitParamsAux depth [] (String.mk current.reverse :: acc) rest
+      else splitParamsAux depth (',' :: current) acc rest
+  | c :: rest => splitParamsAux depth (c :: current) acc rest
+
+private def splitParams (s : String) : Except ParseError (List String) :=
+  splitParamsAux 0 [] [] s.toList
+
 private def parseDefHeader (source : String) : Except ParseError (String × List ParamSpec) := do
   if !source.endsWith ":" then throw (.unsupportedSyntax 0)
   match (source.drop 4).splitOn "(" with
@@ -139,10 +156,26 @@ private def parseDefHeader (source : String) : Except ParseError (String × List
       match tail.splitOn ")" with
       | [params, _returnAnnotation] =>
           let paramSpecs ← if params.isEmpty then .ok []
-            else (params.splitOn ",").mapM parseParameter
+            else (← splitParams params).mapM parseParameter
           return (name, paramSpecs)
       | _ => throw (.unsupportedSyntax 0)
   | _ => throw (.unsupportedSyntax 0)
+
+private def parseImportLine (source : String) : Except ParseError TargetStmt := do
+  if source.startsWith "import " then
+    match (source.drop 7).splitOn " as " with
+    | [name] => return .importModule name name
+    | [name, alias] => return .importModule name alias
+    | _ => throw (.unsupportedSyntax 0)
+  else if source.startsWith "from " then
+    match (source.drop 5).splitOn " import " with
+    | [moduleName, binding] =>
+        match binding.splitOn " as " with
+        | [name] => return .fromImport moduleName name name
+        | [name, alias] => return .fromImport moduleName name alias
+        | _ => throw (.unsupportedSyntax 0)
+    | _ => throw (.unsupportedSyntax 0)
+  else throw (.unsupportedSyntax 0)
 
 mutual
 
@@ -202,10 +235,30 @@ private def parsePythonStatement (fuel indent : Nat) (source : String)
   match fuel with
   | 0 => .error (.unsupportedSyntax 0)
   | fuel + 1 =>
-      if source.startsWith "def " then do
+      if source.startsWith "import " || source.startsWith "from " then do
+        return (← parseImportLine source, lines)
+      else if source.startsWith "class " then do
+        if !source.endsWith ":" then throw (.unsupportedSyntax 0)
+        let name := ((source.drop 6).splitOn "(").headD ""
+        if !validBinder name then throw (.unsupportedSyntax 0)
+        let (body, after) ← parsePythonSuite fuel (indent + 4) lines
+        return (.defineClass name body, after)
+      else if source == "@property" then do
+        match lines with
+        | header :: rest => do
+            if header.indent != indent || !header.text.startsWith "def " then
+              throw (.unsupportedSyntax 0)
+            let (name, params) ← parseDefHeader header.text
+            if params.map ParamSpec.name != ["self"] then throw (.unsupportedSyntax 0)
+            let (body, after) ← parsePythonSuite fuel (indent + 4) rest
+            return (.defineGetter name body, after)
+        | [] => throw (.unsupportedSyntax 0)
+      else if source.startsWith "def " then do
         let (name, params) ← parseDefHeader source
         let (body, after) ← parsePythonSuite fuel (indent + 4) lines
-        return (.defineFunction name params body, after)
+        let explicitParams := if indent == 4 && params.head?.map ParamSpec.name == some "self"
+          then params.drop 1 else params
+        return (.defineFunction name explicitParams body, after)
       else if source.startsWith "if " then do
         let condText ← withoutColon (source.drop 3)
         let cond ← parseTargetExpr .python condText
@@ -265,5 +318,9 @@ def parsePythonBlock (source : String) (indent : Nat) : Except ParseError Target
   let (body, rest) ← parsePythonSuite (lines.length * 2 + 1) indent lines
   if rest.isEmpty then return body
   else throw (.unsupportedSyntax 0)
+
+def parsePythonProgram (source : String) : Except ParseError TargetProgram := do
+  let moduleBody ← parsePythonBlock source 0
+  return ⟨.python, moduleBody, .empty, [], .local "_WORLD", .local "_DEFAULTS"⟩
 
 end Harmonia.Applications.Kadmos.Generated
