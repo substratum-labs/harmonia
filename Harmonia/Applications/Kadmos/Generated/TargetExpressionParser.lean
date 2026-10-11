@@ -31,6 +31,12 @@ private def tokenIsIdentifier (s : String) : Bool :=
   | c :: cs => (c.isAlpha || c == '_' || c == '$') &&
       cs.all (fun x => x.isAlphanum || x == '_' || x == '$')
 
+private def decimalToken (s : String) : Bool :=
+  match s.splitOn "." with
+  | [whole, fraction] => !whole.isEmpty && !fraction.isEmpty &&
+      whole.toList.all Char.isDigit && fraction.toList.all Char.isDigit
+  | _ => false
+
 private def quotedContent (s : String) : Option String :=
   match s.toList with
   | '"' :: xs =>
@@ -57,6 +63,28 @@ private def unescapeChars : List Char → Option (List Char)
 private def decodedQuoted (s : String) : Option String := do
   let raw ← quotedContent s
   return String.mk (← unescapeChars raw.toList)
+
+private def templateContent (s : String) : Option String :=
+  match s.toList with
+  | '`' :: xs =>
+      match xs.reverse with
+      | '`' :: inner => some (String.mk inner.reverse)
+      | _ => none
+  | _ => none
+
+private def takeFormatPrefix (lang : TargetLang) : List Char → List Char × Option (List Char)
+  | [] => ([], none)
+  | '$' :: '{' :: rest =>
+      if lang == .ts then ([], some rest)
+      else let (head, tail) := takeFormatPrefix lang ('{' :: rest)
+           ('$' :: head, tail)
+  | '{' :: rest =>
+      if lang == .python then ([], some rest)
+      else let (head, tail) := takeFormatPrefix lang rest
+           ('{' :: head, tail)
+  | c :: rest =>
+      let (head, tail) := takeFormatPrefix lang rest
+      (c :: head, tail)
 
 private def precedence : String → Nat
   | "??" | "||" | "or" => 2
@@ -90,7 +118,38 @@ private def combineBinary (op : String) (left right : TargetExpr) : TargetExpr :
   | "??" => .nullCoalesce left right
   | _ => left
 
+private def parseLambdaParams : List String → Except ParseError (List String × List String)
+  | ":" :: rest => .ok ([], rest)
+  | name :: "," :: rest => do
+      if !tokenIsIdentifier name then throw (.unsupportedSyntax 0)
+      let (others, after) ← parseLambdaParams rest
+      return (name :: others, after)
+  | name :: ":" :: rest =>
+      if tokenIsIdentifier name then .ok ([name], rest)
+      else .error (.unsupportedSyntax 0)
+  | _ => .error (.unsupportedSyntax 0)
+
 mutual
+
+private def parseFormatParts (fuel : Nat) (lang : TargetLang) (chars : List Char) :
+    Except ParseError TargetExpr :=
+  match fuel with
+  | 0 => .error (.unsupportedSyntax 0)
+  | fuel + 1 => do
+      let (headText, rest) := takeFormatPrefix lang chars
+      match rest with
+      | none => return .formatPart (String.mk headText) .empty .empty
+      | some afterOpen =>
+          let inner := afterOpen.takeWhile (· != '}')
+          match afterOpen.dropWhile (· != '}') with
+          | [] => throw (.unsupportedSyntax 0)
+          | _ :: after =>
+              let tokens := combineSymbols (significant (← tokenizeSource lang (String.mk inner)))
+              let (value, remaining) ← parseExprAt fuel 0 tokens
+              if !remaining.isEmpty then throw (.unsupportedSyntax 0)
+              let next ← if after.isEmpty then .ok TargetExpr.empty
+                else parseFormatParts fuel lang after
+              return .formatPart (String.mk headText) value next
 
 private def parseHead (fuel : Nat) (tokens : List String) :
     Except ParseError (TargetExpr × List String) :=
@@ -103,6 +162,10 @@ private def parseHead (fuel : Nat) (tokens : List String) :
   | fuel + 1, "typeof" :: rest => do
       let (value, tail) ← parseExprAt fuel 8 rest
       return (.unary .typeof value, tail)
+  | fuel + 1, "lambda" :: rest => do
+      let (params, bodyTokens) ← parseLambdaParams rest
+      let (body, tail) ← parseExprAt fuel 0 bodyTokens
+      return (.lambdaExpr params body, tail)
   | fuel + 1, "not" :: rest => do
       let (value, tail) ← parseExprAt fuel 8 rest
       return (.unary .not value, tail)
@@ -138,20 +201,31 @@ private def parseHead (fuel : Nat) (tokens : List String) :
       match quotedContent token with
       | some raw => .ok (.string raw, rest)
       | none => .ok (.local "r", token :: rest)
-  | _, token :: rest =>
+  | fuel + 1, "f" :: token :: rest => do
+      let content ← match decodedQuoted token with
+        | some s => .ok s
+        | none => .error (.unsupportedSyntax 0)
+      let parts ← parseFormatParts fuel .python content.toList
+      return (.formatted parts, rest)
+  | fuel + 1, token :: rest =>
       if token == "true" || token == "True" then .ok (.bool true, rest)
       else if token == "false" || token == "False" then .ok (.bool false, rest)
       else if ["null", "None"].contains token then .ok (.null, rest)
       else if token == "undefined" then .ok (.undefined, rest)
       else match token.toNat? with
         | some n => .ok (.integer (Int.ofNat n), rest)
-        | none => match decodedQuoted token with
-          | some s => .ok (.string s, rest)
-          | none =>
-              if token.startsWith "/" && token.length > 1 then
-                .ok (.regexLiteral token, rest)
-              else if tokenIsIdentifier token then .ok (.local token, rest)
-              else .error (.unsupportedSyntax 0)
+        | none => match templateContent token with
+          | some s => do
+              let parts ← parseFormatParts fuel .ts s.toList
+              .ok (.formatted parts, rest)
+          | none => match decodedQuoted token with
+            | some s => .ok (.string s, rest)
+            | none =>
+                if decimalToken token then .ok (.decimal token, rest)
+                else if token.startsWith "/" && token.length > 1 then
+                  .ok (.regexLiteral token, rest)
+                else if tokenIsIdentifier token then .ok (.local token, rest)
+                else .error (.unsupportedSyntax 0)
 
 private def parsePostfix (fuel : Nat) (left : TargetExpr) (tokens : List String) :
     Except ParseError (TargetExpr × List String) :=
@@ -173,6 +247,11 @@ private def parsePostfix (fuel : Nat) (left : TargetExpr) (tokens : List String)
       let (key, tail) ← parseExprAt fuel 0 rest
       match tail with
       | "]" :: after => parsePostfix fuel (.index left key) after
+      | ":" :: after =>
+          let (stop, remaining) ← parseExprAt fuel 0 after
+          match remaining with
+          | "]" :: final => parsePostfix fuel (.slice left key stop) final
+          | _ => throw (.unsupportedSyntax 0)
       | _ => throw (.unsupportedSyntax 0)
   | _, _ => .ok (left, tokens)
 
@@ -326,7 +405,7 @@ end
 def parseTargetExpr (lang : TargetLang) (source : String) :
     Except ParseError TargetExpr := do
   let tokens := combineSymbols (significant (← tokenizeSource lang source))
-  let (expr, tail) ← parseExprAt (tokens.length * 3 + 1) 0 tokens
+  let (expr, tail) ← parseExprAt ((tokens.length + 1) * 16) 0 tokens
   if tail.isEmpty then return expr
   else throw (.unsupportedSyntax 0)
 

@@ -59,3 +59,17 @@ example : (parseTargetExpr .python
         (.index (.local "_WORLD") (.string "states"))
         (.call (.property (.local "state") "get") (.sequence (.string "initial") .empty)))
       .empty)) := by decide +kernel
+example : (parseTargetExpr .python "f\"INVALID_BOUNDS: {invalid}\"").toOption =
+    some (.formatted (.formatPart "INVALID_BOUNDS: " (.local "invalid") .empty)) := by decide +kernel
+example : (parseTargetExpr .ts "`Context bound failed on '${boundError}'`").toOption =
+    some (.formatted (.formatPart "Context bound failed on '" (.local "boundError")
+      (.formatPart "'" .empty .empty))) := by decide +kernel
+example : (parseTargetExpr .ts "`broken ${`").toOption = none := by decide +kernel
+example : (parseTargetExpr .python "lambda state, values: {**values, \"state\": state}").toOption =
+    some (.lambdaExpr ["state", "values"]
+      (.object (.objectSpread (.local "values")
+        (.objectEntry "state" (.local "state") .empty)))) := by decide +kernel
+example : (parseTargetExpr .python "0.0").toOption =
+    some (.decimal "0.0") := by decide +kernel
+example : (parseTargetExpr .python "token[1:-1]").toOption =
+    some (.slice (.local "token") (.integer 1) (.unary .neg (.integer 1))) := by decide +kernel

@@ -67,6 +67,9 @@ lean_lib kadmosGeneratedK02MachineTest where
 lean_lib kadmosGeneratedK02ExpressionParserTest where
   roots := #[`HarmoniaTests.KadmosGeneratedK02ExpressionParser]
 
+lean_lib kadmosGeneratedK02StatementParserTest where
+  roots := #[`HarmoniaTests.KadmosGeneratedK02StatementParser]
+
 lean_lib quorumTest where
   roots := #[`HarmoniaTests.QuorumTest]
 

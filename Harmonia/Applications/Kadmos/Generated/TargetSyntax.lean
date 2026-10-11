@@ -1,5 +1,7 @@
 import Init
 
+set_option maxHeartbeats 1000000
+
 namespace Harmonia.Applications.Kadmos.Generated
 
 inductive TargetLang where | ts | python deriving DecidableEq, Repr
@@ -75,9 +77,22 @@ private def scan (lang : TargetLang) (fuel offset : Nat) (input : List Char)
         (⟨.identifier, String.mk (c :: tail), offset, offset + len⟩ :: acc)
     else if c.isDigit then
       let tail := cs.takeWhile Char.isDigit
-      let len := tail.length + 1
-      scan lang fuel (offset + len) (cs.dropWhile Char.isDigit)
-        (⟨.numeral, String.mk (c :: tail), offset, offset + len⟩ :: acc)
+      match cs.dropWhile Char.isDigit with
+      | '.' :: digit :: more =>
+          if digit.isDigit then
+            let fraction := more.takeWhile Char.isDigit
+            let len := tail.length + fraction.length + 3
+            scan lang fuel (offset + len) (more.dropWhile Char.isDigit)
+              (⟨.numeral, String.mk (c :: tail ++ ['.', digit] ++ fraction),
+                offset, offset + len⟩ :: acc)
+          else
+            let len := tail.length + 1
+            scan lang fuel (offset + len) (cs.dropWhile Char.isDigit)
+              (⟨.numeral, String.mk (c :: tail), offset, offset + len⟩ :: acc)
+      | _ =>
+          let len := tail.length + 1
+          scan lang fuel (offset + len) (cs.dropWhile Char.isDigit)
+            (⟨.numeral, String.mk (c :: tail), offset, offset + len⟩ :: acc)
     else if (lang == .python && c == '#') ||
             (lang == .ts && c == '/' && cs.head? == some '/') then
       let tail := cs.takeWhile (· != '\n')
@@ -128,11 +143,13 @@ inductive UnaryOp where
 inductive TargetExpr where
   | empty | sequence (first rest : TargetExpr)
   | regexLiteral (source : String)
-  | undefined | null | bool (b : Bool) | integer (n : Int) | string (s : String)
+  | undefined | null | bool (b : Bool) | integer (n : Int)
+  | decimal (source : String) | string (s : String)
   | local (name : String) | checkerField (name : String) | global (name : String)
   | property (receiver : TargetExpr) (name : String)
   | optionalProperty (receiver : TargetExpr) (name : String)
   | index (receiver key : TargetExpr)
+  | slice (receiver start stop : TargetExpr)
   | call (callee args : TargetExpr)
   | builtin (id : BuiltinId) (args : TargetExpr)
   | unary (op : UnaryOp) (value : TargetExpr)
@@ -146,6 +163,7 @@ inductive TargetExpr where
   | arraySpread (value rest : TargetExpr)
   | postIncrement (name : String)
   | closure (qualifiedName : String)
+  | lambdaExpr (params : List String) (body : TargetExpr)
   | listComprehension (value : TargetExpr) (binders : List String)
       (iterable filter : TargetExpr)
   | dictComprehension (key value : TargetExpr) (binders : List String)
@@ -157,15 +175,23 @@ inductive TargetExpr where
   deriving DecidableEq, Repr
 
 inductive AssignTarget where
-  | local (name : String) | field (name : String)
+  | local (name : String) | tupleLocals (names : List String) | field (name : String)
   | property (receiver : TargetExpr) (name : String)
   | index (receiver key : TargetExpr)
+  deriving DecidableEq, Repr
+
+structure ParamSpec where
+  name : String
+  defaultValue : Option TargetExpr
   deriving DecidableEq, Repr
 
 inductive TargetStmt where
   | empty | sequence (first rest : TargetStmt)
   | letLocal (name : String) (value : TargetExpr)
+  | nonlocalNames (names : List String)
+  | defineFunction (name : String) (params : List ParamSpec) (body : TargetStmt)
   | assign (target : AssignTarget) (value : TargetExpr)
+  | augment (target : AssignTarget) (op : BinaryOp) (value : TargetExpr)
   | doExpr (value : TargetExpr)
   | ifThenElse (cond : TargetExpr) (yes no : TargetStmt)
   | forDo (binders : List String) (iterable : TargetExpr) (body : TargetStmt)
@@ -173,13 +199,8 @@ inductive TargetStmt where
   | returnValue (value : TargetExpr) | returnVoid
   | throwValue (value : TargetExpr) | rethrow
   | breakTarget (label : String) | continueTarget (label : String)
-  | tryCatchFinally (body : TargetStmt) (binder : Option String)
+  | tryCatchFinally (body : TargetStmt) (catchType binder : Option String)
       (handler cleanup : TargetStmt)
-  deriving DecidableEq, Repr
-
-structure ParamSpec where
-  name : String
-  defaultValue : Option TargetExpr
   deriving DecidableEq, Repr
 
 structure TargetFunction where
