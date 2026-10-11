@@ -88,7 +88,7 @@ private theorem silent_no_decision {c : Config Bool Unit Decision}
   | tail _ e _ ih =>
     intro n
     by_cases hn : n = e.target
-    · simp [advance, hn, silent]
+    · simp [advance, hn, silent, ih e.target]
     · simp [advance, hn, ih n]
 
 example : ¬ IsBivalent silent initial := by
@@ -117,7 +117,7 @@ private def oneCrashRun : InfiniteRun silent initial where
 -- The silent protocol has an admissible run with one fail-stop process and
 -- no decisions. This witnesses that the liveness specification is nonvacuous.
 example : Admissible silent initial oneCrashRun := by
-  refine ⟨some false, ?_, ?_⟩
+  refine ⟨⟨some false, ?_⟩, ?_⟩
   · intro n hn t
     cases n
     · exact False.elim (hn rfl)
@@ -129,7 +129,7 @@ example : Admissible silent initial oneCrashRun := by
 example : ¬ GuaranteedTermination silent initial := by
   intro h
   obtain ⟨t, v, ⟨n, hn⟩⟩ := h oneCrashRun (by
-    refine ⟨some false, ?_, ?_⟩
+    refine ⟨⟨some false, ?_⟩, ?_⟩
     · intro q hq k
       cases q
       · exact False.elim (hq rfl)

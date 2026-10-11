@@ -28,7 +28,7 @@ ROOTS = {
     "flpAudit": {"HarmoniaTests.AuditPolicy", "HarmoniaTests.FLPAxiomAudit"},
     "flpAuditRejection": {REJECTION},
 }
-FORBIDDEN = re.compile(r"\b(sorry|admit|sorryAx|axiom|native_decide)\b")
+FORBIDDEN = re.compile(r"\b(sorry|admit|sorryAx|axiom|native_decide|unsafe|Classical\.choice)\b")
 
 
 def name_array(body: str, label: str) -> set[str]:

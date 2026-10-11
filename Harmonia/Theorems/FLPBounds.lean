@@ -1,4 +1,5 @@
 import Harmonia.Theorems.FLPExtension
+import Harmonia.Theorems.FLPInputs
 
 /-! A choice-free finite consequence of the FLP extension step. This rules out
 any uniform finite decision bound; the full fair-run impossibility theorem
@@ -60,18 +61,61 @@ theorem no_uniform_decision_bound (protocol : Protocol Node Msg Local)
   | zero => exact hundecided.1 hdec
   | one => exact hundecided.2 hdec
 
-/-- The finite choice-free FLP impossibility theorem: in an asynchronous system
-with at least one crash failure, no deterministic consensus protocol can guarantee
-a uniform finite decision bound while maintaining agreement, decision persistence,
-and bivalence. -/
+/-- Reachable-state one-crash deciding implies the initial-state version for
+any family of initial configurations. The reverse direction does not follow:
+the initial premise contains no information about later reachable states. -/
+theorem initial_crash_deciding_of_reachable (protocol : Protocol Node Msg Local)
+    (initial : Config Node Msg Local → Prop)
+    (hcrash : ∀ c, initial c → CrashDecidingReachable protocol c) :
+    Initial.CrashDeciding
+      (initialSystem protocol initial IndistinguishableExcept
+        (replay_other_process protocol) decision_other_process) := by
+  let sys := initialSystem protocol initial IndistinguishableExcept
+    (replay_other_process protocol) decision_other_process
+  intro c silent hc
+  obtain ⟨events, t, q, value, hrun, hother, hq, hd⟩ :=
+    hcrash c hc c (.refl c) silent
+  have convert : ∀ {a b es}, Schedule protocol a es b →
+      Initial.Run sys a es b := by
+    intro a b es h
+    induction h with
+    | nil => exact .nil
+    | cons e he _ ih => exact .cons ⟨he, rfl⟩ ih
+  exact ⟨events, t, q, value, convert hrun, hother, hq, hd⟩
+
+/-- Connected finite FLP consequence. Binary validity and a finite input cube
+force some initial bivalent configuration; Lemma 3 then rules out a uniform
+finite decision bound for that configuration. This does not construct the
+paper's infinite fair adversarial execution. -/
 theorem flp_impossibility (protocol : Protocol Node Msg Local)
-    (initial : Config Node Msg Local) (node : Node)
-    (hcrash : CrashDecidingReachable protocol initial)
-    (agreement : Agreement protocol initial)
+    (initialFor : (Node → Decision) → Config Node Msg Local)
+    (nodes : List Node) (complete : ∀ n, n ∈ nodes)
+    (hlocal : ∀ inputs inputs' p,
+      (∀ q, q ≠ p → inputs q = inputs' q) →
+      IndistinguishableExcept p (initialFor inputs) (initialFor inputs'))
+    (valid : BinaryValidity protocol initialFor)
+    (hcrash : ∀ inputs, CrashDecidingReachable protocol (initialFor inputs))
+    (agreement : ∀ inputs, Agreement protocol (initialFor inputs))
     (hpersist : DecisionsPersist protocol)
-    (hbivalent : IsBivalent protocol initial) :
-    ¬ UniformBoundedTermination protocol initial :=
-  no_uniform_decision_bound protocol initial node hcrash agreement hpersist hbivalent
+    (node : Node) :
+    ∃ inputs, ¬ UniformBoundedTermination protocol (initialFor inputs) := by
+  let initial : Config Node Msg Local → Prop :=
+    fun c => ∃ inputs, c = initialFor inputs
+  have hinit : ∀ inputs, initial (initialFor inputs) := by
+    intro inputs
+    exact ⟨inputs, rfl⟩
+  have hcrashInitial : Initial.CrashDeciding
+      (initialSystem protocol initial IndistinguishableExcept
+        (replay_other_process protocol) decision_other_process) := by
+    apply initial_crash_deciding_of_reachable protocol initial
+    intro c hc
+    obtain ⟨inputs, rfl⟩ := hc
+    exact hcrash inputs
+  obtain ⟨c, ⟨inputs, rfl⟩, hb⟩ :=
+    initial_bivalent_from_binary_inputs protocol initial initialFor nodes complete
+      hinit hlocal hcrashInitial valid
+  exact ⟨inputs, no_uniform_decision_bound protocol (initialFor inputs) node
+    (hcrash inputs) (agreement inputs) hpersist hb⟩
 
 /-- A positive finite stage that ends in another bivalent configuration.
 The relation is oriented for `Acc`: `BivalentStage protocol next current` says

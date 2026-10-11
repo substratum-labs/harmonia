@@ -247,10 +247,12 @@ def auditFlp : CommandElabM Unit := do
   let mut count := 0
   for (n, info) in declarations do
     if select n then
+      let range ← findDeclarationRanges? n
+      if info.isUnsafe && range.isSome then
+        throwError "FLP audit rejected unsafe source declaration {n}"
       match info with
       | .axiomInfo _ =>
-        let range ← findDeclarationRanges? n
-        unless info.isUnsafe && range.isNone do
+        if range.isSome then
           discard <| checkFlpDeclaration n
       | _ => pure ()
       unless info.isUnsafe do

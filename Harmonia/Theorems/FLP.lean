@@ -61,7 +61,9 @@ can be proved without partial `Option` expressions. -/
 def advance (p : Protocol Node Msg Local) (c : Config Node Msg Local)
     (e : Event Node Msg) : Config Node Msg Local where
   state n := if n = e.target then p.update e.target (c.state e.target) e.msg else c.state n
-  decision n := if n = e.target then p.decide e.target (c.state e.target) e.msg else c.decision n
+  decision n := match c.decision n with
+    | some v => some v
+    | none => if n = e.target then p.decide e.target (c.state e.target) e.msg else none
   buffer n m := c.buffer n m + Int.ofNat (p.send e.target (c.state e.target) e.msg n m) -
     (if e.msg = some m ∧ e.target = n then 1 else 0)
 
@@ -131,6 +133,10 @@ theorem flp_lemma1_diamond (p : Protocol Node Msg Local)
     by_cases hn : n = e.target <;> by_cases hm : n = f.target
     · exact False.elim (hdisjoint (hn.symm.trans hm))
     all_goals simp [advance, hn, hm, hdisjoint, hfe]
+    all_goals cases h : c.decision e.target <;>
+      cases h' : c.decision f.target <;> simp_all
+    all_goals cases hd : p.decide e.target (c.state e.target) e.msg <;>
+      cases hf : p.decide f.target (c.state f.target) f.msg <;> simp_all
 
 theorem flp_lemma1_step_diamond (p : Protocol Node Msg Local)
     (c : Config Node Msg Local) (e f : Event Node Msg)
@@ -178,6 +184,26 @@ theorem flp_lemma1_schedule (p : Protocol Node Msg Local)
     · apply Schedule.cons e he'
       simpa only [flp_lemma1_diamond p c e f hne] using hafter
     · exact hend
+
+/-- Paper Lemma 1 for two finite schedules whose events target disjoint
+sets of processes. Both execution orders reach the same configuration. -/
+theorem flp_lemma1_schedules (p : Protocol Node Msg Local)
+    {c a b : Config Node Msg Local} {es fs : List (Event Node Msg)}
+    (ha : Schedule p c es a) (hb : Schedule p c fs b)
+    (hdisjoint : ∀ e ∈ es, ∀ f ∈ fs, e.target ≠ f.target) :
+    ∃ z, Schedule p a fs z ∧ Schedule p b es z := by
+  induction hb generalizing a es with
+  | nil => exact ⟨a, .nil _, ha⟩
+  | @cons c d f hf fs tail ih =>
+    have hcrossF : ∀ e ∈ es, e.target ≠ f.target := by
+      intro e he
+      exact hdisjoint e he f (List.mem_cons_self ..)
+    obtain ⟨ha', hf'⟩ := flp_lemma1_schedule p ha f hf hcrossF
+    have hcrossTail : ∀ e ∈ es, ∀ g ∈ fs, e.target ≠ g.target := by
+      intro e he g hg
+      exact hdisjoint e he g (List.mem_cons_of_mem f hg)
+    obtain ⟨z, hfs, hes⟩ := ih ha' hcrossTail
+    exact ⟨z, .cons f hf' hfs, hes⟩
 
 /-- A finite schedule keeps explicit evidence that each event was enabled. -/
 inductive Reachable (p : Protocol Node Msg Local) :
@@ -262,6 +288,11 @@ def Agreement (p : Protocol Node Msg Local) (initial : Config Node Msg Local) : 
 def DecisionsPersist (p : Protocol Node Msg Local) : Prop :=
   ∀ c e v, Enabled c e → DecidedIn c v → DecidedIn (advance p c e) v
 
+theorem decisions_persist_step (p : Protocol Node Msg Local) : DecisionsPersist p := by
+  intro c e v _ hv
+  obtain ⟨n, hn⟩ := hv
+  exact ⟨n, by simp [advance, hn]⟩
+
 theorem decided_persists_along (p : Protocol Node Msg Local)
     (hp : DecisionsPersist p) {c d : Config Node Msg Local}
     (hcd : Reachable p c d) {v : Decision} (hv : DecidedIn c v) :
@@ -312,14 +343,18 @@ def deliveryCount (p : Protocol Node Msg Local)
   ((List.range (last + 1 - first)).filter
     (fun offset => r.event (first + offset) = ⟨n, some m⟩)).length
 
+/-- A process is nonfaulty exactly when it takes arbitrarily late steps. -/
+def NonFaulty {p : Protocol Node Msg Local} {initial : Config Node Msg Local}
+    (r : InfiniteRun p initial) (n : Node) : Prop :=
+  ∀ t, ∃ k, t ≤ k ∧ (r.event k).target = n
+
 /-- Every process except possibly one takes arbitrarily late steps. For each
 positive buffer count present at a time, enough later matching deliveries
 occur to account for every pending copy, even if further copies are sent. -/
 def Admissible (p : Protocol Node Msg Local)
     (initial : Config Node Msg Local) (r : InfiniteRun p initial) : Prop :=
-  ∃ faulty : Option Node,
-    (∀ n, some n ≠ faulty → ∀ t, ∃ k, t ≤ k ∧ (r.event k).target = n) ∧
-    (∀ n m, some n ≠ faulty → ∀ t, 0 < (r.state t).buffer n m →
+  (∃ faulty : Option Node, ∀ n, some n ≠ faulty → NonFaulty r n) ∧
+    (∀ n m, NonFaulty r n → ∀ t, 0 < (r.state t).buffer n m →
       ∃ k, t ≤ k ∧ Int.toNat ((r.state t).buffer n m) ≤
         deliveryCount p initial r t k n m)
 

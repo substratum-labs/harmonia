@@ -1,4 +1,4 @@
-"""Five hostile source and import mutations for the FLP audit inventory."""
+"""Hostile source and import mutations for the FLP audit inventory."""
 
 import shutil
 import tempfile
@@ -57,6 +57,13 @@ class FLPAuditTests(unittest.TestCase):
         source = self.root / "Harmonia/Theorems/FLP.lean"
         source.write_text(source.read_text() + "\naxiom hidden : True\n")
         with self.assertRaisesRegex(ValueError, "forbidden certified source token axiom"):
+            audit.check_static(self.root)
+
+    def test_certified_source_rejects_classical_choice(self):
+        source = self.root / "Harmonia/Theorems/FLP.lean"
+        source.write_text(source.read_text() +
+                          "\nnoncomputable def hidden : Nat := Classical.choice (show Nonempty Nat from ⟨0⟩)\n")
+        with self.assertRaisesRegex(ValueError, "forbidden certified source token Classical.choice"):
             audit.check_static(self.root)
 
 

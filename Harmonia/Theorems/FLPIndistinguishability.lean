@@ -36,7 +36,10 @@ theorem replay_other_process (p : Protocol Node Msg Local)
     rw [h.2.1 n m hn, hstate]
   · intro n hn
     by_cases hne : n = e.target
-    · simp [advance, hne, hstate]
+    · have hdecision := h.2.2 n hn
+      have hd : c.decision e.target = d.decision e.target := by
+        simpa only [hne] using hdecision
+      simp [advance, hne, hstate, hd]
     · simp [advance, hne, h.2.2 n hn]
 
 omit [DecidableEq Node] [DecidableEq Msg] in
