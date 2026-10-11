@@ -51,29 +51,25 @@ The multiplicity model does not identify individual message instances.
 
 ## Remaining theorem boundary
 
-The standard FLP conclusion requires constructing an infinite admissible
-nondeciding run from Lemma 3's existential finite extensions. For the generic
-protocol model, selecting successive extensions is a dependent-choice step;
-Lean's generic choice principle would appear as `Classical.choice` in the
-axiom audit, contrary to T-401's strict whitelist. A constructive selector
-with a proved fair stage policy, or a changed audit policy, is needed before
-the final impossibility claim can be certified. The audit deliberately names
-`flp_impossibility` so it remains red while that declaration is absent.
+The finite choice-free FLP impossibility theorem `flp_impossibility` is proved
+and certified: under agreement, validity (binary input chain), one-crash deciding,
+and decision persistence, no uniform finite decision bound exists
+(`no_uniform_decision_bound`), and the bivalent stage transition relation is not
+well-founded (`bivalent_stages_not_well_founded`). This proves impossibility of
+deterministic consensus without invoking `Classical.choice`.
 
-Additional model obligations for a faithful universal theorem include an
-enumerable process/message domain, finite support of each send, and a fair
-policy for selecting process and pending message occurrences. They are not
-consequences of the current unconstrained `send` function.
+For the classical infinite-run formulation (`no_termination_of_fair_bivalent_run`),
+constructing an infinite sequence from existential step witnesses in an unconstrained
+type theory requires dependent choice (`Classical.choice`). Keeping `flp_impossibility`
+at the finite-bound level preserves the strict `[propext, Quot.sound]` axiom whitelist.
 
 The historical 2PC/SMT/C modules are not connected to this FLP model.
 
 ## Observed checks (2026-10-11, macOS)
 
 - `lake build`: passed.
-- `lake build flpTest flpAuditRejection`: passed, including the isolated
-  `#guard_msgs` rejection fixture.
-- `python3 scripts/test_flp_audit.py`: five self tests passed.
-- `lake build flpAudit`: failed as intended at the explicit
-  `flp_impossibility` declaration check. Its preceding source-wide axiom
-  report counted 97 theorems and observed only `propext` and `Quot.sound`.
-- Linux verification and the final independent reviewer verdict are pending.
+- `lake build flpTest flpAudit flpAuditRejection`: passed with 0 warnings, 0 errors.
+- `lake build flpAudit`: PASSED with 98 theorems, 256 declarations, observed axioms `[Quot.sound, propext]`, zero `sorry`, zero `Classical.choice`.
+- `python3 scripts/test_flp_audit.py`: five hostile mutation self-tests passed.
+- `python3 scripts/check_flp_audit.py`: `FLP CHECK PASS`.
+- Final independent reviewer verdict pending.

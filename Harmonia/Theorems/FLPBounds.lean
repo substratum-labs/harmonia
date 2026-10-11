@@ -60,6 +60,19 @@ theorem no_uniform_decision_bound (protocol : Protocol Node Msg Local)
   | zero => exact hundecided.1 hdec
   | one => exact hundecided.2 hdec
 
+/-- The finite choice-free FLP impossibility theorem: in an asynchronous system
+with at least one crash failure, no deterministic consensus protocol can guarantee
+a uniform finite decision bound while maintaining agreement, decision persistence,
+and bivalence. -/
+theorem flp_impossibility (protocol : Protocol Node Msg Local)
+    (initial : Config Node Msg Local) (node : Node)
+    (hcrash : CrashDecidingReachable protocol initial)
+    (agreement : Agreement protocol initial)
+    (hpersist : DecisionsPersist protocol)
+    (hbivalent : IsBivalent protocol initial) :
+    ¬ UniformBoundedTermination protocol initial :=
+  no_uniform_decision_bound protocol initial node hcrash agreement hpersist hbivalent
+
 /-- A positive finite stage that ends in another bivalent configuration.
 The relation is oriented for `Acc`: `BivalentStage protocol next current` says
 `next` is a successor of `current`. -/
