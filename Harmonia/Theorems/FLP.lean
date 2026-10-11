@@ -148,6 +148,15 @@ inductive Schedule (p : Protocol Node Msg Local) :
       {es : List (Event Node Msg)} (tail : Schedule p (advance p c e) es d) :
       Schedule p c (e :: es) d
 
+theorem Schedule.append (p : Protocol Node Msg Local)
+    {a b c : Config Node Msg Local}
+    {xs ys : List (Event Node Msg)}
+    (hab : Schedule p a xs b) (hbc : Schedule p b ys c) :
+    Schedule p a (xs ++ ys) c := by
+  induction hab with
+  | nil => exact hbc
+  | cons e he _ ih => exact .cons e he (ih hbc)
+
 /-- Paper Lemma 1 for a finite schedule that omits the target of `f`.
 The schedule can run before or after `f`, with the same final configuration. -/
 theorem flp_lemma1_schedule (p : Protocol Node Msg Local)
@@ -194,6 +203,15 @@ theorem Schedule.reachable (p : Protocol Node Msg Local)
   induction h with
   | nil => exact .refl _
   | cons e he _ ih => exact (Reachable.tail (.refl _) e he).trans ih
+
+theorem Reachable.schedule (p : Protocol Node Msg Local)
+    {c d : Config Node Msg Local} (h : Reachable p c d) :
+    ∃ events, Schedule p c events d := by
+  induction h with
+  | refl => exact ⟨[], .nil _⟩
+  | tail _ e he ih =>
+    obtain ⟨events, hr⟩ := ih
+    exact ⟨events ++ [e], hr.append p (.cons e he (.nil _))⟩
 
 theorem nonnegative_buffer_reachable (p : Protocol Node Msg Local)
     {c d : Config Node Msg Local} (h : Reachable p c d)
@@ -252,6 +270,18 @@ theorem decided_persists_along (p : Protocol Node Msg Local)
   | refl => exact hv
   | tail _ e he ih => exact hp _ e _ he ih
 
+theorem decided_univalent (p : Protocol Node Msg Local)
+    (initial c : Config Node Msg Local) (hag : Agreement p initial)
+    (hp : DecisionsPersist p) (hc : Reachable p initial c)
+    {v : Decision} (hv : DecidedIn c v) : IsUnivalent p c v := by
+  constructor
+  · exact ⟨c, .refl c, hv⟩
+  · rintro ⟨d, hcd, hopposite⟩
+    have hpersistent := decided_persists_along p hp hcd hv
+    cases v with
+    | zero => exact hag d (hc.trans hcd) ⟨hpersistent, hopposite⟩
+    | one => exact hag d (hc.trans hcd) ⟨hopposite, hpersistent⟩
+
 /-- A reachable bivalent configuration cannot already contain a decision. -/
 theorem bivalent_undecided (p : Protocol Node Msg Local)
     (initial c : Config Node Msg Local) (hag : Agreement p initial)
@@ -275,15 +305,23 @@ structure InfiniteRun (p : Protocol Node Msg Local)
   enabled : ∀ t, Enabled (state t) (event t)
   evolves : ∀ t, state (t + 1) = advance p (state t) (event t)
 
-/-- Every process except possibly one takes arbitrarily late steps. A process
-that continues to run eventually receives each pending message kind. Repeated
-quantification over times covers duplicate pending instances. -/
+/-- Count deliveries of one destination/payload pair in an inclusive interval. -/
+def deliveryCount (p : Protocol Node Msg Local)
+    (initial : Config Node Msg Local) (r : InfiniteRun p initial) (first last : Nat)
+    (n : Node) (m : Msg) : Nat :=
+  ((List.range (last + 1 - first)).filter
+    (fun offset => r.event (first + offset) = ⟨n, some m⟩)).length
+
+/-- Every process except possibly one takes arbitrarily late steps. For each
+positive buffer count present at a time, enough later matching deliveries
+occur to account for every pending copy, even if further copies are sent. -/
 def Admissible (p : Protocol Node Msg Local)
     (initial : Config Node Msg Local) (r : InfiniteRun p initial) : Prop :=
   ∃ faulty : Option Node,
     (∀ n, some n ≠ faulty → ∀ t, ∃ k, t ≤ k ∧ (r.event k).target = n) ∧
     (∀ n m, some n ≠ faulty → ∀ t, 0 < (r.state t).buffer n m →
-      ∃ k, t ≤ k ∧ r.event k = ⟨n, some m⟩)
+      ∃ k, t ≤ k ∧ Int.toNat ((r.state t).buffer n m) ≤
+        deliveryCount p initial r t k n m)
 
 def GuaranteedTermination (p : Protocol Node Msg Local)
     (initial : Config Node Msg Local) : Prop :=

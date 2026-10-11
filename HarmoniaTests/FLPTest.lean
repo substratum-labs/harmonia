@@ -1,5 +1,6 @@
 import Harmonia.Theorems.FLPIndistinguishability
 import Harmonia.Theorems.FLPExtension
+import Harmonia.Theorems.FLPBounds
 
 open Harmonia.FLP
 
@@ -57,4 +58,46 @@ example : ¬ IsBivalent silent initial := by
   intro h
   obtain ⟨c, hc, ⟨n, hn⟩⟩ := h.1
   rw [silent_no_decision hc n] at hn
+  cases hn
+
+private theorem silent_advance :
+    advance silent initial (tick true) = initial := by
+  apply Config.ext
+  · intro n
+    by_cases hn : n = true <;> simp [advance, silent, initial, hn]
+  · intro n m
+    simp [advance, silent, initial, tick]
+  · intro n
+    by_cases hn : n = true <;> simp [advance, silent, initial, hn]
+
+private def oneCrashRun : InfiniteRun silent initial where
+  state _ := initial
+  event _ := tick true
+  starts := rfl
+  enabled _ := trivial
+  evolves _ := silent_advance.symm
+
+-- The silent protocol has an admissible run with one fail-stop process and
+-- no decisions. This witnesses that the liveness specification is nonvacuous.
+example : Admissible silent initial oneCrashRun := by
+  refine ⟨some false, ?_, ?_⟩
+  · intro n hn t
+    cases n
+    · exact False.elim (hn rfl)
+    · exact ⟨t, Nat.le_refl t, rfl⟩
+  · intro n m hn t hbuffer
+    have : (oneCrashRun.state t).buffer n m = 0 := rfl
+    omega
+
+example : ¬ GuaranteedTermination silent initial := by
+  intro h
+  obtain ⟨t, v, ⟨n, hn⟩⟩ := h oneCrashRun (by
+    refine ⟨some false, ?_, ?_⟩
+    · intro q hq k
+      cases q
+      · exact False.elim (hq rfl)
+      · exact ⟨k, Nat.le_refl k, rfl⟩
+    · intro q m hq k hbuffer
+      have : (oneCrashRun.state k).buffer q m = 0 := rfl
+      omega)
   cases hn

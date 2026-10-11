@@ -17,6 +17,7 @@ CERTIFIED = {
     "Harmonia.Theorems.FLPInitial",
     "Harmonia.Theorems.FLPIndistinguishability",
     "Harmonia.Theorems.FLPExtension",
+    "Harmonia.Theorems.FLPBounds",
     "HarmoniaTests.FLPTest",
     "HarmoniaTests.FLPAxiomAudit",
 }
