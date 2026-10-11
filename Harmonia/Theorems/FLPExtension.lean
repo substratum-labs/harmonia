@@ -108,4 +108,68 @@ theorem deciding_schedule_split_first_occurrence (protocol : Protocol Node Msg L
     schedule_split_first_occurrence protocol hrun e hpresent
   exact ⟨before, after, mid, hsplit, havoid, hprefix, he, hsuffix, hdecision⟩
 
+/-- The finite consequence of termination under one fail-stop fault: from
+every state accessible from `initial`, there is a deciding schedule in which
+any designated process remains silent. This is a liveness premise, not a
+consequence of the finite transition semantics alone. -/
+def CrashDecidingReachable (protocol : Protocol Node Msg Local)
+    (initial : Config Node Msg Local) : Prop :=
+  ∀ c, Reachable protocol initial c → ∀ silent,
+    ∃ events t value, Schedule protocol c events t ∧
+      (∀ event ∈ events, event.target ≠ silent) ∧ DecidedIn t value
+
+/-- Adjacent members of the set reached while delaying `e` cannot have
+opposite univalent `e`-images. If `f` acts elsewhere, the diamond joins the
+images. If `f` acts at `e`'s process, a deciding schedule that omits that
+process replays after either image; persistence forces one decision value in
+both. -/
+theorem e_image_neighbor_consistent (protocol : Protocol Node Msg Local)
+    (initial c : Config Node Msg Local) (e f : Event Node Msg)
+    (haccessible : Reachable protocol initial c)
+    (hcrash : CrashDecidingReachable protocol initial)
+    (hpersist : DecisionsPersist protocol)
+    (he : Enabled c e) (hf : Enabled c f) (hdifferent : f ≠ e)
+    (value : Decision)
+    (hleft : IsUnivalent protocol (advance protocol c e) value)
+    (hright : IsUnivalent protocol
+      (advance protocol (advance protocol c f) e) value.flip) :
+    False := by
+  have he' : Enabled (advance protocol c f) e :=
+    enabled_after_different_event protocol c e f hdifferent he
+  by_cases htarget : f.target = e.target
+  · obtain ⟨events, t, crashValue, hrun, hother, hdec⟩ :=
+      hcrash c haccessible e.target
+    have hafterE := flp_lemma1_schedule protocol hrun e he hother
+    have hafterF := flp_lemma1_schedule protocol hrun f hf (by
+      intro event hm
+      simpa [htarget] using hother event hm)
+    have hafterEF := flp_lemma1_schedule protocol hafterF.1 e he' hother
+    have hdecE : DecidedIn (advance protocol t e) crashValue :=
+      hpersist t e crashValue hafterE.2 hdec
+    have hdecFE : DecidedIn (advance protocol (advance protocol t f) e) crashValue := by
+      have hdecF : DecidedIn (advance protocol t f) crashValue :=
+        hpersist t f crashValue hafterF.2 hdec
+      exact hpersist (advance protocol t f) e crashValue hafterEF.2 hdecF
+    have hpossibleE : ReachableDecision protocol (advance protocol c e) crashValue :=
+      ⟨advance protocol t e, Schedule.reachable protocol hafterE.1, hdecE⟩
+    have hpossibleFE : ReachableDecision protocol
+        (advance protocol (advance protocol c f) e) crashValue :=
+      ⟨advance protocol (advance protocol t f) e,
+        Schedule.reachable protocol hafterEF.1, hdecFE⟩
+    cases value <;> cases crashValue
+    · exact hright.2 hpossibleFE
+    · exact hleft.2 hpossibleE
+    · exact hleft.2 hpossibleE
+    · exact hright.2 hpossibleFE
+  · have heF : Enabled (advance protocol c e) f :=
+      enabled_after_other protocol c e f (Ne.symm htarget) hf
+    have hdiamond : advance protocol (advance protocol c e) f =
+        advance protocol (advance protocol c f) e :=
+      flp_lemma1_diamond protocol c e f (Ne.symm htarget)
+    have hreach : Reachable protocol (advance protocol c e)
+        (advance protocol (advance protocol c f) e) := by
+      rw [← hdiamond]
+      exact .tail (.refl _) f heF
+    exact hleft.2 (reachableDecision_of_reachable protocol hreach hright.1)
+
 end Harmonia.FLP
