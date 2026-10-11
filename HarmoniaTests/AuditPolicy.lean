@@ -213,3 +213,49 @@ def auditCap : CommandElabM Unit := do
 end HarmoniaAudit
 
 elab "#audit_cap" : command => HarmoniaAudit.auditCap
+
+namespace HarmoniaAudit
+
+def flpSourceModules : Array Name := #[
+  `Harmonia.Theorems.FLP, `HarmoniaTests.FLPTest,
+  `HarmoniaTests.FLPAxiomAudit]
+
+def flpDeclaration (env : Environment) (n : Name) : Bool :=
+  (`Harmonia.FLP).isPrefixOf n ||
+  flpSourceModules.contains (sourceModule env n)
+
+def checkFlpDeclaration (n : Name) : CommandElabM (Array Name) := do
+  unless (← getEnv).contains n do
+    throwError "FLP audit declaration does not exist: {n}"
+  let axioms ← collectAxioms n
+  for ax in axioms do
+    unless ax == ``propext || ax == ``Quot.sound do
+      throwError "FLP audit rejected {n}: {ax}"
+  return axioms
+
+def auditFlp : CommandElabM Unit := do
+  let env ← getEnv
+  let select := flpDeclaration env
+  let declarations := env.constants.toList.toArray.qsort (fun a b => a.1.toString < b.1.toString)
+  let names := theoremNames env select
+  if names.isEmpty then throwError "FLP audit found no theorems"
+  let mut observed : Array Name := #[]
+  let mut count := 0
+  for (n, info) in declarations do
+    if select n then
+      match info with
+      | .axiomInfo _ =>
+        let range ← findDeclarationRanges? n
+        unless info.isUnsafe && range.isNone do
+          discard <| checkFlpDeclaration n
+      | _ => pure ()
+      unless info.isUnsafe do
+        let axioms ← checkFlpDeclaration n
+        count := count + 1
+        for ax in axioms do
+          if !observed.contains ax then observed := observed.push ax
+  logInfo m!"FLP AUDIT PASS: {names.size} theorems; {count} declarations; observed axioms {observed}; whitelist [propext, Quot.sound]"
+
+end HarmoniaAudit
+
+elab "#audit_flp" : command => HarmoniaAudit.auditFlp

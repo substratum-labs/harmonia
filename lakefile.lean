@@ -75,3 +75,12 @@ lean_lib capAudit where
 
 lean_lib capAuditRejection where
   roots := #[`HarmoniaTests.CAPRejection]
+
+lean_lib flpTest where
+  roots := #[`HarmoniaTests.FLPTest]
+
+lean_lib flpAudit where
+  roots := #[`HarmoniaTests.AuditPolicy, `HarmoniaTests.FLPAxiomAudit]
+
+lean_lib flpAuditRejection where
+  roots := #[`HarmoniaTests.FLPRejection]
