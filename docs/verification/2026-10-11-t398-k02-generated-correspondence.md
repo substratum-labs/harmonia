@@ -1,0 +1,56 @@
+# T-398 K-02 generated correspondence: design/preflight preparation receipt
+
+Status: **design and physical provenance only**. No T-398 product module, theorem, test, CI target, generated tracked artifact or merge exists. Historical Harmonia T-396's three physical REVISE reports remain in the internal harmonia-registration worktree; Yong's explicit 2026-10-11 resumption resets the review counter for **current-source T-398**, not the historical record. Parent owns independent current-source Grok preflight and reviewed integration. This receipt supersedes the old `2026-10-06-generated-implementation-correspondence.md` for current work; old receipt remains historical. Physical owner thread `01a11179-2107-7842-8ea3-adaac2c2993a`.
+
+## Workspaces, pins and source-history relationship
+
+- Source: `/Users/yong/.codex/worktrees/5b89/harmonia`, clean historical branch name `feat/t396-generated-correspondence`, open draft source [PR #5](https://github.com/substratum-labs/harmonia/pull/5). It began at `bcf44916b5cedf351a78e715470c351ddc84a2ad`; this invocation fetched and cleanly rebased its four documentation commits onto `origin/main@bac00db43cdfff8ba44779fa537a1560958a6154`, which already contains T-399 Quorum and T-400 CAP. The independent T-401 FLP worktrees and primary Harmonia checkout were not edited. The source branch has no product modifications; this invocation adds only the new three T-398 documents.
+- Kadmos: read-only `/Users/yong/projects/substratum/kadmos`, clean main `1ac9422a12ab743a9bbb8b8ad508d37c582637df`, manifest `0.1.2`, `kadmos.compiler.k02.v1`. Installed Kadmos `tsc` wrote solely to `/private/tmp/t398-k02/kadmos-js`; its actual `parseWorldSpec`, `compileWorldSpec`, `compileWorldSpecPython` then wrote generated files and runtime probes solely under `/private/tmp/t398-k02/`.
+- Stage3b Bridge: unchanged tracked YAML and certificate; exporter/artifact checker still pin `fda8c6e42825b35afe5484a4af9d84d9d206ba9a`. New K-02 admitted JSON for both fixture IDs is value- and ordered-serialization-equal to each old `parsed.json` entry (Python `json.dumps(...,separators=(',',':'))` comparison true). This is an **external compatibility observation**, not a proof of the new parser/admission/serializer or a silent rewrite of T-395's pin.
+- Coordination: dirty primary `/Users/yong/projects/substratum/substratum-internal` was inspected and not edited. Isolated worktree `/Users/yong/projects/substratum/substratum-internal/.worktrees/t398-correspondence-coordination` started from fetched `origin/main@c254da370fd5fabc56aef2034af8933970ac82dd`. It registered **T-398 `[IN_PROGRESS]`** in `ledger/TASKS.md` and `ledger/projects/harmonia.md`, with an explicit historical Harmonia T-396 alias and human-resumption handoff. Castor T-396 remains DONE; T-401 remains separately owned. Initial coordination commit `0364c74` was pushed and [draft PR #92](https://github.com/substratum-labs/substratum-internal/pull/92) opened. `bash scripts/check_ledger.sh` passed after correcting the active board's dependency to published K-02; accepted T-395 remains in project history rather than a duplicate active board row.
+
+## Actual K-02 emitted artifacts in private scratch
+
+Commands:
+
+```text
+/Users/yong/projects/substratum/kadmos/node_modules/.bin/tsc \
+  -p /Users/yong/projects/substratum/kadmos/tsconfig.json \
+  --outDir /private/tmp/t398-k02/kadmos-js
+node --experimental-strip-types /private/tmp/t398-k02/probe.mjs
+```
+
+Both exited 0. The probe imported **fresh compiled K-02 code**, parsed the unchanged Stage3b balance/order YAML, called both actual compiler functions, wrote complete TS/Python source and ports to private tmp, imported emitted TS with Node 26 type stripping, and imported emitted Python with Python 3. Exact current fingerprints are SHA-256 of UTF-8 bytes (size in bytes):
+
+| Fixture | admitted.json | world_checker.ts | ports.d.ts | world_checker.py | ports.py |
+| --- | --- | --- | --- | --- | --- |
+| balance | `23e1e9a9a047a0497a6fe9ef35673d188fabb60e3833674ce3c5008ab320150d` (392) | `08aa10110b3a36450c2bd2552ac0bb89cc0f4216784f0f30df462abeef6b4e0a` (18,428) | `debb1ab3db463e8691615a929b98ccf627c552820e2bf728203ec4cdf2d7cf80` (1,221) | `50b4da8809d42e72bedc2287bf6fde09291988213e781f4fea173f8163f15437` (18,966) | `56809a0466af05bf94a1a3968cf8d1f4de9a7c919acb0dfa0560b40b021447b3` (1,399) |
+| order_phase | `a70d58c266b1b225d01db73f01a8b507b8edc7149b6e6c72ef56377982c921fa` (432) | `161631c389776c7fee161d4a6a8d7037147c435a66f650125649e7d5c400b402` (18,472) | `a60a83d94e37d7ecacefe99e5a2152034de0eeaf33e31340cf9f7993fe5b0cbf` (1,241) | `f3dc44d14365e9349b1dc5d13f9d9935e7d7a9aeb84a49ed211453b241e82da0` (19,022) | `da9cab2af85c26fa460d93b446e71b71d82e3951fb3782d5c2474a160dcbf830` (1,404) |
+
+The balance and order YAML hashes remain `1357baa55f5cc0453a491df264ca75adacad1db580e4bc952dc4adffc900258b` and `53bd1b2a133ff562c01a9b7b10066ed7f78fc45c10a1a821390de6164038db60`. These values bind the **observed** current output, not its semantics. K-02 TS now has a contract header, `world = JSON.parse(<quoted JSON>)`, separate `contextDefaults = JSON.parse(<quoted JSON>)`, class `#constructorSeed` and constructor→reset. Python has `__constructor_seed`, `__state/__context/__history/__undo`, plain `_busy`, read-only public properties and constructor→reset. These are material changes from the old fda8c6e artifacts; prior source-level syntax plans cannot be reused verbatim.
+
+## Physical execution and adversarial witness
+
+From freshly emitted programs, each language constructed a checker with explicit balance seed b and ran exactly one ordinary/exact-dict `DEBIT` request, absent directive, amount n:
+
+| b | n | TS result | Python result |
+| ---: | ---: | --- | --- |
+| 0 | 0 | `GUARD_FAILED`, Ready/0, null directive | same |
+| 0 | 1 | `INVALID_BOUNDS`, Ready/0, null directive | same |
+| 100 | -1 | `GUARD_FAILED`, Ready/100, null directive | same |
+| 100 | 30 | accepted, Ready/70, null directive | same |
+| 100 | 130 | `INVALID_BOUNDS`, Ready/100, null directive | same |
+| S | S | accepted, Ready/0, null directive | same |
+| S | -S | `GUARD_FAILED`, Ready/S, null directive | same |
+
+For order default construction, both returned A/(x=1,y=0); actual emitted STEP accepted and returned B/(2,2). Rejected balance verdicts carried a one-record trace with step1, Ready, DEBIT and the original payload; their getters showed unchanged logical context. Separately, both languages raised `NO_CHECKER_SAVEPOINT` before any accepted step, accepted DEBIT30, rolled it back to Ready/100, raised the same error on a second rollback, and raised it after a rejected DEBIT130. This confirms current finite behavior of the new private savepoint contract only; rollback is not part of the first theorem. Source mutation in private tmp changed the sole embedded `balance - event.amount` to `balance + event.amount`; both emitted checkers accepted DEBIT30 and returned Ready/130 instead of Ready/70. The later Lean checker must reject or diagnose this source mutation even if a digest is recomputed; **no such checker exists yet**.
+
+## Baseline and old-review evidence
+
+On the rebased branch over Harmonia `origin/main@bac00db`, `lake build` exited 0 (`Build completed successfully`), then **all 20 existing dedicated Lake targets** ran serially and each exited 0: Foundation test/audit/rejection; Distributed test/audit/rejection; Kadmos World test/audit/rejection; Bridge syntax/certificate/fixture test, audit/rejection; Quorum test/audit/rejection; CAP test/audit/rejection. Logs are separate `/private/tmp/t398-k02/<target>.log` files; no new target exists. `lake env lean --version` was not reached in the original `set -e` shell because a later inventory failed; a separate subsequent `lake env lean --version` exited 0 and reported Lean 4.16.0 on arm64 macOS; the pinned `lean-toolchain` file remains `leanprover/lean4:v4.16.0`. Five existing inventory/artifact checks exited 0: Distributed, Kadmos World, old-pin Bridge artifact, Bridge source/root, and CAP. **Existing baseline exception:** `python3 scripts/check_quorum_audit.py` exited 1 with `QUORUM CHECK REJECTED: nonstandard theorem import in Harmonia.Theorems.CAP: ['Harmonia.Core.Execution']`. It is a current-main policy/import interaction, unrelated to this docs-only T-398 branch. `python3 scripts/check_quorum_audit.py --self-test` independently passed five tests; `python3 scripts/check_cap_audit.py` passed with 63 theorems/157 declarations and observed `[propext]` within `[propext, Quot.sound]`. No T-398 policy/code change is proposed to mask the failure. Old accepted T-395 artifact checker remains an old-pin gate, not a K-02 source check.
+
+Prior physical R1/R2/R3 reports read from the isolated internal harmonia-registration worktree: `design/harmonia/reviews/2026-10-06_generated_preflight_grok_{r1,r2,r3}.md`. Their cumulative retained findings cover mutable lexical cells, targeted loop/switch exits, defaults, TS/Python module and constructor initialization, exact emitted JSON, primitive and Python numeric tags, heap descriptors/frozen identity, independent SourceParses, truthiness, Python `_busy` alias and anchored regex match-at-offset/`.end()`. R3 was the third consecutive historical REVISE; it stopped old-pin work without product code. Yong's explicit 2026-10-11 intervention resets the review counter **for redesigned K-02 T-398 only**. None of R1/R2/R3 is a current-source ACCEPT, and the parent will run the new independent preflight.
+
+## Self-review and limits
+
+The new spec/plan are source-bound to K-02, not a mechanical old-name replacement. The theorem target is an explicit constructor followed by exactly one DEBIT for all bounded b and safe n, with total constructor execution in the conclusion. It has a separate target store/request/observation relation, exact Bridge-dependent dimensions, and a required parser/operational semantics of every reached generated helper body. An unexecuted source span may be version-locked by exact syntax but cannot justify runtime behavior. The accepted prior model cases are from `balanceCandidate`, not `Balance.balanceWorld`. New generated files, theorem, tests, CI, host-language conformance and Linux checks are future implementation gates. Source exact-byte serialization, pinned Kadmos admission and basic Node/CPython primitive behavior remain explicitly trusted; solver UNSAT, hashes and finite traces are not kernel proofs. If the full reached fragment is too large to model without an ideal helper macro, the parent must decide on more formalization or an explicitly authorized alternative backend. No product code was started in this invocation.
