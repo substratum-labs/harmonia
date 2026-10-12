@@ -11,6 +11,9 @@ inductive StmtCertificate where
       (first rest : StmtCertificate)
   | returnExpr (exprSpan : SourceSpan)
   | throwExpr (exprSpan : SourceSpan)
+  | doExpr (exprSpan : SourceSpan)
+  | localBinding (exprSpan : SourceSpan)
+  | augmentLocal (exprSpan : SourceSpan)
   | ifThen (condSpan bodySpan : SourceSpan) (body : StmtCertificate)
   deriving Repr
 
@@ -53,6 +56,29 @@ def validateStmtCertificate (lang : TargetLang) (source : String)
            | .ts => span.text source == "throw " ++ exprSpan.text source ++ ";"
            | .python => span.text source == "raise " ++ exprSpan.text source) &&
           validateFunctionExpr lang (exprSpan.text source) value
+    | .doExpr value, .doExpr exprSpan =>
+        spanWithin span exprSpan &&
+          (match lang with
+           | .ts => span.text source == exprSpan.text source ++ ";"
+           | .python => span.text source == exprSpan.text source) &&
+          validateFunctionExpr lang (exprSpan.text source) value
+    | .letLocal name mutable value, .localBinding exprSpan =>
+        lang == .ts && spanWithin span exprSpan &&
+          expressionIdentifierCheck .ts name &&
+          span.text source ==
+            (if mutable then "let " else "const ") ++ name ++ " = " ++
+              exprSpan.text source ++ ";" &&
+          validateFunctionExpr .ts (exprSpan.text source) value
+    | .assign (.local name) value, .localBinding exprSpan =>
+        lang == .python && spanWithin span exprSpan &&
+          expressionIdentifierCheck .python name &&
+          span.text source == name ++ " = " ++ exprSpan.text source &&
+          validateFunctionExpr .python (exprSpan.text source) value
+    | .augment (.local name) .add value, .augmentLocal exprSpan =>
+        lang == .python && spanWithin span exprSpan &&
+          expressionIdentifierCheck .python name &&
+          span.text source == name ++ " += " ++ exprSpan.text source &&
+          validateFunctionExpr .python (exprSpan.text source) value
     | .ifThenElse cond yes .empty, .ifThen condSpan bodySpan bodyCert =>
         spanWithin span condSpan && spanWithin span bodySpan &&
           condSpan.stop ≤ bodySpan.start &&
@@ -156,6 +182,77 @@ theorem validateStmtCertificate_sound {lang source span stmt cert}
               simp at hSource
               rw [hSource]
               exact .pythonRaise (validateFunctionExpr_sound hValue)
+      | _ => simp [validateStmtCertificate] at h
+  | doExpr exprSpan =>
+      cases stmt with
+      | doExpr value =>
+          simp only [validateStmtCertificate, spanWithin, Bool.and_eq_true,
+            beq_iff_eq] at h
+          rcases h with ⟨⟨hBoundsStart, hBoundsStop⟩,
+            ⟨⟨hWithin, hSource⟩, hValue⟩⟩
+          apply StmtDerives.ofSyntax
+            ⟨(by simpa using hBoundsStart), (by simpa using hBoundsStop)⟩
+          cases lang with
+          | ts =>
+              simp at hSource
+              rw [hSource]
+              exact .tsDo (validateFunctionExpr_sound hValue)
+          | python =>
+              simp at hSource
+              rw [hSource]
+              exact .pythonDo (validateFunctionExpr_sound hValue)
+      | _ => simp [validateStmtCertificate] at h
+  | localBinding exprSpan =>
+      cases stmt with
+      | letLocal name mutable value =>
+          simp only [validateStmtCertificate, spanWithin, Bool.and_eq_true,
+            beq_iff_eq] at h
+          rcases h with ⟨⟨hBoundsStart, hBoundsStop⟩,
+            ⟨⟨⟨hLang, hWithin⟩, hName⟩, hSource⟩, hValue⟩
+          have hLangEq : lang = .ts := by simpa using hLang
+          subst lang
+          apply StmtDerives.ofSyntax
+            ⟨(by simpa using hBoundsStart), (by simpa using hBoundsStop)⟩
+          rw [hSource]
+          exact .tsFunctionLet (expressionIdentifierCheck_sound hName)
+            (validateFunctionExpr_sound hValue)
+      | assign target value =>
+          cases target with
+          | «local» name =>
+              simp only [validateStmtCertificate, spanWithin,
+                Bool.and_eq_true, beq_iff_eq] at h
+              rcases h with ⟨⟨hBoundsStart, hBoundsStop⟩,
+                ⟨⟨⟨hLang, hWithin⟩, hName⟩, hSource⟩, hValue⟩
+              have hLangEq : lang = .python := by simpa using hLang
+              subst lang
+              apply StmtDerives.ofSyntax
+                ⟨(by simpa using hBoundsStart), (by simpa using hBoundsStop)⟩
+              rw [hSource]
+              exact .pythonFunctionAssign
+                (expressionIdentifierCheck_sound hName)
+                (validateFunctionExpr_sound hValue)
+          | _ => simp [validateStmtCertificate] at h
+      | _ => simp [validateStmtCertificate] at h
+  | augmentLocal exprSpan =>
+      cases stmt with
+      | augment target op value =>
+          cases target with
+          | «local» name =>
+              cases op <;> simp [validateStmtCertificate] at h
+              case add =>
+                simp only [validateStmtCertificate, spanWithin,
+                  Bool.and_eq_true, beq_iff_eq] at h
+                rcases h with ⟨⟨hBoundsStart, hBoundsStop⟩,
+                  ⟨⟨⟨hLang, hWithin⟩, hName⟩, hSource⟩, hValue⟩
+                have hLangEq : lang = .python := by simpa using hLang
+                subst lang
+                apply StmtDerives.ofSyntax
+                  ⟨(by simpa using hBoundsStart), (by simpa using hBoundsStop)⟩
+                rw [hSource]
+                exact .pythonAugmentAdd
+                  (expressionIdentifierCheck_sound hName)
+                  (validateFunctionExpr_sound hValue)
+          | _ => simp [validateStmtCertificate] at h
       | _ => simp [validateStmtCertificate] at h
   | ifThen condSpan bodySpan bodyCert ih =>
       cases stmt with

@@ -139,6 +139,9 @@ inductive ExprSyntax : TargetLang → String → TargetExpr → Prop where
   | tsNonNull {base : String} {value : TargetExpr}
       (hValue : ExprSyntax .ts base value) :
       ExprSyntax .ts (base ++ "!") (.nonNull value)
+  | tsPostIncrement {name : String}
+      (hName : ExpressionIdentifier .ts name) :
+      ExprSyntax .ts (name ++ "++") (.postIncrement name)
   | sub {lang : TargetLang} {leftText rightText : String}
       {left right : TargetExpr}
       (hLeft : ExprSyntax lang leftText left)
@@ -274,6 +277,29 @@ def tsModuleType : String → Option String
 inductive StmtSyntax : TargetLang → SurfaceControl → String → TargetStmt → Prop where
   | empty (lang : TargetLang) (control : SurfaceControl) :
       StmtSyntax lang control "" .empty
+  | tsDo {exprSource : String} {expr : TargetExpr}
+      (hExpr : ExprSyntax .ts exprSource expr) :
+      StmtSyntax .ts .function (exprSource ++ ";") (.doExpr expr)
+  | pythonDo {exprSource : String} {expr : TargetExpr}
+      (hExpr : ExprSyntax .python exprSource expr) :
+      StmtSyntax .python .function exprSource (.doExpr expr)
+  | tsFunctionLet {name exprSource : String} {mutable : Bool}
+      {expr : TargetExpr}
+      (hName : ExpressionIdentifier .ts name)
+      (hExpr : ExprSyntax .ts exprSource expr) :
+      StmtSyntax .ts .function
+        ((if mutable then "let " else "const ") ++ name ++ " = " ++
+          exprSource ++ ";") (.letLocal name mutable expr)
+  | pythonFunctionAssign {name exprSource : String} {expr : TargetExpr}
+      (hName : ExpressionIdentifier .python name)
+      (hExpr : ExprSyntax .python exprSource expr) :
+      StmtSyntax .python .function (name ++ " = " ++ exprSource)
+        (.assign (.local name) expr)
+  | pythonAugmentAdd {name exprSource : String} {expr : TargetExpr}
+      (hName : ExpressionIdentifier .python name)
+      (hExpr : ExprSyntax .python exprSource expr) :
+      StmtSyntax .python .function (name ++ " += " ++ exprSource)
+        (.augment (.local name) .add expr)
   | pythonRaise {valueSource : String} {value : TargetExpr}
       (hValue : ExprSyntax .python valueSource value) :
       StmtSyntax .python .function ("raise " ++ valueSource)

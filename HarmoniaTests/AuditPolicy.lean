@@ -196,6 +196,7 @@ def kadmosGeneratedK02SourceModules : Array Name := #[
   `HarmoniaTests.KadmosGeneratedK02SourceModule,
   `HarmoniaTests.KadmosGeneratedK02SourceValidator,
   `HarmoniaTests.KadmosGeneratedK02PythonBooleanSyntax,
+  `HarmoniaTests.KadmosGeneratedK02StatementCertificate,
   `HarmoniaTests.KadmosGeneratedK02PythonLines01,
   `HarmoniaTests.KadmosGeneratedK02PythonLines02,
   `HarmoniaTests.KadmosGeneratedK02PythonLinesAll,

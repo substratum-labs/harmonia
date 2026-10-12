@@ -203,6 +203,9 @@ def validateExprText (lang : TargetLang) (source : String) : TargetExpr → Bool
   | .decimal literal =>
       source == literal && numberTokenCheck source && source.toList.contains '.'
   | .string value => validateStringLiteral lang source value
+  | .postIncrement name =>
+      lang == .ts && expressionIdentifierCheck .ts name &&
+        source == name ++ "++"
   | .local name =>
       if lang == .ts && name == "this" then source == "this"
       else expressionIdentifierCheck lang name && source == name
@@ -422,6 +425,17 @@ private theorem validateExprAndArgument_sound (lang : TargetLang) (expr : Target
       · intro source h
         simp only [validateExprText] at h
         exact .string (validateStringLiteral_sound h)
+      · intro source h
+        simp [validateArgumentText] at h
+  | postIncrement name =>
+      constructor
+      · intro source h
+        simp only [validateExprText, Bool.and_eq_true,
+          beq_iff_eq] at h
+        rcases h with ⟨⟨hLang, hName⟩, hSource⟩
+        subst lang
+        subst source
+        exact .tsPostIncrement (expressionIdentifierCheck_sound hName)
       · intro source h
         simp [validateArgumentText] at h
   | «local» name =>

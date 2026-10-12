@@ -76,6 +76,9 @@ lean_lib kadmosGeneratedK02SourceModuleTest where
 lean_lib kadmosGeneratedK02PythonBooleanSyntaxTest where
   roots := #[`HarmoniaTests.KadmosGeneratedK02PythonBooleanSyntax]
 
+lean_lib kadmosGeneratedK02StatementCertificateTest where
+  roots := #[`HarmoniaTests.KadmosGeneratedK02StatementCertificate]
+
 lean_lib kadmosGeneratedK02PythonLinesTest where
   roots := #[`HarmoniaTests.KadmosGeneratedK02PythonLines01,
     `HarmoniaTests.KadmosGeneratedK02PythonLines02,
