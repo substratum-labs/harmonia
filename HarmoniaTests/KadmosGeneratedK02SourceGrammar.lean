@@ -228,3 +228,29 @@ theorem kadmos_generated_python_keyword_property_rejected :
     validateExprText .python "obj.None"
       (.property (.local "obj") "None") = false := by
   decide +kernel
+
+theorem kadmos_generated_ts_optional_property_source_owned :
+    validateExprSpan .ts balanceTsSource ⟨6115, 6133⟩
+      (.optionalProperty (.local "nodeTypes") "isProxy") = true := by
+  decide +kernel
+
+theorem kadmos_generated_ts_optional_property_raw_candidate_matches :
+    (parseTargetExpr .ts
+      ((⟨6115, 6133⟩ : SourceSpan).text balanceTsSource)).toOption =
+        some (.optionalProperty (.local "nodeTypes") "isProxy") := by
+  decide +kernel
+
+theorem kadmos_generated_ts_optional_property_derives :
+    ExprDerives .ts balanceTsSource ⟨6115, 6133⟩
+      (.optionalProperty (.local "nodeTypes") "isProxy") :=
+  validateExprSpan_sound kadmos_generated_ts_optional_property_source_owned
+
+theorem kadmos_generated_ts_optional_property_target_mutation_rejected :
+    validateExprSpan .ts balanceTsSource ⟨6115, 6133⟩
+      (.optionalProperty (.local "nodeTypes") "idealIsProxy") = false := by
+  decide +kernel
+
+theorem kadmos_generated_ts_optional_property_operator_mutation_rejected :
+    validateExprText .ts "nodeTypes.isProxy"
+      (.optionalProperty (.local "nodeTypes") "isProxy") = false := by
+  decide +kernel

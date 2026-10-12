@@ -14,6 +14,17 @@ private def splitProperty (source : String) : Option (String × String) :=
   | name :: first :: rest => some (joinProperty (first :: rest).reverse, name)
   | _ => none
 
+private def joinOptionalProperty : List String → String
+  | [] => ""
+  | [last] => last
+  | first :: rest => first ++ "?." ++ joinOptionalProperty rest
+
+private def splitOptionalProperty (source : String) : Option (String × String) :=
+  match (source.splitSourceOn "?.").reverse with
+  | name :: first :: rest =>
+      some (joinOptionalProperty (first :: rest).reverse, name)
+  | _ => none
+
 private def splitSub (source : String) : Option (String × String) :=
   match source.splitSourceOn " - " with
   | [left, right] => some (left, right)
@@ -637,6 +648,15 @@ def validateExprText (lang : TargetLang) (source : String) : TargetExpr → Bool
           propertyIdentifierCheck lang field && field == name &&
             source == base ++ "." ++ field && validateExprText lang base receiver
       | none => false
+  | .optionalProperty receiver name =>
+      if lang == .ts then
+        match splitOptionalProperty source with
+        | some (base, field) =>
+            identifierTextCheck field && field == name &&
+              source == base ++ "?." ++ field &&
+              validateExprText .ts base receiver
+        | none => false
+      else false
   | .binary .sub left right =>
       match splitSub source with
       | some (leftText, rightText) =>
@@ -843,6 +863,25 @@ private theorem validateExprAndArgument_sound (lang : TargetLang) (expr : Target
             subst source
             subst field
             exact .property (ih.1 base hrec) (propertyIdentifierCheck_sound hne)
+      · intro source h
+        simp [validateArgumentText] at h
+  | optionalProperty receiver name ih =>
+      constructor
+      · intro source h
+        cases lang with
+        | python => simp [validateExprText] at h
+        | ts =>
+            simp only [validateExprText, beq_self_eq_true, ↓reduceIte] at h
+            cases hs : splitOptionalProperty source with
+            | none => simp [hs] at h
+            | some parts =>
+                rcases parts with ⟨base, field⟩
+                simp only [hs, Bool.and_eq_true, beq_iff_eq] at h
+                rcases h with ⟨⟨⟨hName, hEq⟩, hSource⟩, hBase⟩
+                subst source
+                subst field
+                exact .tsOptionalProperty (ih.1 base hBase)
+                  (identifierTextCheck_sound hName)
       · intro source h
         simp [validateArgumentText] at h
   | binary op left right ihLeft ihRight =>

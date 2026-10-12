@@ -634,6 +634,11 @@ inductive ExprSyntax : TargetLang → String → TargetExpr → Prop where
       (hBase : ExprSyntax lang base receiver)
       (hName : PropertyIdentifier lang name) :
       ExprSyntax lang (base ++ "." ++ name) (.property receiver name)
+  | tsOptionalProperty {base name : String} {receiver : TargetExpr}
+      (hBase : ExprSyntax .ts base receiver)
+      (hName : IdentifierText name) :
+      ExprSyntax .ts (base ++ "?." ++ name)
+        (.optionalProperty receiver name)
   | sub {lang : TargetLang} {leftText rightText : String}
       {left right : TargetExpr}
       (hLeft : ExprSyntax lang leftText left)
