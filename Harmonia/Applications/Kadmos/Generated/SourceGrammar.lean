@@ -639,6 +639,15 @@ inductive ExprSyntax : TargetLang → String → TargetExpr → Prop where
       (hName : IdentifierText name) :
       ExprSyntax .ts (base ++ "?." ++ name)
         (.optionalProperty receiver name)
+  | index {lang : TargetLang} {base keyText : String}
+      {receiver key : TargetExpr}
+      (hBase : ExprSyntax lang base receiver)
+      (hKey : ExprSyntax lang keyText key) :
+      ExprSyntax lang (base ++ "[" ++ keyText ++ "]")
+        (.index receiver key)
+  | tsNonNull {base : String} {value : TargetExpr}
+      (hValue : ExprSyntax .ts base value) :
+      ExprSyntax .ts (base ++ "!") (.nonNull value)
   | sub {lang : TargetLang} {leftText rightText : String}
       {left right : TargetExpr}
       (hLeft : ExprSyntax lang leftText left)

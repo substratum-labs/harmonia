@@ -254,3 +254,78 @@ theorem kadmos_generated_ts_optional_property_operator_mutation_rejected :
     validateExprText .ts "nodeTypes.isProxy"
       (.optionalProperty (.local "nodeTypes") "isProxy") = false := by
   decide +kernel
+
+theorem kadmos_generated_ts_env_index_source_owned :
+    validateExprSpan .ts balanceTsSource ⟨3608, 3618⟩
+      (.index (.local "env") (.local "token")) = true := by
+  decide +kernel
+
+theorem kadmos_generated_ts_env_index_raw_candidate_matches :
+    (parseTargetExpr .ts
+      ((⟨3608, 3618⟩ : SourceSpan).text balanceTsSource)).toOption =
+        some (.index (.local "env") (.local "token")) := by
+  decide +kernel
+
+theorem kadmos_generated_ts_env_index_derives :
+    ExprDerives .ts balanceTsSource ⟨3608, 3618⟩
+      (.index (.local "env") (.local "token")) :=
+  validateExprSpan_sound kadmos_generated_ts_env_index_source_owned
+
+theorem kadmos_generated_python_world_context_index_source_owned :
+    validateExprSpan .python balancePySource ⟨1146, 1163⟩
+      (.index (.local "_WORLD") (.string "context")) = true := by
+  decide +kernel
+
+theorem kadmos_generated_python_world_context_index_raw_candidate_matches :
+    (parseTargetExpr .python
+      ((⟨1146, 1163⟩ : SourceSpan).text balancePySource)).toOption =
+        some (.index (.local "_WORLD") (.string "context")) := by
+  decide +kernel
+
+theorem kadmos_generated_python_world_context_index_derives :
+    ExprDerives .python balancePySource ⟨1146, 1163⟩
+      (.index (.local "_WORLD") (.string "context")) :=
+  validateExprSpan_sound kadmos_generated_python_world_context_index_source_owned
+
+theorem kadmos_generated_python_nested_index_source_owned :
+    validateExprSpan .python balancePySource ⟨11959, 11982⟩
+      (.index (.index (.local "_WORLD") (.string "context"))
+        (.local "name")) = true := by
+  decide +kernel
+
+theorem kadmos_generated_python_nested_index_raw_candidate_matches :
+    (parseTargetExpr .python
+      ((⟨11959, 11982⟩ : SourceSpan).text balancePySource)).toOption =
+        some (.index (.index (.local "_WORLD") (.string "context"))
+          (.local "name")) := by
+  decide +kernel
+
+theorem kadmos_generated_python_nested_index_key_mutation_rejected :
+    validateExprSpan .python balancePySource ⟨11959, 11982⟩
+      (.index (.index (.local "_WORLD") (.string "states"))
+        (.local "name")) = false := by
+  decide +kernel
+
+private def tsBoundDefinitionNonNull : TargetExpr :=
+  .nonNull (.index (.local "contextDefinitions") (.local "name"))
+
+theorem kadmos_generated_ts_nonnull_index_source_owned :
+    validateExprSpan .ts balanceTsSource ⟨11516, 11541⟩
+      tsBoundDefinitionNonNull = true := by
+  decide +kernel
+
+theorem kadmos_generated_ts_nonnull_index_raw_candidate_matches :
+    (parseTargetExpr .ts
+      ((⟨11516, 11541⟩ : SourceSpan).text balanceTsSource)).toOption =
+        some tsBoundDefinitionNonNull := by
+  decide +kernel
+
+theorem kadmos_generated_ts_nonnull_index_derives :
+    ExprDerives .ts balanceTsSource ⟨11516, 11541⟩
+      tsBoundDefinitionNonNull :=
+  validateExprSpan_sound kadmos_generated_ts_nonnull_index_source_owned
+
+theorem kadmos_generated_ts_nonnull_source_mutation_rejected :
+    validateExprText .ts "contextDefinitions[name]"
+      tsBoundDefinitionNonNull = false := by
+  decide +kernel

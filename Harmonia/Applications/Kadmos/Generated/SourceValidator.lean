@@ -25,6 +25,21 @@ private def splitOptionalProperty (source : String) : Option (String × String) 
       some (joinOptionalProperty (first :: rest).reverse, name)
   | _ => none
 
+private def joinIndexBase : List String → String
+  | [] => ""
+  | [last] => last
+  | first :: rest => first ++ "[" ++ joinIndexBase rest
+
+private def splitIndex (source : String) : Option (String × String) :=
+  match (source.splitSourceOn "[").reverse with
+  | withClose :: first :: rest =>
+      match withClose.toList.reverse with
+      | ']' :: reversedKey =>
+          some (joinIndexBase (first :: rest).reverse,
+            String.mk reversedKey.reverse)
+      | _ => none
+  | _ => none
+
 private def splitSub (source : String) : Option (String × String) :=
   match source.splitSourceOn " - " with
   | [left, right] => some (left, right)
@@ -594,6 +609,11 @@ private def stripFinalParen (source : String) : Option String :=
   | ')' :: inside => some (String.mk inside.reverse)
   | _ => none
 
+private def stripFinalBang (source : String) : Option String :=
+  match source.toList.reverse with
+  | '!' :: inside => some (String.mk inside.reverse)
+  | _ => none
+
 private def stripFinalSemicolon (source : String) : Option String :=
   match source.toList.reverse with
   | ';' :: inside => some (String.mk inside.reverse)
@@ -655,6 +675,20 @@ def validateExprText (lang : TargetLang) (source : String) : TargetExpr → Bool
             identifierTextCheck field && field == name &&
               source == base ++ "?." ++ field &&
               validateExprText .ts base receiver
+        | none => false
+      else false
+  | .index receiver key =>
+      match splitIndex source with
+      | some (base, keyText) =>
+          source == base ++ "[" ++ keyText ++ "]" &&
+            validateExprText lang base receiver &&
+            validateExprText lang keyText key
+      | none => false
+  | .nonNull value =>
+      if lang == .ts then
+        match stripFinalBang source with
+        | some base => source == base ++ "!" &&
+            validateExprText .ts base value
         | none => false
       else false
   | .binary .sub left right =>
@@ -882,6 +916,37 @@ private theorem validateExprAndArgument_sound (lang : TargetLang) (expr : Target
                 subst field
                 exact .tsOptionalProperty (ih.1 base hBase)
                   (identifierTextCheck_sound hName)
+      · intro source h
+        simp [validateArgumentText] at h
+  | index receiver key ihReceiver ihKey =>
+      constructor
+      · intro source h
+        simp only [validateExprText] at h
+        cases hs : splitIndex source with
+        | none => simp [hs] at h
+        | some parts =>
+            rcases parts with ⟨base, keyText⟩
+            simp only [hs, Bool.and_eq_true, beq_iff_eq] at h
+            rcases h with ⟨⟨hSource, hBase⟩, hKey⟩
+            subst source
+            exact .index (ihReceiver.1 base hBase)
+              (ihKey.1 keyText hKey)
+      · intro source h
+        simp [validateArgumentText] at h
+  | nonNull value ih =>
+      constructor
+      · intro source h
+        cases lang with
+        | python => simp [validateExprText] at h
+        | ts =>
+            simp only [validateExprText, beq_self_eq_true, ↓reduceIte] at h
+            cases hs : stripFinalBang source with
+            | none => simp [hs] at h
+            | some base =>
+                simp only [hs, Bool.and_eq_true, beq_iff_eq] at h
+                rcases h with ⟨hSource, hValue⟩
+                subst source
+                exact .tsNonNull (ih.1 base hValue)
       · intro source h
         simp [validateArgumentText] at h
   | binary op left right ihLeft ihRight =>
