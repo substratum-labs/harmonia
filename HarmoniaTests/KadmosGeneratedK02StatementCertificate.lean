@@ -171,3 +171,75 @@ theorem kadmos_generated_python_position_augment_operator_mutation_rejected :
 #print axioms kadmos_generated_python_position_binding_derives
 #print axioms kadmos_generated_ts_index_postincrement_derives
 #print axioms kadmos_generated_python_position_augment_derives
+
+private def tsDepthLimit : TargetExpr :=
+  .binary .gt (.local "depth") (.integer 128)
+
+private def tsDepthError : TargetExpr :=
+  .newExpr (.call (.local "Error")
+    (.sequence (.string "SECURITY_VIOLATION: payload depth exceeded") .empty))
+
+private def tsDepthRefusal : TargetStmt :=
+  .ifThenElse tsDepthLimit (.throwValue tsDepthError) .empty
+
+theorem kadmos_generated_ts_depth_if_raw_statement_matches :
+    (parseTSBlock ((⟨5849, 5928⟩ : SourceSpan).text balanceTsSource)).toOption =
+      some (.sequence tsDepthRefusal .empty) := by
+  decide +kernel
+
+theorem kadmos_generated_ts_depth_if_certificate_checked :
+    validateStmtCertificate .ts balanceTsSource ⟨5849, 5928⟩
+      tsDepthRefusal (.ifThen ⟨5853, 5864⟩ ⟨5866, 5928⟩
+        (.throwExpr ⟨5872, 5927⟩)) = true := by
+  decide +kernel
+
+theorem kadmos_generated_ts_depth_if_derives :
+    StmtDerives .ts .function balanceTsSource ⟨5849, 5928⟩
+      tsDepthRefusal :=
+  validateStmtCertificate_sound kadmos_generated_ts_depth_if_certificate_checked
+
+theorem kadmos_generated_ts_depth_if_wrong_comparison_rejected :
+    validateStmtCertificate .ts balanceTsSource ⟨5849, 5928⟩
+      (.ifThenElse (.binary .ge (.local "depth") (.integer 128))
+        (.throwValue tsDepthError) .empty)
+      (.ifThen ⟨5853, 5864⟩ ⟨5866, 5928⟩
+        (.throwExpr ⟨5872, 5927⟩)) = false := by
+  decide +kernel
+
+#print axioms kadmos_generated_ts_depth_if_derives
+
+private def pythonDepthError : TargetExpr :=
+  .call (.local "ValueError")
+    (.sequence (.string "SECURITY_VIOLATION: payload depth exceeded") .empty)
+
+private def pythonDepthRefusal : TargetStmt :=
+  .ifThenElse tsDepthLimit
+    (.sequence (.throwValue pythonDepthError) .empty) .empty
+
+theorem kadmos_generated_python_depth_if_raw_statement_matches :
+    (parsePythonLines (pythonLines
+      ("        " ++ (⟨6486, 6576⟩ : SourceSpan).text balancePySource))
+      8).toOption = some (.sequence pythonDepthRefusal .empty) := by
+  decide +kernel
+
+theorem kadmos_generated_python_depth_if_certificate_checked :
+    validateStmtCertificate .python balancePySource ⟨6486, 6576⟩
+      pythonDepthRefusal
+      (.ifThenIndented ⟨6489, 6500⟩ ⟨6514, 6576⟩ "            "
+        (.final ⟨6514, 6576⟩ (.throwExpr ⟨6520, 6576⟩))) = true := by
+  decide +kernel
+
+theorem kadmos_generated_python_depth_if_derives :
+    StmtDerives .python .function balancePySource ⟨6486, 6576⟩
+      pythonDepthRefusal :=
+  validateStmtCertificate_sound
+    kadmos_generated_python_depth_if_certificate_checked
+
+theorem kadmos_generated_python_depth_if_indent_mutation_rejected :
+    validateStmtCertificate .python balancePySource ⟨6486, 6576⟩
+      pythonDepthRefusal
+      (.ifThenIndented ⟨6489, 6500⟩ ⟨6514, 6576⟩ "        "
+        (.final ⟨6514, 6576⟩ (.throwExpr ⟨6520, 6576⟩))) = false := by
+  decide +kernel
+
+#print axioms kadmos_generated_python_depth_if_derives

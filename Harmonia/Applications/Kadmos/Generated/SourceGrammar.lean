@@ -38,6 +38,24 @@ inductive FormatWrapper : TargetLang → String → String → Prop where
   | pythonSingle (content : String) :
       FormatWrapper .python ("f'" ++ content ++ "'") content
 
+/-- Binding power of the represented expression node. Binary source rules
+    require their children to have at least the operator's power, with a
+    strictly stronger right child for left association. This is independent
+    of the raw expression decoder. Parenthesized forms need a separate rule
+    when admitted to this restricted grammar. -/
+def exprBindingPower : TargetExpr → Nat
+  | .binary op _ _ => match op with
+      | .mul | .div => 7
+      | .add | .sub => 6
+      | .lt | .le | .gt | .ge | .instanceOf => 5
+      | .eq | .strictEq | .ne | .strictNe | .inObject | .notInObject
+      | .isIdentity | .isNotIdentity => 4
+  | .andThen _ _ => 3
+  | .orElse _ _ | .nullCoalesce _ _ => 2
+  | .conditional _ _ _ => 1
+  | .unary _ _ | .newExpr _ => 8
+  | _ => 9
+
 def finalCallOpenAux : Nat → List SourceToken → Option Nat
   | _, [] => none
   | depth, token :: rest =>
@@ -146,8 +164,24 @@ inductive ExprSyntax : TargetLang → String → TargetExpr → Prop where
       {left right : TargetExpr}
       (hLeft : ExprSyntax lang leftText left)
       (hRight : ExprSyntax lang rightText right)
+      (hLeftPower : 6 ≤ exprBindingPower left)
+      (hRightPower : 6 < exprBindingPower right)
       (hRightmost : RightmostSubOperand rightText) :
       ExprSyntax lang (leftText ++ " - " ++ rightText) (.binary .sub left right)
+  | gt {lang : TargetLang} {leftText rightText : String}
+      {left right : TargetExpr}
+      (hLeft : ExprSyntax lang leftText left)
+      (hRight : ExprSyntax lang rightText right)
+      (hLeftPower : 5 ≤ exprBindingPower left)
+      (hRightPower : 5 < exprBindingPower right) :
+      ExprSyntax lang (leftText ++ " > " ++ rightText) (.binary .gt left right)
+  | ge {lang : TargetLang} {leftText rightText : String}
+      {left right : TargetExpr}
+      (hLeft : ExprSyntax lang leftText left)
+      (hRight : ExprSyntax lang rightText right)
+      (hLeftPower : 5 ≤ exprBindingPower left)
+      (hRightPower : 5 < exprBindingPower right) :
+      ExprSyntax lang (leftText ++ " >= " ++ rightText) (.binary .ge left right)
   | formatted {lang : TargetLang} {source content : String} {parts : TargetExpr}
       (hWrap : FormatWrapper lang source content)
       (hParts : FormatSyntax lang content parts)
@@ -247,6 +281,15 @@ theorem ExprSyntax.no_empty_index_receiver {lang source key} :
           rw [hz] at hNonempty
           cases hNonempty
 
+/-- A comparison cannot be the unparenthesized left operand of subtraction;
+    this is a grammar fact, not a preference of the executable validator. -/
+theorem ExprSyntax.no_sub_after_gt {lang source a b c} :
+    ¬ ExprSyntax lang source (.binary .sub (.binary .gt a b) c) := by
+  intro h
+  cases h with
+  | sub _ _ hPower _ _ =>
+      simp [exprBindingPower] at hPower
+
 inductive ExprDerives : TargetLang → String → SourceSpan → TargetExpr → Prop where
   | ofSyntax {lang : TargetLang} {source : String} {span : SourceSpan}
       {expr : TargetExpr}
@@ -314,6 +357,16 @@ inductive StmtSyntax : TargetLang → SurfaceControl → String → TargetStmt �
       (hBody : StmtSyntax .python .function bodySource body) :
       StmtSyntax .python .function
         ("if " ++ conditionSource ++ ":\n        " ++ bodySource)
+        (.ifThenElse condition body .empty)
+  | pythonIfThenIndented {conditionSource bodySource indent : String}
+      {condition : TargetExpr} {body : TargetStmt}
+      (hIndentLength : 4 ≤ indent.length)
+      (hIndentSteps : indent.length % 4 = 0)
+      (hIndentSpaces : indent.toList.all (· == ' ') = true)
+      (hCondition : ExprSyntax .python conditionSource condition)
+      (hBody : StmtSyntax .python .function bodySource body) :
+      StmtSyntax .python .function
+        ("if " ++ conditionSource ++ ":\n" ++ indent ++ bodySource)
         (.ifThenElse condition body .empty)
   | pythonSequence {firstSource restSource : String}
       {first rest : TargetStmt}

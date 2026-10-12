@@ -424,3 +424,76 @@ theorem kadmos_generated_ts_nonnull_source_mutation_rejected :
     validateExprText .ts "contextDefinitions[name]"
       tsBoundDefinitionNonNull = false := by
   decide +kernel
+
+private def tsDepthLimitExpr : TargetExpr :=
+  .binary .gt (.local "depth") (.integer 128)
+
+private def tsSeenSizeLimitExpr : TargetExpr :=
+  .binary .ge (.property (.local "seen") "size") (.integer 128)
+
+theorem kadmos_generated_ts_depth_comparison_owned :
+    validateExprSpan .ts balanceTsSource ⟨5853, 5864⟩
+      tsDepthLimitExpr = true := by
+  decide +kernel
+
+theorem kadmos_generated_python_depth_comparison_owned :
+    validateExprSpan .python balancePySource ⟨6489, 6500⟩
+      tsDepthLimitExpr = true := by
+  decide +kernel
+
+theorem kadmos_generated_ts_size_comparison_owned :
+    validateExprSpan .ts balanceTsSource ⟨6360, 6376⟩
+      tsSeenSizeLimitExpr = true := by
+  decide +kernel
+
+theorem kadmos_generated_ts_depth_comparison_derives :
+    ExprDerives .ts balanceTsSource ⟨5853, 5864⟩ tsDepthLimitExpr :=
+  validateExprSpan_sound kadmos_generated_ts_depth_comparison_owned
+
+theorem kadmos_generated_python_depth_comparison_derives :
+    ExprDerives .python balancePySource ⟨6489, 6500⟩ tsDepthLimitExpr :=
+  validateExprSpan_sound kadmos_generated_python_depth_comparison_owned
+
+theorem kadmos_generated_ts_size_comparison_derives :
+    ExprDerives .ts balanceTsSource ⟨6360, 6376⟩ tsSeenSizeLimitExpr :=
+  validateExprSpan_sound kadmos_generated_ts_size_comparison_owned
+
+theorem kadmos_generated_ts_depth_raw_candidate_matches :
+    (parseTargetExpr .ts
+      ((⟨5853, 5864⟩ : SourceSpan).text balanceTsSource)).toOption =
+        some tsDepthLimitExpr := by
+  decide +kernel
+
+theorem kadmos_generated_python_depth_raw_candidate_matches :
+    (parseTargetExpr .python
+      ((⟨6489, 6500⟩ : SourceSpan).text balancePySource)).toOption =
+        some tsDepthLimitExpr := by
+  decide +kernel
+
+theorem kadmos_generated_ts_size_raw_candidate_matches :
+    (parseTargetExpr .ts
+      ((⟨6360, 6376⟩ : SourceSpan).text balanceTsSource)).toOption =
+        some tsSeenSizeLimitExpr := by
+  decide +kernel
+
+theorem kadmos_generated_comparison_target_mutation_rejected :
+    validateExprText .ts "depth > 128"
+      (.binary .ge (.local "depth") (.integer 128)) = false := by
+  decide +kernel
+
+theorem kadmos_generated_comparison_precedence_mutation_rejected :
+    validateExprText .ts "a > b - c"
+      (.binary .sub (.binary .gt (.local "a") (.local "b"))
+        (.local "c")) = false := by
+  decide +kernel
+
+theorem kadmos_generated_comparison_wrong_precedence_not_grammatical :
+    ¬ ExprSyntax .ts "a > b - c"
+      (.binary .sub (.binary .gt (.local "a") (.local "b"))
+        (.local "c")) :=
+  ExprSyntax.no_sub_after_gt
+
+#print axioms kadmos_generated_ts_depth_comparison_derives
+#print axioms kadmos_generated_python_depth_comparison_derives
+#print axioms kadmos_generated_ts_size_comparison_derives
+#print axioms kadmos_generated_comparison_wrong_precedence_not_grammatical

@@ -15,6 +15,8 @@ inductive StmtCertificate where
   | localBinding (exprSpan : SourceSpan)
   | augmentLocal (exprSpan : SourceSpan)
   | ifThen (condSpan bodySpan : SourceSpan) (body : StmtCertificate)
+  | ifThenIndented (condSpan bodySpan : SourceSpan)
+      (indent : String) (body : StmtCertificate)
   deriving Repr
 
 def spanWithin (outer inner : SourceSpan) : Bool :=
@@ -89,6 +91,16 @@ def validateStmtCertificate (lang : TargetLang) (source : String)
                ":\n        " ++ bodySpan.text source) &&
           validateFunctionExpr lang (condSpan.text source) cond &&
           validateStmtCertificate lang source bodySpan yes bodyCert
+    | .ifThenElse cond yes .empty,
+        .ifThenIndented condSpan bodySpan indent bodyCert =>
+        lang == .python && spanWithin span condSpan &&
+          spanWithin span bodySpan && condSpan.stop ≤ bodySpan.start &&
+          4 ≤ indent.length && indent.length % 4 == 0 &&
+          indent.toList.all (· == ' ') &&
+          span.text source == "if " ++ condSpan.text source ++
+            ":\n" ++ indent ++ bodySpan.text source &&
+          validateFunctionExpr .python (condSpan.text source) cond &&
+          validateStmtCertificate .python source bodySpan yes bodyCert
     | _, _ => false
 
 theorem StmtDerives.syntax {lang control source span stmt}
@@ -278,6 +290,36 @@ theorem validateStmtCertificate_sound {lang source span stmt cert}
                   rw [hSource]
                   exact .pythonIfThen (validateFunctionExpr_sound hCond)
                     hBodySyntax
+          | _ => simp [validateStmtCertificate] at h
+      | _ => simp [validateStmtCertificate] at h
+  | ifThenIndented condSpan bodySpan indent bodyCert ih =>
+      cases stmt with
+      | ifThenElse condition yes no =>
+          cases no with
+          | empty =>
+              simp only [validateStmtCertificate, spanWithin,
+                Bool.and_eq_true, beq_iff_eq] at h
+              rcases h with ⟨⟨hBoundsStart, hBoundsStop⟩, hRest⟩
+              rcases hRest with ⟨hPrefix, hBody⟩
+              rcases hPrefix with ⟨hPrefix, hCond⟩
+              rcases hPrefix with ⟨hPrefix, hSource⟩
+              rcases hPrefix with ⟨hPrefix, hIndentSpaces⟩
+              rcases hPrefix with ⟨hPrefix, hIndentSteps⟩
+              rcases hPrefix with ⟨hPrefix, hIndentLength⟩
+              rcases hPrefix with ⟨hPrefix, hOrder⟩
+              rcases hPrefix with ⟨hPrefix, hBodyWithin⟩
+              rcases hPrefix with ⟨hLang, hCondWithin⟩
+              have hLangEq : lang = .python := by simpa using hLang
+              subst lang
+              have hBodySyntax := StmtDerives.syntax (ih hBody)
+              apply StmtDerives.ofSyntax
+                ⟨(by simpa using hBoundsStart), (by simpa using hBoundsStop)⟩
+              rw [hSource]
+              exact .pythonIfThenIndented
+                (by simpa using hIndentLength)
+                (by simpa using hIndentSteps)
+                hIndentSpaces
+                (validateFunctionExpr_sound hCond) hBodySyntax
           | _ => simp [validateStmtCertificate] at h
       | _ => simp [validateStmtCertificate] at h
 

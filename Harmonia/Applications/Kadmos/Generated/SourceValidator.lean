@@ -46,6 +46,16 @@ private def splitSub (source : String) : Option (String × String) :=
   | [left, right] => some (left, right)
   | _ => none
 
+private def splitGt (source : String) : Option (String × String) :=
+  match source.splitSourceOn " > " with
+  | [left, right] => some (left, right)
+  | _ => none
+
+private def splitGe (source : String) : Option (String × String) :=
+  match source.splitSourceOn " >= " with
+  | [left, right] => some (left, right)
+  | _ => none
+
 private def splitStrictNe (source : String) : Option (String × String) :=
   match source.splitSourceOn " !== " with
   | [left, right] => some (left, right)
@@ -244,7 +254,27 @@ def validateExprText (lang : TargetLang) (source : String) : TargetExpr → Bool
           source == leftText ++ " - " ++ rightText &&
             validateExprText lang leftText left &&
             validateExprText lang rightText right &&
+            6 ≤ exprBindingPower left &&
+            6 < exprBindingPower right &&
             (rightText.splitSourceOn " - ") == [rightText]
+      | none => false
+  | .binary .gt left right =>
+      match splitGt source with
+      | some (leftText, rightText) =>
+          source == leftText ++ " > " ++ rightText &&
+            validateExprText lang leftText left &&
+            validateExprText lang rightText right &&
+            5 ≤ exprBindingPower left &&
+            5 < exprBindingPower right
+      | none => false
+  | .binary .ge left right =>
+      match splitGe source with
+      | some (leftText, rightText) =>
+          source == leftText ++ " >= " ++ rightText &&
+            validateExprText lang leftText left &&
+            validateExprText lang rightText right &&
+            5 ≤ exprBindingPower left &&
+            5 < exprBindingPower right
       | none => false
   | .formatted parts =>
       match wrapperContent lang source with
@@ -537,10 +567,34 @@ private theorem validateExprAndArgument_sound (lang : TargetLang) (expr : Target
           | some parts =>
               rcases parts with ⟨leftText, rightText⟩
               simp only [hs, Bool.and_eq_true, beq_iff_eq] at h
-              rcases h with ⟨⟨⟨hconcat, hleft⟩, hright⟩, hRightmost⟩
+              rcases h with ⟨⟨⟨⟨⟨hconcat, hleft⟩, hright⟩,
+                hLeftPower⟩, hRightPower⟩, hRightmost⟩
               subst source
               exact .sub (ihLeft.1 leftText hleft) (ihRight.1 rightText hright)
+                (by simpa using hLeftPower) (by simpa using hRightPower)
                 (by simpa [RightmostSubOperand] using hRightmost)
+        case gt =>
+          cases hs : splitGt source with
+          | none => simp [hs] at h
+          | some parts =>
+              rcases parts with ⟨leftText, rightText⟩
+              simp only [hs, Bool.and_eq_true, beq_iff_eq] at h
+              rcases h with ⟨⟨⟨⟨hconcat, hleft⟩, hright⟩,
+                hLeftPower⟩, hRightPower⟩
+              subst source
+              exact .gt (ihLeft.1 leftText hleft) (ihRight.1 rightText hright)
+                (by simpa using hLeftPower) (by simpa using hRightPower)
+        case ge =>
+          cases hs : splitGe source with
+          | none => simp [hs] at h
+          | some parts =>
+              rcases parts with ⟨leftText, rightText⟩
+              simp only [hs, Bool.and_eq_true, beq_iff_eq] at h
+              rcases h with ⟨⟨⟨⟨hconcat, hleft⟩, hright⟩,
+                hLeftPower⟩, hRightPower⟩
+              subst source
+              exact .ge (ihLeft.1 leftText hleft) (ihRight.1 rightText hright)
+                (by simpa using hLeftPower) (by simpa using hRightPower)
       · intro source h
         simp [validateArgumentText] at h
   | formatted parts ih =>
