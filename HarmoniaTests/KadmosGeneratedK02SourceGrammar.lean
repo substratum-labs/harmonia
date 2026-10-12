@@ -49,7 +49,7 @@ theorem kadmos_generated_bare_call_argument_not_grammatical :
       ¬ ExprSyntax .ts source (.call (.local "f") (.local "x")) := by
     intro source h
     cases h with
-    | call _ hArgs => cases hArgs
+    | call _ _ _ _ hArgs => cases hArgs
   exact aux _
 
 theorem kadmos_generated_call_single_argument_owned :
@@ -61,6 +61,101 @@ theorem kadmos_generated_argument_sort_sound :
     ArgumentSyntax .ts "x" (.sequence (.local "x") .empty) :=
   validateArgumentText_sound .ts "x" (.sequence (.local "x") .empty)
     (by decide +kernel)
+
+theorem kadmos_generated_empty_argument_spine_rejected :
+    validateArgumentText .ts "" (.sequence .empty .empty) = false := by
+  decide +kernel
+
+theorem kadmos_generated_empty_argument_spine_not_grammatical :
+    ¬ ArgumentSyntax .ts "" (.sequence .empty .empty) := by
+  intro h
+  have hOnly := ArgumentSyntax.empty_only h rfl
+  cases hOnly
+
+theorem kadmos_generated_empty_callee_rejected :
+    validateExprText .ts "(x)"
+      (.call .empty (.sequence (.local "x") .empty)) = false := by
+  decide +kernel
+
+theorem kadmos_generated_empty_callee_not_grammatical :
+    ¬ ExprSyntax .ts "(x)"
+      (.call .empty (.sequence (.local "x") .empty)) :=
+  ExprSyntax.no_empty_callee
+
+theorem kadmos_generated_leading_comma_argument_rejected :
+    validateArgumentText .ts ", x"
+      (.sequence .empty (.sequence (.local "x") .empty)) = false := by
+  decide +kernel
+
+theorem kadmos_generated_leading_comma_argument_not_grammatical :
+    ¬ ArgumentSyntax .ts ", x"
+      (.sequence .empty (.sequence (.local "x") .empty)) :=
+  ArgumentSyntax.no_empty_first
+
+theorem kadmos_generated_empty_property_receiver_rejected :
+    validateExprText .ts ".x" (.property .empty "x") = false := by
+  decide +kernel
+
+theorem kadmos_generated_empty_property_receiver_not_grammatical :
+    ¬ ExprSyntax .ts ".x" (.property .empty "x") :=
+  ExprSyntax.no_empty_property_receiver
+
+theorem kadmos_generated_empty_optional_receiver_rejected :
+    validateExprText .ts "?.x" (.optionalProperty .empty "x") = false := by
+  decide +kernel
+
+theorem kadmos_generated_empty_optional_receiver_not_grammatical :
+    ¬ ExprSyntax .ts "?.x" (.optionalProperty .empty "x") :=
+  ExprSyntax.no_empty_optional_receiver
+
+theorem kadmos_generated_empty_index_receiver_rejected :
+    validateExprText .ts "[x]" (.index .empty (.local "x")) = false := by
+  decide +kernel
+
+theorem kadmos_generated_empty_index_receiver_not_grammatical :
+    ¬ ExprSyntax .ts "[x]" (.index .empty (.local "x")) :=
+  ExprSyntax.no_empty_index_receiver
+
+private def pyChainedWhitespaceCall : TargetExpr :=
+  .call (.property (.call (.property (.local "match") "group") .empty)
+    "isspace") .empty
+
+theorem kadmos_generated_python_chained_call_source_owned :
+    validateExprSpan .python balancePySource ⟨2837, 2860⟩
+      pyChainedWhitespaceCall = true := by
+  decide +kernel
+
+theorem kadmos_generated_python_chained_call_raw_candidate_matches :
+    (parseTargetExpr .python
+      ((⟨2837, 2860⟩ : SourceSpan).text balancePySource)).toOption =
+        some pyChainedWhitespaceCall := by
+  decide +kernel
+
+theorem kadmos_generated_python_chained_call_derives :
+    ExprDerives .python balancePySource ⟨2837, 2860⟩
+      pyChainedWhitespaceCall :=
+  validateExprSpan_sound kadmos_generated_python_chained_call_source_owned
+
+theorem kadmos_generated_python_chained_call_target_mutation_rejected :
+    validateExprSpan .python balancePySource ⟨2837, 2860⟩
+      (.call (.property (.call (.property (.local "match") "group") .empty)
+        "idealIsspace") .empty) = false := by
+  decide +kernel
+
+private def pyFloatIntegerCall : TargetExpr :=
+  .call (.property (.call (.local "float")
+    (.sequence (.local "value") .empty)) "is_integer") .empty
+
+theorem kadmos_generated_python_float_chained_call_source_owned :
+    validateExprSpan .python balancePySource ⟨2276, 2301⟩
+      pyFloatIntegerCall = true := by
+  decide +kernel
+
+theorem kadmos_generated_python_float_chained_call_raw_candidate_matches :
+    (parseTargetExpr .python
+      ((⟨2276, 2301⟩ : SourceSpan).text balancePySource)).toOption =
+        some pyFloatIntegerCall := by
+  decide +kernel
 
 theorem kadmos_generated_sub_right_association_rejected :
     validateExprText .ts "a - b - c"

@@ -38,6 +38,36 @@ inductive FormatWrapper : TargetLang → String → String → Prop where
   | pythonSingle (content : String) :
       FormatWrapper .python ("f'" ++ content ++ "'") content
 
+def finalCallOpenAux : Nat → List SourceToken → Option Nat
+  | _, [] => none
+  | depth, token :: rest =>
+      if token.text == ")" then finalCallOpenAux (depth + 1) rest
+      else if token.text == "(" then
+        if depth == 1 then some token.start
+        else finalCallOpenAux (depth - 1) rest
+      else finalCallOpenAux depth rest
+
+/-- The final call's opening parenthesis comes from independently validated
+    lexical tokens, counting nested calls backwards from the final `)`. -/
+def finalCallOpen (tokens : List SourceToken) : Option Nat :=
+  let significant := tokens.filter (fun token =>
+    token.kind != .spacing && token.kind != .comment)
+  match significant.reverse with
+  | close :: rest =>
+      if close.text == ")" then finalCallOpenAux 1 rest else none
+  | [] => none
+
+theorem finalCallOpen.unique_on_source {lang source tokens₁ tokens₂ at₁ at₂}
+    (hLex₁ : Lexes lang source tokens₁)
+    (hLex₂ : Lexes lang source tokens₂)
+    (hOpen₁ : finalCallOpen tokens₁ = some at₁)
+    (hOpen₂ : finalCallOpen tokens₂ = some at₂) : at₁ = at₂ := by
+  have hTokens := Lexes.unique hLex₁ hLex₂
+  subst tokens₂
+  rw [hOpen₁] at hOpen₂
+  cases hOpen₂
+  rfl
+
 mutual
 /-- Source productions, independent of the executable decoder. Argument
     sequences have their own sort: a bare expression cannot also be an
@@ -45,7 +75,10 @@ mutual
 inductive ExprSyntax : TargetLang → String → TargetExpr → Prop where
   | empty (lang : TargetLang) : ExprSyntax lang "" .empty
   | call {lang : TargetLang} {calleeText argsText : String}
-      {callee args : TargetExpr}
+      {callee args : TargetExpr} {tokens : List SourceToken}
+      (hLex : Lexes lang (calleeText ++ "(" ++ argsText ++ ")") tokens)
+      (hOpen : finalCallOpen tokens = some calleeText.length)
+      (hCalleeNonempty : calleeText.isEmpty = false)
       (hCallee : ExprSyntax lang calleeText callee)
       (hArgs : ArgumentSyntax lang argsText args) :
       ExprSyntax lang (calleeText ++ "(" ++ argsText ++ ")") (.call callee args)
@@ -86,16 +119,19 @@ inductive ExprSyntax : TargetLang → String → TargetExpr → Prop where
   | local {lang : TargetLang} {name : String}
       (hName : ExpressionIdentifier lang name) : ExprSyntax lang name (.local name)
   | property {lang : TargetLang} {base name : String} {receiver : TargetExpr}
+      (hBaseNonempty : base.isEmpty = false)
       (hBase : ExprSyntax lang base receiver)
       (hName : PropertyIdentifier lang name) :
       ExprSyntax lang (base ++ "." ++ name) (.property receiver name)
   | tsOptionalProperty {base name : String} {receiver : TargetExpr}
+      (hBaseNonempty : base.isEmpty = false)
       (hBase : ExprSyntax .ts base receiver)
       (hName : IdentifierText name) :
       ExprSyntax .ts (base ++ "?." ++ name)
         (.optionalProperty receiver name)
   | index {lang : TargetLang} {base keyText : String}
       {receiver key : TargetExpr}
+      (hBaseNonempty : base.isEmpty = false)
       (hBase : ExprSyntax lang base receiver)
       (hKey : ExprSyntax lang keyText key) :
       ExprSyntax lang (base ++ "[" ++ keyText ++ "]")
@@ -118,10 +154,12 @@ inductive ExprSyntax : TargetLang → String → TargetExpr → Prop where
 inductive ArgumentSyntax : TargetLang → String → TargetExpr → Prop where
   | empty (lang : TargetLang) : ArgumentSyntax lang "" .empty
   | one {lang : TargetLang} {source : String} {value : TargetExpr}
+      (hNonempty : source.isEmpty = false)
       (hValue : ExprSyntax lang source value) :
       ArgumentSyntax lang source (.sequence value .empty)
   | more {lang : TargetLang} {firstText gap restText : String}
       {tokens : List SourceToken} {first rest : TargetExpr}
+      (hFirstNonempty : firstText.isEmpty = false)
       (hLex : Lexes lang (firstText ++ "," ++ gap ++ restText) tokens)
       (hComma : firstTopLevelComma tokens = some firstText.length)
       (hGap : gap.toList.all Char.isWhitespace = true)
@@ -130,6 +168,81 @@ inductive ArgumentSyntax : TargetLang → String → TargetExpr → Prop where
       ArgumentSyntax lang (firstText ++ "," ++ gap ++ restText)
         (.sequence first rest)
 end
+
+theorem ArgumentSyntax.empty_only {lang source expr}
+    (h : ArgumentSyntax lang source expr) (hSource : source = "") :
+    expr = .empty := by
+  cases h with
+  | empty => rfl
+  | one hNonempty _ =>
+      have hz : ("" : String).isEmpty = true := by decide
+      rw [hSource, hz] at hNonempty
+      cases hNonempty
+  | @more lang firstText gap restText tokens first rest hLex hComma hGap hFirst hRest =>
+      have hLen := congrArg String.length hSource
+      have hCommaLength : ("," : String).length = 1 := by decide
+      simp [String.length_append, hCommaLength] at hLen
+
+theorem ExprSyntax.no_empty_callee {lang source args} :
+    ¬ ExprSyntax lang source (.call .empty args) := by
+  intro h
+  cases h with
+  | call hLex hOpen hNonempty hCallee hArgs =>
+      cases hCallee with
+      | empty =>
+          have hz : ("" : String).isEmpty = true := by decide
+          rw [hz] at hNonempty
+          cases hNonempty
+
+theorem ArgumentSyntax.no_empty_first {lang source rest} :
+    ¬ ArgumentSyntax lang source (.sequence .empty rest) := by
+  intro h
+  cases h with
+  | one hNonempty hValue =>
+      cases hValue with
+      | empty =>
+          have hz : ("" : String).isEmpty = true := by decide
+          rw [hz] at hNonempty
+          cases hNonempty
+  | more hNonempty hLex hComma hGap hFirst hRest =>
+      cases hFirst with
+      | empty =>
+          have hz : ("" : String).isEmpty = true := by decide
+          rw [hz] at hNonempty
+          cases hNonempty
+
+theorem ExprSyntax.no_empty_property_receiver {lang source name} :
+    ¬ ExprSyntax lang source (.property .empty name) := by
+  intro h
+  cases h with
+  | property hNonempty hBase hName =>
+      cases hBase with
+      | empty =>
+          have hz : ("" : String).isEmpty = true := by decide
+          rw [hz] at hNonempty
+          cases hNonempty
+
+theorem ExprSyntax.no_empty_optional_receiver {source name} :
+    ¬ ExprSyntax .ts source (.optionalProperty .empty name) := by
+  intro h
+  cases h with
+  | tsOptionalProperty hNonempty hBase hName =>
+      cases hBase with
+      | empty =>
+          have hz : ("" : String).isEmpty = true := by decide
+          rw [hz] at hNonempty
+          cases hNonempty
+
+theorem ExprSyntax.no_empty_index_receiver {lang source key} :
+    ¬ ExprSyntax lang source (.index .empty key) := by
+  intro h
+  cases h with
+  | index hNonempty hBase hKey =>
+      cases hBase with
+      | empty =>
+          have hz : ("" : String).isEmpty = true := by decide
+          rw [hz] at hNonempty
+          cases hNonempty
 
 inductive ExprDerives : TargetLang → String → SourceSpan → TargetExpr → Prop where
   | ofSyntax {lang : TargetLang} {source : String} {span : SourceSpan}
