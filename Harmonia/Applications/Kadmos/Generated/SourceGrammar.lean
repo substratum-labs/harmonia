@@ -108,6 +108,16 @@ def expressionReserved : TargetLang → List String
 def ExpressionIdentifier (lang : TargetLang) (name : String) : Prop :=
   IdentifierText name ∧ name ∉ expressionReserved lang
 
+/-- A TS property may be private or use a keyword spelling; Python dotted
+    properties use the expression-identifier category. -/
+inductive PropertyIdentifier : TargetLang → String → Prop where
+  | tsPlain {name : String} (hName : IdentifierText name) :
+      PropertyIdentifier .ts name
+  | tsPrivate {name : String} (hName : IdentifierText name) :
+      PropertyIdentifier .ts ("#" ++ name)
+  | python {name : String} (hName : ExpressionIdentifier .python name) :
+      PropertyIdentifier .python name
+
 /-- In the current binary subtraction fragment the rightmost surface
     delimiter owns the outer node, giving left association. Full program
     syntax will refine this to token-level top-level delimiter ownership. -/
@@ -622,7 +632,7 @@ inductive ExprSyntax : TargetLang → String → TargetExpr → Prop where
       (hName : ExpressionIdentifier lang name) : ExprSyntax lang name (.local name)
   | property {lang : TargetLang} {base name : String} {receiver : TargetExpr}
       (hBase : ExprSyntax lang base receiver)
-      (hName : IdentifierText name) :
+      (hName : PropertyIdentifier lang name) :
       ExprSyntax lang (base ++ "." ++ name) (.property receiver name)
   | sub {lang : TargetLang} {leftText rightText : String}
       {left right : TargetExpr}

@@ -4,9 +4,14 @@ set_option maxHeartbeats 1000000
 
 namespace Harmonia.Applications.Kadmos.Generated
 
+private def joinProperty : List String → String
+  | [] => ""
+  | [last] => last
+  | first :: rest => first ++ "." ++ joinProperty rest
+
 private def splitProperty (source : String) : Option (String × String) :=
-  match source.splitSourceOn "." with
-  | [base, name] => some (base, name)
+  match (source.splitSourceOn ".").reverse with
+  | name :: first :: rest => some (joinProperty (first :: rest).reverse, name)
   | _ => none
 
 private def splitSub (source : String) : Option (String × String) :=
@@ -56,6 +61,28 @@ theorem expressionIdentifierCheck_sound {lang name}
   simp only [expressionIdentifierCheck, Bool.and_eq_true, Bool.not_eq_true] at h
   exact ⟨identifierTextCheck_sound h.1, by
     simpa [List.contains_eq_mem] using h.2⟩
+
+def propertyIdentifierCheck (lang : TargetLang) (name : String) : Bool :=
+  match lang with
+  | .ts =>
+      if name.startsWith "#" then
+        let plain := String.mk (name.toList.drop 1)
+        name == "#" ++ plain && identifierTextCheck plain
+      else identifierTextCheck name
+  | .python => expressionIdentifierCheck .python name
+
+theorem propertyIdentifierCheck_sound {lang name}
+    (h : propertyIdentifierCheck lang name = true) :
+    PropertyIdentifier lang name := by
+  cases lang with
+  | ts =>
+      simp only [propertyIdentifierCheck] at h
+      split at h
+      · simp only [Bool.and_eq_true, beq_iff_eq] at h
+        exact h.1 ▸ .tsPrivate (identifierTextCheck_sound h.2)
+      · exact .tsPlain (identifierTextCheck_sound h)
+  | python =>
+      exact .python (expressionIdentifierCheck_sound h)
 
 def decodeSurfaceChars : List Char → Option (List Char)
   | [] => some []
@@ -607,7 +634,7 @@ def validateExprText (lang : TargetLang) (source : String) : TargetExpr → Bool
   | .property receiver name =>
       match splitProperty source with
       | some (base, field) =>
-          identifierTextCheck field && field == name &&
+          propertyIdentifierCheck lang field && field == name &&
             source == base ++ "." ++ field && validateExprText lang base receiver
       | none => false
   | .binary .sub left right =>
@@ -815,7 +842,7 @@ private theorem validateExprAndArgument_sound (lang : TargetLang) (expr : Target
             rcases h with ⟨⟨⟨hne, heq⟩, hconcat⟩, hrec⟩
             subst source
             subst field
-            exact .property (ih.1 base hrec) (identifierTextCheck_sound hne)
+            exact .property (ih.1 base hrec) (propertyIdentifierCheck_sound hne)
       · intro source h
         simp [validateArgumentText] at h
   | binary op left right ihLeft ihRight =>

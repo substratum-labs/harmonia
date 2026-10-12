@@ -177,3 +177,54 @@ theorem kadmos_generated_ts_ctor_invariant_target_mutation_rejected :
         (.sequence (.string "Ready")
           (.sequence (.local "candidate") .empty))) = false := by
   decide +kernel
+
+theorem kadmos_generated_ts_private_field_source_owned :
+    validateExprSpan .ts balanceTsSource ⟨8234, 8247⟩
+      (.property (.local "this") "#context") = true := by
+  decide +kernel
+
+theorem kadmos_generated_ts_private_field_raw_candidate_matches :
+    (parseTargetExpr .ts
+      ((⟨8234, 8247⟩ : SourceSpan).text balanceTsSource)).toOption =
+        some (.property (.local "this") "#context") := by
+  decide +kernel
+
+theorem kadmos_generated_ts_private_field_derives :
+    ExprDerives .ts balanceTsSource ⟨8234, 8247⟩
+      (.property (.local "this") "#context") :=
+  validateExprSpan_sound kadmos_generated_ts_private_field_source_owned
+
+theorem kadmos_generated_ts_private_field_mutation_rejected :
+    validateExprSpan .ts balanceTsSource ⟨8234, 8247⟩
+      (.property (.local "this") "#history") = false := by
+  decide +kernel
+
+private def tsPrototypeCallTarget : TargetExpr :=
+  .property (.property (.property (.local "Object") "prototype")
+    "toString") "call"
+
+theorem kadmos_generated_ts_nested_property_source_owned :
+    validateExprSpan .ts balanceTsSource ⟨6469, 6499⟩
+      tsPrototypeCallTarget = true := by
+  decide +kernel
+
+theorem kadmos_generated_ts_nested_property_raw_candidate_matches :
+    (parseTargetExpr .ts
+      ((⟨6469, 6499⟩ : SourceSpan).text balanceTsSource)).toOption =
+        some tsPrototypeCallTarget := by
+  decide +kernel
+
+theorem kadmos_generated_ts_nested_property_derives :
+    ExprDerives .ts balanceTsSource ⟨6469, 6499⟩
+      tsPrototypeCallTarget :=
+  validateExprSpan_sound kadmos_generated_ts_nested_property_source_owned
+
+theorem kadmos_generated_ts_keyword_property_allowed :
+    validateExprText .ts "obj.true"
+      (.property (.local "obj") "true") = true := by
+  decide +kernel
+
+theorem kadmos_generated_python_keyword_property_rejected :
+    validateExprText .python "obj.None"
+      (.property (.local "obj") "None") = false := by
+  decide +kernel
