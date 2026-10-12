@@ -243,3 +243,10 @@ theorem kadmos_generated_python_depth_if_indent_mutation_rejected :
   decide +kernel
 
 #print axioms kadmos_generated_python_depth_if_derives
+
+theorem kadmos_generated_python_certificate_owns_absolute_indent :
+    validateStmtCertificate .python
+      "def f(x: Any) -> bool:\n    if True:\n    return True" ⟨27,51⟩
+      (.ifThenElse (.bool true) (.sequence (.returnValue (.bool true)) .empty) .empty)
+      (.ifThenIndented ⟨30,34⟩ ⟨40,51⟩ "    "
+        (.final ⟨40,51⟩ (.returnExpr ⟨47,51⟩))) = false := by decide +kernel

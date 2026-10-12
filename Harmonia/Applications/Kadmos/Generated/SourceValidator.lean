@@ -71,11 +71,22 @@ private def afterSourcePrefix (source head : String) : Option String :=
     some (String.mk (source.toList.drop head.length))
   else none
 
+def formatIdentifierCheck (lang : TargetLang) (name : String) : Bool :=
+  (lang == .ts && name == "this") || expressionIdentifierCheck lang name
+
+theorem formatIdentifierCheck_sound {lang name}
+    (h : formatIdentifierCheck lang name = true) : FormatIdentifier lang name := by
+  simp only [formatIdentifierCheck, Bool.or_eq_true, Bool.and_eq_true,
+    beq_iff_eq] at h
+  cases h with
+  | inl h => exact .inl h
+  | inr h => exact .inr (expressionIdentifierCheck_sound h)
+
 def validateFormatText (lang : TargetLang) (source : String) : TargetExpr → Bool
   | .empty => source == ""
   | .formatPart text .empty .empty =>
       !text.isEmpty && source == text &&
-        (splitFirstFormat text (formatOpen lang)).isNone
+        (splitFirstFormat text (formatOpen lang)).isNone && formatLiteralCheck lang text
   | .formatPart headText (.local name) rest =>
       match splitFirstFormat source (formatOpen lang) with
       | none => false
@@ -86,7 +97,8 @@ def validateFormatText (lang : TargetLang) (source : String) : TargetExpr → Bo
               before == headText && holeText == name &&
                 source == headText ++ formatOpen lang ++ name ++ "}" ++ tail &&
                 (splitFirstFormat headText (formatOpen lang)).isNone &&
-                identifierTextCheck name && validateFormatText lang tail rest
+                formatIdentifierCheck lang name && validateFormatText lang tail rest &&
+                formatLiteralCheck lang headText
   | _ => false
 
 theorem validateFormatText_sound (lang : TargetLang) (source : String)
@@ -101,9 +113,9 @@ theorem validateFormatText_sound (lang : TargetLang) (source : String)
       cases value with
       | empty =>
           cases rest <;> simp [validateFormatText] at h
-          rcases h with ⟨⟨hNonempty, hEq⟩, hNoHole⟩
+          rcases h with ⟨⟨⟨hNonempty, hEq⟩, hNoHole⟩, hLiteral⟩
           subst source
-          exact .literal hNonempty hNoHole
+          exact .literal hNonempty hNoHole hLiteral
       | «local» name =>
           simp only [validateFormatText] at h
           cases hs1 : splitFirstFormat source (formatOpen lang) with
@@ -115,14 +127,14 @@ theorem validateFormatText_sound (lang : TargetLang) (source : String)
               | some secondParts =>
                   rcases secondParts with ⟨holeText, tail⟩
                   simp only [hs1, hs2, Bool.and_eq_true, beq_iff_eq] at h
-                  rcases h with ⟨⟨⟨⟨⟨hBefore, hName⟩, hEq⟩, hNoHole⟩,
-                    hIdent⟩, hRest⟩
+                  rcases h with ⟨⟨⟨⟨⟨⟨hBefore, hName⟩, hEq⟩, hNoHole⟩,
+                    hIdent⟩, hRest⟩, hLiteral⟩
                   have hNo : splitFirstFormat text (formatOpen lang) = none := by
                     cases hn : splitFirstFormat text (formatOpen lang) with
                     | none => rfl
                     | some value => simp [hn] at hNoHole
                   subst source
-                  exact .hole hNo (identifierTextCheck_sound hIdent) (ihRest tail hRest)
+                  exact .hole hNo (formatIdentifierCheck_sound hIdent) (ihRest tail hRest) hLiteral
       | _ => simp [validateFormatText] at h
   | _ => simp [validateFormatText] at h
 
@@ -199,7 +211,8 @@ def validateExprText (lang : TargetLang) (source : String) : TargetExpr → Bool
                   !calleeText.isEmpty &&
                   source == calleeText ++ "(" ++ argsText ++ ")" &&
                   validateExprText lang calleeText callee &&
-                  validateArgumentText lang argsText args
+                  validateArgumentText lang argsText args &&
+                  9 ≤ exprBindingPower callee
   | .bool value =>
       source == (if lang == .ts then
         (if value then "true" else "false")
@@ -223,7 +236,8 @@ def validateExprText (lang : TargetLang) (source : String) : TargetExpr → Bool
       match splitProperty source with
       | some (base, field) =>
           !base.isEmpty && propertyIdentifierCheck lang field && field == name &&
-            source == base ++ "." ++ field && validateExprText lang base receiver
+            source == base ++ "." ++ field && validateExprText lang base receiver &&
+            9 ≤ exprBindingPower receiver && dotReceiverCheck base receiver
       | none => false
   | .optionalProperty receiver name =>
       if lang == .ts then
@@ -231,7 +245,8 @@ def validateExprText (lang : TargetLang) (source : String) : TargetExpr → Bool
         | some (base, field) =>
             !base.isEmpty && identifierTextCheck field && field == name &&
               source == base ++ "?." ++ field &&
-              validateExprText .ts base receiver
+              validateExprText .ts base receiver &&
+              9 ≤ exprBindingPower receiver
         | none => false
       else false
   | .index receiver key =>
@@ -239,13 +254,14 @@ def validateExprText (lang : TargetLang) (source : String) : TargetExpr → Bool
       | some (base, keyText) =>
           !base.isEmpty && source == base ++ "[" ++ keyText ++ "]" &&
             validateExprText lang base receiver &&
-            validateExprText lang keyText key
+            validateExprText lang keyText key &&
+            9 ≤ exprBindingPower receiver
       | none => false
   | .nonNull value =>
       if lang == .ts then
         match stripFinalBang source with
         | some base => source == base ++ "!" &&
-            validateExprText .ts base value
+            validateExprText .ts base value && 9 ≤ exprBindingPower value
         | none => false
       else false
   | .binary .sub left right =>
@@ -265,7 +281,8 @@ def validateExprText (lang : TargetLang) (source : String) : TargetExpr → Bool
             validateExprText lang leftText left &&
             validateExprText lang rightText right &&
             5 ≤ exprBindingPower left &&
-            5 < exprBindingPower right
+            5 < exprBindingPower right &&
+            (lang != .python || 5 < exprBindingPower left)
       | none => false
   | .binary .ge left right =>
       match splitGe source with
@@ -274,14 +291,16 @@ def validateExprText (lang : TargetLang) (source : String) : TargetExpr → Bool
             validateExprText lang leftText left &&
             validateExprText lang rightText right &&
             5 ≤ exprBindingPower left &&
-            5 < exprBindingPower right
+            5 < exprBindingPower right &&
+            (lang != .python || 5 < exprBindingPower left)
       | none => false
   | .formatted parts =>
       match wrapperContent lang source with
       | none => false
       | some content =>
           source == wrapperRebuild lang content &&
-            parts != .empty && validateFormatText lang content parts
+            parts != .empty && validateFormatText lang content parts &&
+            formatContentCheck (if lang == .ts then '`' else '"') content
   | _ => false
 
 def validateArgumentText (lang : TargetLang) (source : String) : TargetExpr → Bool
@@ -389,8 +408,8 @@ private theorem validateExprAndArgument_sound (lang : TargetLang) (expr : Target
                     rcases parts with ⟨calleeText, argsText⟩
                     simp only [ht, ho, hp, Bool.and_eq_true,
                       beq_iff_eq] at h
-                    rcases h with ⟨⟨⟨⟨⟨hLex, hOffset⟩, hNonempty⟩,
-                      hSource⟩, hCallee⟩, hArgs⟩
+                    rcases h with ⟨⟨⟨⟨⟨⟨hLex, hOffset⟩, hNonempty⟩,
+                      hSource⟩, hCallee⟩, hArgs⟩, hPower⟩
                     have hLexDerived : Lexes lang
                         (calleeText ++ "(" ++ argsText ++ ")") tokens := by
                       rw [← hSource]
@@ -402,7 +421,7 @@ private theorem validateExprAndArgument_sound (lang : TargetLang) (expr : Target
                     exact .call hLexDerived hOpen
                       (by simpa using hNonempty)
                       (ihCallee.1 calleeText hCallee)
-                      (ihArgs.2 argsText hArgs)
+                      (ihArgs.2 argsText hArgs) (by simpa using hPower)
       · intro source h
         simp [validateArgumentText] at h
   | bool value =>
@@ -497,11 +516,12 @@ private theorem validateExprAndArgument_sound (lang : TargetLang) (expr : Target
         | some parts =>
             rcases parts with ⟨base, field⟩
             simp only [hs, Bool.and_eq_true, beq_iff_eq] at h
-            rcases h with ⟨⟨⟨⟨hBaseNonempty, hne⟩, heq⟩, hconcat⟩, hrec⟩
+            rcases h with ⟨⟨⟨⟨⟨⟨hBaseNonempty, hne⟩, heq⟩, hconcat⟩, hrec⟩, hPower⟩, hDot⟩
             subst source
             subst field
             exact .property (by simpa using hBaseNonempty)
               (ih.1 base hrec) (propertyIdentifierCheck_sound hne)
+              (by simpa using hPower) hDot
       · intro source h
         simp [validateArgumentText] at h
   | optionalProperty receiver name ih =>
@@ -516,13 +536,13 @@ private theorem validateExprAndArgument_sound (lang : TargetLang) (expr : Target
             | some parts =>
                 rcases parts with ⟨base, field⟩
                 simp only [hs, Bool.and_eq_true, beq_iff_eq] at h
-                rcases h with ⟨⟨⟨⟨hBaseNonempty, hName⟩, hEq⟩, hSource⟩,
-                  hBase⟩
+                rcases h with ⟨⟨⟨⟨⟨hBaseNonempty, hName⟩, hEq⟩, hSource⟩,
+                  hBase⟩, hPower⟩
                 subst source
                 subst field
                 exact .tsOptionalProperty (by simpa using hBaseNonempty)
                   (ih.1 base hBase)
-                  (identifierTextCheck_sound hName)
+                  (identifierTextCheck_sound hName) (by simpa using hPower)
       · intro source h
         simp [validateArgumentText] at h
   | index receiver key ihReceiver ihKey =>
@@ -534,11 +554,11 @@ private theorem validateExprAndArgument_sound (lang : TargetLang) (expr : Target
         | some parts =>
             rcases parts with ⟨base, keyText⟩
             simp only [hs, Bool.and_eq_true, beq_iff_eq] at h
-            rcases h with ⟨⟨⟨hBaseNonempty, hSource⟩, hBase⟩, hKey⟩
+            rcases h with ⟨⟨⟨⟨hBaseNonempty, hSource⟩, hBase⟩, hKey⟩, hPower⟩
             subst source
             exact .index (by simpa using hBaseNonempty)
               (ihReceiver.1 base hBase)
-              (ihKey.1 keyText hKey)
+              (ihKey.1 keyText hKey) (by simpa using hPower)
       · intro source h
         simp [validateArgumentText] at h
   | nonNull value ih =>
@@ -552,9 +572,9 @@ private theorem validateExprAndArgument_sound (lang : TargetLang) (expr : Target
             | none => simp [hs] at h
             | some base =>
                 simp only [hs, Bool.and_eq_true, beq_iff_eq] at h
-                rcases h with ⟨hSource, hValue⟩
+                rcases h with ⟨⟨hSource, hValue⟩, hPower⟩
                 subst source
-                exact .tsNonNull (ih.1 base hValue)
+                exact .tsNonNull (ih.1 base hValue) (by simpa using hPower)
       · intro source h
         simp [validateArgumentText] at h
   | binary op left right ihLeft ihRight =>
@@ -579,22 +599,24 @@ private theorem validateExprAndArgument_sound (lang : TargetLang) (expr : Target
           | some parts =>
               rcases parts with ⟨leftText, rightText⟩
               simp only [hs, Bool.and_eq_true, beq_iff_eq] at h
-              rcases h with ⟨⟨⟨⟨hconcat, hleft⟩, hright⟩,
-                hLeftPower⟩, hRightPower⟩
+              rcases h with ⟨⟨⟨⟨⟨hconcat, hleft⟩, hright⟩,
+                hLeftPower⟩, hRightPower⟩, hPythonLeft⟩
               subst source
               exact .gt (ihLeft.1 leftText hleft) (ihRight.1 rightText hright)
                 (by simpa using hLeftPower) (by simpa using hRightPower)
+                (by intro hLang; subst lang; simpa using hPythonLeft)
         case ge =>
           cases hs : splitGe source with
           | none => simp [hs] at h
           | some parts =>
               rcases parts with ⟨leftText, rightText⟩
               simp only [hs, Bool.and_eq_true, beq_iff_eq] at h
-              rcases h with ⟨⟨⟨⟨hconcat, hleft⟩, hright⟩,
-                hLeftPower⟩, hRightPower⟩
+              rcases h with ⟨⟨⟨⟨⟨hconcat, hleft⟩, hright⟩,
+                hLeftPower⟩, hRightPower⟩, hPythonLeft⟩
               subst source
               exact .ge (ihLeft.1 leftText hleft) (ihRight.1 rightText hright)
                 (by simpa using hLeftPower) (by simpa using hRightPower)
+                (by intro hLang; subst lang; simpa using hPythonLeft)
       · intro source h
         simp [validateArgumentText] at h
   | formatted parts ih =>
@@ -605,18 +627,18 @@ private theorem validateExprAndArgument_sound (lang : TargetLang) (expr : Target
         | none => simp [hw] at h
         | some content =>
             simp only [hw, Bool.and_eq_true, beq_iff_eq] at h
-            rcases h with ⟨⟨hRebuild, hNonempty⟩, hParts⟩
+            rcases h with ⟨⟨⟨hRebuild, hNonempty⟩, hParts⟩, hContent⟩
             cases lang with
             | ts =>
                 simp [wrapperRebuild] at hRebuild
                 subst source
-                exact .formatted (.ts content)
+                exact .formatted (.ts content (by simpa using hContent))
                   (validateFormatText_sound .ts content parts hParts)
                   (by simpa using hNonempty)
             | python =>
                 simp [wrapperRebuild] at hRebuild
                 subst source
-                exact .formatted (.pythonDouble content)
+                exact .formatted (.pythonDouble content (by simpa using hContent))
                   (validateFormatText_sound .python content parts hParts)
                   (by simpa using hNonempty)
       · intro source h
@@ -643,7 +665,7 @@ theorem validateArgumentText_sound (lang : TargetLang) (source : String)
 def validateTSTypeofValue (source : String) (value : TargetExpr) : Bool :=
   match afterSourcePrefix source "typeof " with
   | some valueText => source == "typeof " ++ valueText &&
-      validateExprText .ts valueText value
+      validateExprText .ts valueText value && 8 ≤ exprBindingPower value
   | none => false
 
 theorem validateTSTypeofValue_sound {source value}
@@ -654,9 +676,10 @@ theorem validateTSTypeofValue_sound {source value}
   | none => simp [hp] at h
   | some valueText =>
       simp only [hp, Bool.and_eq_true, beq_iff_eq] at h
-      rcases h with ⟨hSource, hValue⟩
+      rcases h with ⟨⟨hSource, hValue⟩, hPower⟩
       subst source
       exact .tsTypeof (validateExprText_sound .ts valueText value hValue)
+        (by simpa using hPower)
 
 def validateTSStrictNeTypeofValue (source : String)
     (value right : TargetExpr) : Bool :=
@@ -664,7 +687,7 @@ def validateTSStrictNeTypeofValue (source : String)
   | some (leftText, rightText) =>
       source == leftText ++ " !== " ++ rightText &&
         validateTSTypeofValue leftText value &&
-        validateExprText .ts rightText right
+        validateExprText .ts rightText right && 4 < exprBindingPower right
   | none => false
 
 theorem validateTSStrictNeTypeofValue_sound {source value right}
@@ -677,15 +700,16 @@ theorem validateTSStrictNeTypeofValue_sound {source value right}
   | some pair =>
       rcases pair with ⟨leftText, rightText⟩
       simp only [hs, Bool.and_eq_true, beq_iff_eq] at h
-      rcases h with ⟨⟨hSource, hLeft⟩, hRight⟩
+      rcases h with ⟨⟨⟨hSource, hLeft⟩, hRight⟩, hPower⟩
       subst source
       exact .tsStrictNe (validateTSTypeofValue_sound hLeft)
         (validateExprText_sound .ts rightText right hRight)
+        (by simp [exprBindingPower]) (by simpa using hPower)
 
 def validateTSNewValue (source : String) (value : TargetExpr) : Bool :=
   match afterSourcePrefix source "new " with
   | some valueText => source == "new " ++ valueText &&
-      validateExprText .ts valueText value
+      validateExprText .ts valueText value && 9 ≤ exprBindingPower value
   | none => false
 
 theorem validateTSNewValue_sound {source value}
@@ -696,9 +720,10 @@ theorem validateTSNewValue_sound {source value}
   | none => simp [hp] at h
   | some valueText =>
       simp only [hp, Bool.and_eq_true, beq_iff_eq] at h
-      rcases h with ⟨hSource, hValue⟩
+      rcases h with ⟨⟨hSource, hValue⟩, hPower⟩
       subst source
       exact .tsNew (validateExprText_sound .ts valueText value hValue)
+        (by simpa using hPower)
 
 def validatePythonIsNotValues (source : String)
     (left right : TargetExpr) : Bool :=
@@ -706,7 +731,8 @@ def validatePythonIsNotValues (source : String)
   | some (leftText, rightText) =>
       source == leftText ++ " is not " ++ rightText &&
         validateExprText .python leftText left &&
-        validateExprText .python rightText right
+        validateExprText .python rightText right &&
+        5 < exprBindingPower left && 5 < exprBindingPower right
   | none => false
 
 theorem validatePythonIsNotValues_sound {source left right}
@@ -718,11 +744,12 @@ theorem validatePythonIsNotValues_sound {source left right}
   | some pair =>
       rcases pair with ⟨leftText, rightText⟩
       simp only [hs, Bool.and_eq_true, beq_iff_eq] at h
-      rcases h with ⟨⟨hSource, hLeft⟩, hRight⟩
+      rcases h with ⟨⟨⟨⟨hSource, hLeft⟩, hRight⟩, hLeftPower⟩, hRightPower⟩
       subst source
       exact .pythonIsNot
         (validateExprText_sound .python leftText left hLeft)
         (validateExprText_sound .python rightText right hRight)
+        (by simpa using hLeftPower) (by simpa using hRightPower)
 
 theorem validateExprSpan_sound {lang source span expr}
     (h : validateExprSpan lang source span expr = true) :
@@ -782,7 +809,7 @@ private def splitLastFormat (source separator : String) :
   | _ => none
 
 def singleStatementCheck : TargetStmt → Bool
-  | .sequence _ _ => false
+  | .sequence _ _ | .empty => false
   | _ => true
 
 theorem singleStatementCheck_sound {stmt : TargetStmt}
@@ -793,9 +820,9 @@ def validateStmtText (lang : TargetLang) (control : SurfaceControl)
     (source : String) : TargetStmt → Bool
   | .sequence first rest =>
       if rest == .empty then
-        control == .function && singleStatementCheck first &&
+        control == .body && singleStatementCheck first &&
           validateStmtText lang .function source first
-      else if control == .function then
+      else if control == .body then
         let delimiter := if lang == .ts then "\n  " else "\n    "
         let parts := if lang == .ts then splitFirstFormat source delimiter
           else splitLastFormat source delimiter
@@ -804,7 +831,7 @@ def validateStmtText (lang : TargetLang) (control : SurfaceControl)
             singleStatementCheck first &&
               source == firstText ++ delimiter ++ restText &&
               validateStmtText lang .function firstText first &&
-              validateStmtText lang .function restText rest
+              validateStmtText lang .body restText rest
         | none => false
       else false
   | .ifThenElse cond yes no =>
@@ -829,7 +856,7 @@ def validateStmtText (lang : TargetLang) (control : SurfaceControl)
                     source == "if " ++ conditionText ++ ":\n        " ++ bodyText &&
                       validateFunctionExpr .python conditionText cond &&
                       suiteLinesWithin "        " bodyText &&
-                      validateStmtText .python .function bodyText yes
+                      validateStmtText .python .body bodyText yes
                 | none => false
             | none => false
       else false
@@ -919,7 +946,8 @@ def validateStmtText (lang : TargetLang) (control : SurfaceControl)
 def validateStmtSpan (lang : TargetLang) (control : SurfaceControl)
     (source : String) (span : SourceSpan) (stmt : TargetStmt) : Bool :=
   span.start ≤ span.stop && span.stop ≤ source.length &&
-    validateStmtText lang control (span.text source) stmt
+    validateStmtText lang control (span.text source) stmt &&
+    statementLayoutCheck lang source span
 
 theorem validateStmtText_sound (lang : TargetLang) (control : SurfaceControl)
     (source : String) (stmt : TargetStmt)
@@ -942,7 +970,7 @@ theorem validateStmtText_sound (lang : TargetLang) (control : SurfaceControl)
               (ihFirst .function source hFirst)
       · cases lang <;> cases control <;>
           simp [validateStmtText, hr] at h
-        case neg.ts.function =>
+        case neg.ts.body =>
           cases hs : splitFirstFormat source "\n  " with
           | none => simp [hs] at h
           | some parts =>
@@ -952,8 +980,8 @@ theorem validateStmtText_sound (lang : TargetLang) (control : SurfaceControl)
               subst source
               exact .tsSequence (singleStatementCheck_sound hSingle)
                 (ihFirst .function firstText hFirst)
-                (ihRest .function restText hRest)
-        case neg.python.function =>
+                (ihRest .body restText hRest)
+        case neg.python.body =>
           cases hs : splitLastFormat source "\n    " with
           | none => simp [hs] at h
           | some parts =>
@@ -963,7 +991,7 @@ theorem validateStmtText_sound (lang : TargetLang) (control : SurfaceControl)
               subst source
               exact .pythonSequence (singleStatementCheck_sound hSingle)
                 (ihFirst .function firstText hFirst)
-                (ihRest .function restText hRest)
+                (ihRest .body restText hRest)
   | ifThenElse condition yes no ihYes ihNo =>
       by_cases hn : no = .empty
       · subst no
@@ -995,7 +1023,7 @@ theorem validateStmtText_sound (lang : TargetLang) (control : SurfaceControl)
                   rcases h with ⟨⟨⟨hSource, hCond⟩, hSuite⟩, hBody⟩
                   subst source
                   exact .pythonIfThen (validateFunctionExpr_sound hCond)
-                    hSuite (ihYes .function bodyText hBody)
+                    hSuite (ihYes .body bodyText hBody)
       · simp [validateStmtText, hn] at h
   | assign target value =>
       cases target with
@@ -1124,9 +1152,9 @@ theorem validateStmtText_sound (lang : TargetLang) (control : SurfaceControl)
 theorem validateStmtSpan_sound {lang control source span stmt}
     (h : validateStmtSpan lang control source span stmt = true) :
     StmtDerives lang control source span stmt := by
-  simp [validateStmtSpan] at h
-  exact .ofSyntax h.1
-    (validateStmtText_sound lang control (span.text source) stmt h.2)
+  simp only [validateStmtSpan, Bool.and_eq_true] at h
+  exact .ofSyntax ⟨(by simpa using h.1.1.1), (by simpa using h.1.1.2)⟩
+    (validateStmtText_sound lang control (span.text source) stmt h.1.2) h.2
 
 def validateTypeNames : List String → Bool
   | [] => false
@@ -1194,20 +1222,21 @@ def validateFunctionText (lang : TargetLang) (source bodySource : String)
   | [⟨param, none⟩] =>
       identifierTextCheck function.qualifiedName &&
       identifierTextCheck param &&
-      validateStmtText lang .function bodySource function.body &&
+      validateStmtText lang .body bodySource function.body &&
       (match lang with
        | .ts =>
            source == "function " ++ function.qualifiedName ++ "(" ++ param ++
              ": unknown): boolean {\n  " ++ bodySource ++ "\n}"
        | .python =>
            source == "def " ++ function.qualifiedName ++ "(" ++ param ++
-             ": Any) -> bool:\n    " ++ bodySource)
+             ": Any) -> bool:\n    " ++ bodySource &&
+             suiteLinesWithin "    " bodySource)
   | _ => false
 
 theorem validateFunctionText_sound {lang source bodySource function}
     (h : validateFunctionText lang source bodySource function = true) :
     FunctionSyntax lang source function ∧
-      StmtSyntax lang .function bodySource function.body := by
+      StmtSyntax lang .body bodySource function.body := by
   cases function with
   | mk name params body =>
       cases params with
@@ -1227,7 +1256,7 @@ theorem validateFunctionText_sound {lang source bodySource function}
                             Bool.and_eq_true, beq_iff_eq] at h
                           rcases h with ⟨⟨⟨hName, hParam⟩, hBody⟩, hSource⟩
                           subst source
-                          have hStmt := validateStmtText_sound .ts .function
+                          have hStmt := validateStmtText_sound .ts .body
                             bodySource body hBody
                           exact ⟨.tsUnknownToBool
                             (identifierTextCheck_sound hName)
@@ -1235,34 +1264,54 @@ theorem validateFunctionText_sound {lang source bodySource function}
                       | python =>
                           simp only [validateFunctionText,
                             Bool.and_eq_true, beq_iff_eq] at h
-                          rcases h with ⟨⟨⟨hName, hParam⟩, hBody⟩, hSource⟩
+                          rcases h with ⟨⟨⟨hName, hParam⟩, hBody⟩, hSource, hLayout⟩
                           subst source
-                          have hStmt := validateStmtText_sound .python .function
+                          have hStmt := validateStmtText_sound .python .body
                             bodySource body hBody
                           exact ⟨.pythonAnyToBool
                             (identifierTextCheck_sound hName)
-                            (identifierTextCheck_sound hParam) hStmt, hStmt⟩
+                            (identifierTextCheck_sound hParam) hStmt hLayout, hStmt⟩
+
+def functionBodyLocatedCheck (lang : TargetLang) (span bodySpan : SourceSpan)
+    (function : TargetFunction) : Bool :=
+  match functionHeader lang function with
+  | none => false
+  | some header => bodySpan.start == span.start + header.length &&
+      bodySpan.stop + (functionTrailer lang).length == span.stop
+
+theorem functionBodyLocatedCheck_sound {lang span bodySpan function}
+    (h : functionBodyLocatedCheck lang span bodySpan function = true) :
+    FunctionBodyLocated lang span bodySpan function := by
+  unfold functionBodyLocatedCheck at h
+  cases hh : functionHeader lang function with
+  | none => simp [hh] at h
+  | some header =>
+      simp only [hh, Bool.and_eq_true, beq_iff_eq] at h
+      exact .ofHeader hh h.1 h.2
 
 def validateFunctionItem (lang : TargetLang) (source : String)
     (span bodySpan : SourceSpan) (function : TargetFunction) : Bool :=
   span.start ≤ span.stop && span.stop ≤ source.length &&
   bodySpan.start ≤ bodySpan.stop && bodySpan.stop ≤ source.length &&
   span.start ≤ bodySpan.start && bodySpan.stop ≤ span.stop &&
-  validateFunctionText lang (span.text source) (bodySpan.text source) function
+  validateFunctionText lang (span.text source) (bodySpan.text source) function &&
+  functionBodyLocatedCheck lang span bodySpan function &&
+  statementLayoutCheck lang source bodySpan
 
 theorem validateFunctionItem_sound {lang source span bodySpan function}
     (h : validateFunctionItem lang source span bodySpan function = true) :
     ItemDerives lang source (.functionDecl span bodySpan function) := by
   simp only [validateFunctionItem, Bool.and_eq_true] at h
-  rcases h with ⟨⟨⟨⟨⟨⟨hStart, hStop⟩, hBodyStart⟩,
-    hBodyStop⟩, hWithinStart⟩, hWithinStop⟩, hText⟩
+  rcases h with ⟨⟨⟨⟨⟨⟨⟨⟨hStart, hStop⟩, hBodyStart⟩,
+    hBodyStop⟩, hWithinStart⟩, hWithinStop⟩, hText⟩, hLocated⟩, hLayout⟩
   obtain ⟨hFunction, hBody⟩ := validateFunctionText_sound hText
   exact .functionDecl
     (.ofSyntax ⟨(by simpa using hStart), (by simpa using hStop)⟩
       hFunction)
     (.ofSyntax ⟨(by simpa using hBodyStart), (by simpa using hBodyStop)⟩
-      hBody)
+      hBody hLayout)
     ⟨(by simpa using hWithinStart), (by simpa using hWithinStop)⟩
+    (functionBodyLocatedCheck_sound hLocated)
 
 def validateSourceItem (lang : TargetLang) (source : String) :
     SourceItem → Bool

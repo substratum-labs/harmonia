@@ -97,7 +97,7 @@ theorem kadmos_generated_python_boolean_return_derives :
   exact .pythonReturn hLocal
 
 theorem kadmos_generated_python_boolean_body_derives :
-    StmtSyntax .python .function
+    StmtSyntax .python .body
       ((⟨1631, 1748⟩ : SourceSpan).text balancePySource)
       pythonBooleanBody := by
   have hText : ((⟨1631, 1748⟩ : SourceSpan).text balancePySource) =
@@ -127,6 +127,7 @@ theorem kadmos_generated_python_boolean_function_derives :
     (identifierTextCheck_sound (name := "_boolean") (by decide))
     (identifierTextCheck_sound (name := "value") (by decide))
     kadmos_generated_python_boolean_body_derives
+    (by decide +kernel)
 
 theorem kadmos_generated_python_boolean_function_item_owned :
     validateSourceItem .python balancePySource
@@ -150,7 +151,7 @@ theorem kadmos_generated_python_boolean_statement_certificate_checked :
   decide +kernel
 
 theorem kadmos_generated_python_boolean_statement_certificate_sound :
-    StmtDerives .python .function balancePySource ⟨1631, 1748⟩
+    StmtDerives .python .body balancePySource ⟨1631, 1748⟩
       pythonBooleanBody :=
   validateStmtCertificate_sound
     kadmos_generated_python_boolean_statement_certificate_checked

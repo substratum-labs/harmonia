@@ -18,24 +18,41 @@ def splitFirstFormat (source delimiter : String) : Option (String × String) :=
   | [] | [_] => none
   | first :: rest => some (first, joinWith delimiter rest)
 
+/-- Unescaped Python format text cannot own a closing interpolation brace. -/
+def formatLiteralCheck (lang : TargetLang) (text : String) : Bool :=
+  lang != .python || !text.toList.contains '}'
+
+def FormatIdentifier (lang : TargetLang) (name : String) : Prop :=
+  (lang = .ts ∧ name = "this") ∨ ExpressionIdentifier lang name
+
 inductive FormatSyntax : TargetLang → String → TargetExpr → Prop where
   | empty (lang : TargetLang) : FormatSyntax lang "" .empty
   | literal {lang : TargetLang} {text : String}
       (hNonempty : text.isEmpty = false)
-      (hNoHole : splitFirstFormat text (formatOpen lang) = none) :
+      (hNoHole : splitFirstFormat text (formatOpen lang) = none)
+      (hLiteral : formatLiteralCheck lang text = true) :
       FormatSyntax lang text (.formatPart text .empty .empty)
   | hole {lang : TargetLang} {headText name tail : String} {rest : TargetExpr}
       (hNoHole : splitFirstFormat headText (formatOpen lang) = none)
-      (hName : IdentifierText name)
-      (hRest : FormatSyntax lang tail rest) :
+      (hName : FormatIdentifier lang name)
+      (hRest : FormatSyntax lang tail rest)
+      (hLiteral : formatLiteralCheck lang headText = true) :
       FormatSyntax lang (headText ++ formatOpen lang ++ name ++ "}" ++ tail)
         (.formatPart headText (.local name) rest)
 
+/-- This fragment has no escape lowering: unescaped content must not contain
+    its closing delimiter or a backslash. Escaped literals need a separate
+    decoding production before they can be admitted. -/
+def formatContentCheck (delimiter : Char) (content : String) : Bool :=
+  content.toList.all (fun c => c != delimiter && c != '\\' && c != '\n' && c != '\r')
+
 inductive FormatWrapper : TargetLang → String → String → Prop where
-  | ts (content : String) : FormatWrapper .ts ("`" ++ content ++ "`") content
-  | pythonDouble (content : String) :
+  | ts (content : String) (hContent : formatContentCheck '`' content = true) : FormatWrapper .ts ("`" ++ content ++ "`") content
+  | pythonDouble (content : String)
+      (hContent : formatContentCheck '"' content = true) :
       FormatWrapper .python ("f\"" ++ content ++ "\"") content
-  | pythonSingle (content : String) :
+  | pythonSingle (content : String)
+      (hContent : formatContentCheck '\'' content = true) :
       FormatWrapper .python ("f'" ++ content ++ "'") content
 
 /-- Binding power of the represented expression node. Binary source rules
@@ -53,7 +70,7 @@ def exprBindingPower : TargetExpr → Nat
   | .andThen _ _ => 3
   | .orElse _ _ | .nullCoalesce _ _ => 2
   | .conditional _ _ _ => 1
-  | .unary _ _ | .newExpr _ => 8
+  | .unary _ _ | .newExpr _ | .postIncrement _ => 8
   | _ => 9
 
 def finalCallOpenAux : Nat → List SourceToken → Option Nat
@@ -86,6 +103,14 @@ theorem finalCallOpen.unique_on_source {lang source tokens₁ tokens₂ at₁ at
   cases hOpen₂
   rfl
 
+/-- An integral numeral must be delimited before a member dot. The current
+    fragment has no parenthesized-numeral production; this source condition
+    leaves that future production possible without admitting `1.foo`. -/
+def dotReceiverCheck (base : String) (receiver : TargetExpr) : Bool :=
+  match receiver with
+  | .integer _ => base.endsWith ")"
+  | _ => true
+
 mutual
 /-- Source productions, independent of the executable decoder. Argument
     sequences have their own sort: a bare expression cannot also be an
@@ -98,23 +123,30 @@ inductive ExprSyntax : TargetLang → String → TargetExpr → Prop where
       (hOpen : finalCallOpen tokens = some calleeText.length)
       (hCalleeNonempty : calleeText.isEmpty = false)
       (hCallee : ExprSyntax lang calleeText callee)
-      (hArgs : ArgumentSyntax lang argsText args) :
+      (hArgs : ArgumentSyntax lang argsText args)
+      (hPower : 9 ≤ exprBindingPower callee) :
       ExprSyntax lang (calleeText ++ "(" ++ argsText ++ ")") (.call callee args)
   | tsTypeof {valueText : String} {value : TargetExpr}
-      (hValue : ExprSyntax .ts valueText value) :
+      (hValue : ExprSyntax .ts valueText value)
+      (hPower : 8 ≤ exprBindingPower value) :
       ExprSyntax .ts ("typeof " ++ valueText) (.unary .typeof value)
   | tsStrictNe {leftText rightText : String} {left right : TargetExpr}
       (hLeft : ExprSyntax .ts leftText left)
-      (hRight : ExprSyntax .ts rightText right) :
+      (hRight : ExprSyntax .ts rightText right)
+      (hLeftPower : 4 ≤ exprBindingPower left)
+      (hRightPower : 4 < exprBindingPower right) :
       ExprSyntax .ts (leftText ++ " !== " ++ rightText)
         (.binary .strictNe left right)
   | pythonIsNot {leftText rightText : String} {left right : TargetExpr}
       (hLeft : ExprSyntax .python leftText left)
-      (hRight : ExprSyntax .python rightText right) :
+      (hRight : ExprSyntax .python rightText right)
+      (hLeftPower : 5 < exprBindingPower left)
+      (hRightPower : 5 < exprBindingPower right) :
       ExprSyntax .python (leftText ++ " is not " ++ rightText)
         (.binary .isNotIdentity left right)
   | tsNew {valueText : String} {value : TargetExpr}
-      (hValue : ExprSyntax .ts valueText value) :
+      (hValue : ExprSyntax .ts valueText value)
+      (hPower : 9 ≤ exprBindingPower value) :
       ExprSyntax .ts ("new " ++ valueText) (.newExpr value)
   | tsBool (value : Bool) :
       ExprSyntax .ts (if value then "true" else "false") (.bool value)
@@ -139,23 +171,28 @@ inductive ExprSyntax : TargetLang → String → TargetExpr → Prop where
   | property {lang : TargetLang} {base name : String} {receiver : TargetExpr}
       (hBaseNonempty : base.isEmpty = false)
       (hBase : ExprSyntax lang base receiver)
-      (hName : PropertyIdentifier lang name) :
+      (hName : PropertyIdentifier lang name)
+      (hPower : 9 ≤ exprBindingPower receiver)
+      (hDot : dotReceiverCheck base receiver = true) :
       ExprSyntax lang (base ++ "." ++ name) (.property receiver name)
   | tsOptionalProperty {base name : String} {receiver : TargetExpr}
       (hBaseNonempty : base.isEmpty = false)
       (hBase : ExprSyntax .ts base receiver)
-      (hName : IdentifierText name) :
+      (hName : IdentifierText name)
+      (hPower : 9 ≤ exprBindingPower receiver) :
       ExprSyntax .ts (base ++ "?." ++ name)
         (.optionalProperty receiver name)
   | index {lang : TargetLang} {base keyText : String}
       {receiver key : TargetExpr}
       (hBaseNonempty : base.isEmpty = false)
       (hBase : ExprSyntax lang base receiver)
-      (hKey : ExprSyntax lang keyText key) :
+      (hKey : ExprSyntax lang keyText key)
+      (hPower : 9 ≤ exprBindingPower receiver) :
       ExprSyntax lang (base ++ "[" ++ keyText ++ "]")
         (.index receiver key)
   | tsNonNull {base : String} {value : TargetExpr}
-      (hValue : ExprSyntax .ts base value) :
+      (hValue : ExprSyntax .ts base value)
+      (hPower : 9 ≤ exprBindingPower value) :
       ExprSyntax .ts (base ++ "!") (.nonNull value)
   | tsPostIncrement {name : String}
       (hName : ExpressionIdentifier .ts name) :
@@ -173,14 +210,16 @@ inductive ExprSyntax : TargetLang → String → TargetExpr → Prop where
       (hLeft : ExprSyntax lang leftText left)
       (hRight : ExprSyntax lang rightText right)
       (hLeftPower : 5 ≤ exprBindingPower left)
-      (hRightPower : 5 < exprBindingPower right) :
+      (hRightPower : 5 < exprBindingPower right)
+      (hPythonLeft : lang = .python → 5 < exprBindingPower left) :
       ExprSyntax lang (leftText ++ " > " ++ rightText) (.binary .gt left right)
   | ge {lang : TargetLang} {leftText rightText : String}
       {left right : TargetExpr}
       (hLeft : ExprSyntax lang leftText left)
       (hRight : ExprSyntax lang rightText right)
       (hLeftPower : 5 ≤ exprBindingPower left)
-      (hRightPower : 5 < exprBindingPower right) :
+      (hRightPower : 5 < exprBindingPower right)
+      (hPythonLeft : lang = .python → 5 < exprBindingPower left) :
       ExprSyntax lang (leftText ++ " >= " ++ rightText) (.binary .ge left right)
   | formatted {lang : TargetLang} {source content : String} {parts : TargetExpr}
       (hWrap : FormatWrapper lang source content)
@@ -224,7 +263,7 @@ theorem ExprSyntax.no_empty_callee {lang source args} :
     ¬ ExprSyntax lang source (.call .empty args) := by
   intro h
   cases h with
-  | call hLex hOpen hNonempty hCallee hArgs =>
+  | call hLex hOpen hNonempty hCallee hArgs _ =>
       cases hCallee with
       | empty =>
           have hz : ("" : String).isEmpty = true := by decide
@@ -252,7 +291,7 @@ theorem ExprSyntax.no_empty_property_receiver {lang source name} :
     ¬ ExprSyntax lang source (.property .empty name) := by
   intro h
   cases h with
-  | property hNonempty hBase hName =>
+  | property hNonempty hBase hName _ _ =>
       cases hBase with
       | empty =>
           have hz : ("" : String).isEmpty = true := by decide
@@ -263,7 +302,7 @@ theorem ExprSyntax.no_empty_optional_receiver {source name} :
     ¬ ExprSyntax .ts source (.optionalProperty .empty name) := by
   intro h
   cases h with
-  | tsOptionalProperty hNonempty hBase hName =>
+  | tsOptionalProperty hNonempty hBase hName _ =>
       cases hBase with
       | empty =>
           have hz : ("" : String).isEmpty = true := by decide
@@ -274,7 +313,7 @@ theorem ExprSyntax.no_empty_index_receiver {lang source key} :
     ¬ ExprSyntax lang source (.index .empty key) := by
   intro h
   cases h with
-  | index hNonempty hBase hKey =>
+  | index hNonempty hBase hKey _ =>
       cases hBase with
       | empty =>
           have hz : ("" : String).isEmpty = true := by decide
@@ -298,7 +337,7 @@ inductive ExprDerives : TargetLang → String → SourceSpan → TargetExpr → 
       ExprDerives lang source span expr
 
 inductive SurfaceControl where
-  | module | function | loop | switch
+  | module | function | body | loop | switch
   deriving DecidableEq, Repr
 
 /-- K-02's six runtime module bindings have explicit erased TS annotations.
@@ -321,15 +360,42 @@ def tsModuleType : String → Option String
     of a final wrapper) is one statement, never another sibling sequence.
     Without this premise the same `a; b; c;` bytes derive two ASTs. -/
 def SingleStatement : TargetStmt → Prop
-  | .sequence _ _ => False
+  | .sequence _ _ | .empty => False
   | _ => True
 
-/-- In a Python suite, a subsequent nonempty physical line cannot be
-    dedented before the suite closes. The first line's indentation is already
-    owned by the `if` header rule. -/
+/-- Statement lists and single statements occupy different grammar sorts. -/
+def statementControl : TargetStmt → SurfaceControl
+  | .empty | .sequence _ _ => .body
+  | _ => .function
+
+theorem SingleStatement.control {stmt : TargetStmt} (h : SingleStatement stmt) :
+    statementControl stmt = .function := by
+  cases stmt <;> simp_all [SingleStatement, statementControl]
+
+/-- Adjacent significant lines own a suite opener only if the next line
+    is strictly deeper. The first line is supplied at its enclosing indent;
+    later lines retain their absolute source indentation. -/
+def pythonLineIndent (line : String) : Nat :=
+  (line.toList.takeWhile (· == ' ')).length
+
+def pythonSignificantLine (line : String) : Bool :=
+  let content := line.toList.dropWhile (· == ' ')
+  !content.isEmpty && content.head? != some '#'
+
+def pythonSuiteHeaders : List String → Bool
+  | [] => true
+  | [last] => !last.endsWith ":"
+  | first :: next :: rest =>
+      (!first.endsWith ":" || pythonLineIndent first < pythonLineIndent next) &&
+        pythonSuiteHeaders (next :: rest)
+
+/-- A suite cannot swallow a dedented line or a header without its body.
+    Blank physical lines do not satisfy a pending suite opener. -/
 def suiteLinesWithin (indent bodySource : String) : Bool :=
-  ((bodySource.splitSourceOn "\n").drop 1).all (fun line =>
-    line.isEmpty || line.startsWith indent)
+  let lines := (indent ++ bodySource).splitSourceOn "\n"
+  lines.all (fun line => line.isEmpty || line.startsWith indent) &&
+    let significant := lines.filter pythonSignificantLine
+    !significant.isEmpty && pythonSuiteHeaders significant
 
 inductive StmtSyntax : TargetLang → SurfaceControl → String → TargetStmt → Prop where
   | empty (lang : TargetLang) (control : SurfaceControl) :
@@ -369,7 +435,7 @@ inductive StmtSyntax : TargetLang → SurfaceControl → String → TargetStmt �
       {condition : TargetExpr} {body : TargetStmt}
       (hCondition : ExprSyntax .python conditionSource condition)
       (hSuite : suiteLinesWithin "        " bodySource = true)
-      (hBody : StmtSyntax .python .function bodySource body) :
+      (hBody : StmtSyntax .python .body bodySource body) :
       StmtSyntax .python .function
         ("if " ++ conditionSource ++ ":\n        " ++ bodySource)
         (.ifThenElse condition body .empty)
@@ -380,7 +446,7 @@ inductive StmtSyntax : TargetLang → SurfaceControl → String → TargetStmt �
       (hIndentSpaces : indent.toList.all (· == ' ') = true)
       (hCondition : ExprSyntax .python conditionSource condition)
       (hSuite : suiteLinesWithin indent bodySource = true)
-      (hBody : StmtSyntax .python .function bodySource body) :
+      (hBody : StmtSyntax .python .body bodySource body) :
       StmtSyntax .python .function
         ("if " ++ conditionSource ++ ":\n" ++ indent ++ bodySource)
         (.ifThenElse condition body .empty)
@@ -388,13 +454,13 @@ inductive StmtSyntax : TargetLang → SurfaceControl → String → TargetStmt �
       {first rest : TargetStmt}
       (hSingle : SingleStatement first)
       (hFirst : StmtSyntax .python .function firstSource first)
-      (hRest : StmtSyntax .python .function restSource rest) :
-      StmtSyntax .python .function (firstSource ++ "\n    " ++ restSource)
+      (hRest : StmtSyntax .python .body restSource rest) :
+      StmtSyntax .python .body (firstSource ++ "\n    " ++ restSource)
         (.sequence first rest)
   | pythonFinal {source : String} {last : TargetStmt}
       (hSingle : SingleStatement last)
       (hLast : StmtSyntax .python .function source last) :
-      StmtSyntax .python .function source (.sequence last .empty)
+      StmtSyntax .python .body source (.sequence last .empty)
   | pythonModuleAssign {name valueSource : String} {value : TargetExpr}
       (hName : IdentifierText name)
       (hValue : ExprSyntax .python valueSource value) :
@@ -420,13 +486,13 @@ inductive StmtSyntax : TargetLang → SurfaceControl → String → TargetStmt �
       {first rest : TargetStmt}
       (hSingle : SingleStatement first)
       (hFirst : StmtSyntax .ts .function firstSource first)
-      (hRest : StmtSyntax .ts .function restSource rest) :
-      StmtSyntax .ts .function (firstSource ++ "\n  " ++ restSource)
+      (hRest : StmtSyntax .ts .body restSource rest) :
+      StmtSyntax .ts .body (firstSource ++ "\n  " ++ restSource)
         (.sequence first rest)
   | tsFinal {source : String} {last : TargetStmt}
       (hSingle : SingleStatement last)
       (hLast : StmtSyntax .ts .function source last) :
-      StmtSyntax .ts .function source (.sequence last .empty)
+      StmtSyntax .ts .body source (.sequence last .empty)
   | tsModuleConst {name typeSource valueSource : String} {value : TargetExpr}
       (hType : tsModuleType name = some typeSource)
       (hValue : ExprSyntax .ts valueSource value) :
@@ -458,7 +524,7 @@ inductive StmtSyntax : TargetLang → SurfaceControl → String → TargetStmt �
       StmtSyntax .python .loop "break" (.breakTarget "loop")
 
 theorem StmtSyntax.no_nested_sequence_first {lang source first rest tail} :
-    ¬ StmtSyntax lang .function source
+    ¬ StmtSyntax lang .body source
       (.sequence (.sequence first rest) tail) := by
   intro h
   cases h <;> simp [SingleStatement] at *
@@ -469,11 +535,27 @@ theorem StmtSyntax.no_unbraced_ts_sequence {source condition first rest} :
   intro h
   cases h <;> simp [SingleStatement] at *
 
+/-- Absolute indentation before an owned source span. No parser or AST
+    candidate supplies this column. -/
+def sourceLinePrefix (source : String) (start : Nat) : List Char :=
+  ((source.toList.take start).reverse.takeWhile (· != '\n')).reverse
+
+def sourceColumn (source : String) (start : Nat) : Nat :=
+  (sourceLinePrefix source start).length
+
+def statementLayoutCheck (lang : TargetLang) (source : String) (span : SourceSpan) : Bool :=
+  if lang == .python && !(span.text source).isEmpty then
+    (sourceLinePrefix source span.start).all (· == ' ') &&
+    suiteLinesWithin (String.mk (List.replicate (sourceColumn source span.start) ' '))
+      (span.text source)
+  else true
+
 inductive StmtDerives : TargetLang → SurfaceControl → String → SourceSpan → TargetStmt → Prop where
   | ofSyntax {lang : TargetLang} {control : SurfaceControl}
       {source : String} {span : SourceSpan} {stmt : TargetStmt}
       (hBounds : span.start ≤ span.stop ∧ span.stop ≤ source.length)
-      (hSyntax : StmtSyntax lang control (span.text source) stmt) :
+      (hSyntax : StmtSyntax lang control (span.text source) stmt)
+      (hLayout : statementLayoutCheck lang source span = true) :
       StmtDerives lang control source span stmt
 
 /-- A module function owns its header and constituent body. Additional
@@ -482,14 +564,15 @@ inductive StmtDerives : TargetLang → SurfaceControl → String → SourceSpan 
 inductive FunctionSyntax : TargetLang → String → TargetFunction → Prop where
   | pythonAnyToBool {name param bodySource : String} {body : TargetStmt}
       (hName : IdentifierText name) (hParam : IdentifierText param)
-      (hBody : StmtSyntax .python .function bodySource body) :
+      (hBody : StmtSyntax .python .body bodySource body)
+      (hLayout : suiteLinesWithin "    " bodySource = true) :
       FunctionSyntax .python
         ("def " ++ name ++ "(" ++ param ++
           ": Any) -> bool:\n    " ++ bodySource)
         ⟨name, [⟨param, none⟩], body⟩
   | tsUnknownToBool {name param bodySource : String} {body : TargetStmt}
       (hName : IdentifierText name) (hParam : IdentifierText param)
-      (hBody : StmtSyntax .ts .function bodySource body) :
+      (hBody : StmtSyntax .ts .body bodySource body) :
       FunctionSyntax .ts
         ("function " ++ name ++ "(" ++ param ++
           ": unknown): boolean {\n  " ++ bodySource ++ "\n}")
@@ -502,6 +585,27 @@ inductive FunctionDerives : TargetLang → String → SourceSpan →
       (hBounds : span.start ≤ span.stop ∧ span.stop ≤ source.length)
       (hSyntax : FunctionSyntax lang (span.text source) function) :
       FunctionDerives lang source span function
+
+def functionHeader (lang : TargetLang) (function : TargetFunction) : Option String :=
+  match function.params with
+  | [⟨param, none⟩] => some (match lang with
+      | .ts => "function " ++ function.qualifiedName ++ "(" ++ param ++
+          ": unknown): boolean {\n  "
+      | .python => "def " ++ function.qualifiedName ++ "(" ++ param ++
+          ": Any) -> bool:\n    ")
+  | _ => none
+
+def functionTrailer : TargetLang → String
+  | .ts => "\n}"
+  | .python => ""
+
+inductive FunctionBodyLocated (lang : TargetLang) (span bodySpan : SourceSpan)
+    (function : TargetFunction) : Prop where
+  | ofHeader {header : String}
+      (hHeader : functionHeader lang function = some header)
+      (hStart : bodySpan.start = span.start + header.length)
+      (hStop : bodySpan.stop + (functionTrailer lang).length = span.stop) :
+      FunctionBodyLocated lang span bodySpan function
 
 /-- Type-only imports own source characters but contribute no runtime AST
     statement. The listed names are checked identifiers, not an opaque body. -/
@@ -559,9 +663,10 @@ inductive ItemDerives : TargetLang → String → SourceItem → Prop where
   | functionDecl {lang : TargetLang} {source : String}
       {span bodySpan : SourceSpan} {function : TargetFunction}
       (hFunction : FunctionDerives lang source span function)
-      (hBody : StmtDerives lang .function source bodySpan function.body)
+      (hBody : StmtDerives lang .body source bodySpan function.body)
       (hWithin : span.start ≤ bodySpan.start ∧
-        bodySpan.stop ≤ span.stop) :
+        bodySpan.stop ≤ span.stop)
+      (hLocated : FunctionBodyLocated lang span bodySpan function) :
       ItemDerives lang source (.functionDecl span bodySpan function)
   | tsTypeImport {source : String} {span : SourceSpan}
       {names : List String} {moduleName : String}

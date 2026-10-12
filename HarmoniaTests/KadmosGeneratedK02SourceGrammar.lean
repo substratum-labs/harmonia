@@ -49,7 +49,7 @@ theorem kadmos_generated_bare_call_argument_not_grammatical :
       ¬ ExprSyntax .ts source (.call (.local "f") (.local "x")) := by
     intro source h
     cases h with
-    | call _ _ _ _ hArgs => cases hArgs
+    | call _ _ _ _ hArgs _ => cases hArgs
   exact aux _
 
 theorem kadmos_generated_call_single_argument_owned :
@@ -518,7 +518,7 @@ private theorem sequenceCSyntax :
     (expressionIdentifierCheck_sound (by decide +kernel)))
 
 theorem kadmos_generated_right_nested_sequence_derives :
-    StmtSyntax .ts .function "a;\n  b;\n  c;"
+    StmtSyntax .ts .body "a;\n  b;\n  c;"
       (.sequence sequenceA (.sequence sequenceB
         (.sequence sequenceC .empty))) :=
   .tsSequence (by simp [SingleStatement, sequenceA]) sequenceASyntax
@@ -526,7 +526,7 @@ theorem kadmos_generated_right_nested_sequence_derives :
       (.tsFinal (by simp [SingleStatement, sequenceC]) sequenceCSyntax))
 
 theorem kadmos_generated_left_nested_sequence_not_grammatical :
-    ¬ StmtSyntax .ts .function "a;\n  b;\n  c;"
+    ¬ StmtSyntax .ts .body "a;\n  b;\n  c;"
       (.sequence (.sequence sequenceA (.sequence sequenceB .empty))
         (.sequence sequenceC .empty)) :=
   StmtSyntax.no_nested_sequence_first
@@ -545,3 +545,213 @@ theorem kadmos_generated_unbraced_ts_if_cannot_swallow_sibling :
   StmtSyntax.no_unbraced_ts_sequence
 
 #print axioms kadmos_generated_unbraced_ts_if_cannot_swallow_sibling
+
+-- A postfix node cannot absorb an unparenthesized lower-precedence receiver.
+theorem kadmos_generated_sub_property_receiver_rejected :
+    validateExprText .ts "balance - event.amount"
+      (.property (.binary .sub (.local "balance") (.local "event")) "amount") = false := by
+  decide +kernel
+
+theorem kadmos_generated_sub_call_callee_rejected :
+    validateExprText .ts "a - f(x)"
+      (.call (.binary .sub (.local "a") (.local "f"))
+        (.sequence (.local "x") .empty)) = false := by
+  decide +kernel
+
+theorem kadmos_generated_typeof_property_receiver_rejected :
+    validateExprText .ts "typeof event.amount"
+      (.property (.unary .typeof (.local "event")) "amount") = false := by
+  decide +kernel
+
+theorem kadmos_generated_adjacent_ts_templates_rejected :
+    validateExprText .ts "`a` + `b`"
+      (.formatted (.formatPart "a` + `b" .empty .empty)) = false := by
+  decide +kernel
+
+theorem kadmos_generated_adjacent_python_fstrings_rejected :
+    validateExprText .python "f\"a\" + f\"b\""
+      (.formatted (.formatPart "a\" + f\"b" .empty .empty)) = false := by
+  decide +kernel
+
+
+theorem kadmos_generated_sub_postfix_not_grammatical {lang source a b name} :
+    ¬ ExprSyntax lang source (.property (.binary .sub a b) name) := by
+  intro h
+  cases h with
+  | property _ _ _ hPower _ => simp [exprBindingPower] at hPower
+
+theorem kadmos_generated_sub_callee_not_grammatical {lang source a b args} :
+    ¬ ExprSyntax lang source (.call (.binary .sub a b) args) := by
+  intro h
+  cases h with
+  | call _ _ _ _ _ hPower => simp [exprBindingPower] at hPower
+
+theorem kadmos_generated_typeof_postfix_not_grammatical {source value name} :
+    ¬ ExprSyntax .ts source (.property (.unary .typeof value) name) := by
+  intro h
+  cases h with
+  | property _ _ _ hPower _ => simp [exprBindingPower] at hPower
+
+#print axioms kadmos_generated_sub_postfix_not_grammatical
+#print axioms kadmos_generated_sub_callee_not_grammatical
+
+-- The next physical statement must be deeper than a suite-opening header.
+theorem kadmos_generated_python_missing_nested_suite_rejected :
+    suiteLinesWithin "    "
+      "if True:\n        if True:\n        return True" = false := by
+  decide +kernel
+
+theorem kadmos_generated_python_nested_suite_owned :
+    suiteLinesWithin "    "
+      "if True:\n        if True:\n            return True" = true := by
+  decide +kernel
+
+
+theorem kadmos_generated_single_statement_cannot_be_list {lang source first rest} :
+    ¬ StmtSyntax lang .function source (.sequence first rest) := by
+  intro h
+  cases h
+
+theorem kadmos_generated_bare_return_cannot_be_body {lang source value} :
+    ¬ StmtSyntax lang .body source (.returnValue value) := by
+  intro h
+  cases h
+
+theorem kadmos_generated_single_return_owned :
+    validateStmtText .ts .function "return true;" (.returnValue (.bool true)) = true := by
+  decide +kernel
+
+theorem kadmos_generated_body_return_owned :
+    validateStmtText .ts .body "return true;"
+      (.sequence (.returnValue (.bool true)) .empty) = true := by
+  decide +kernel
+
+theorem kadmos_generated_body_bare_return_rejected :
+    validateStmtText .ts .body "return true;" (.returnValue (.bool true)) = false := by
+  decide +kernel
+
+#print axioms kadmos_generated_single_statement_cannot_be_list
+#print axioms kadmos_generated_bare_return_cannot_be_body
+
+theorem kadmos_generated_empty_python_suite_rejected :
+    suiteLinesWithin "    " "" = false := by decide +kernel
+
+theorem kadmos_generated_comment_only_python_suite_rejected :
+    suiteLinesWithin "    " "# no body" = false := by decide +kernel
+
+theorem kadmos_generated_python_blank_line_is_not_a_suite :
+    suiteLinesWithin "    " "if True:\n\n    return True" = false := by decide +kernel
+
+theorem kadmos_generated_typeof_binary_child_not_grammatical {source a b} :
+    ¬ ExprSyntax .ts source (.unary .typeof (.binary .sub a b)) := by
+  intro h
+  cases h with
+  | tsTypeof _ hPower => simp [exprBindingPower] at hPower
+
+theorem kadmos_generated_new_binary_child_not_grammatical {source a b} :
+    ¬ ExprSyntax .ts source (.newExpr (.binary .sub a b)) := by
+  intro h
+  cases h with
+  | tsNew _ hPower => simp [exprBindingPower] at hPower
+
+private def missingPythonSuiteBody : TargetStmt :=
+  .sequence (.ifThenElse (.bool true)
+    (.sequence (.ifThenElse (.bool true)
+      (.sequence (.returnValue (.bool true)) .empty) .empty) .empty) .empty) .empty
+
+theorem kadmos_generated_missing_python_function_suite_rejected :
+    validateFunctionText .python
+      "def f(x: Any) -> bool:\n    if True:\n        if True:\n        return True"
+      "if True:\n        if True:\n        return True"
+      ⟨"f", [⟨"x", none⟩], missingPythonSuiteBody⟩ = false := by
+  decide +kernel
+
+theorem kadmos_generated_equal_indent_function_suite_rejected :
+    validateFunctionText .python
+      "def f(x: Any) -> bool:\n    if True:\n    return True"
+      "if True:\n    return True"
+      ⟨"f", [⟨"x", none⟩], .sequence (.ifThenElse (.bool true)
+        (.sequence (.returnValue (.bool true)) .empty) .empty) .empty⟩ = false := by
+  decide +kernel
+
+theorem kadmos_generated_unmatched_python_format_close_rejected :
+    validateExprText .python "f\"a}\""
+      (.formatted (.formatPart "a}" .empty .empty)) = false := by decide +kernel
+
+theorem kadmos_generated_ts_boolean_format_local_rejected :
+    validateExprText .ts "`${true}`"
+      (.formatted (.formatPart "" (.local "true") .empty)) = false := by decide +kernel
+
+theorem kadmos_generated_python_boolean_format_local_rejected :
+    validateExprText .python "f\"{True}\""
+      (.formatted (.formatPart "" (.local "True") .empty)) = false := by decide +kernel
+
+theorem kadmos_generated_ts_receiver_format_owned :
+    validateExprText .ts "`${this}`"
+      (.formatted (.formatPart "" (.local "this") .empty)) = true := by decide +kernel
+
+theorem kadmos_generated_python_format_close_not_grammatical {source} :
+    ¬ ExprSyntax .python source
+      (.formatted (.formatPart "a}" .empty .empty)) := by
+  intro h
+  cases h with
+  | formatted _ hParts _ =>
+      cases hParts with
+      | literal _ _ hLiteral =>
+          have hNo : formatLiteralCheck .python "a}" = false := by decide +kernel
+          rw [hNo] at hLiteral
+          cases hLiteral
+
+theorem kadmos_generated_ts_format_boolean_not_grammatical {source text rest} :
+    ¬ ExprSyntax .ts source
+      (.formatted (.formatPart text (.local "true") rest)) := by
+  intro h
+  cases h with
+  | formatted _ hParts _ =>
+      cases hParts with
+      | hole _ hName _ _ =>
+          rcases hName with hThis | hLocal
+          · exact (by decide : ("true" : String) ≠ "this") hThis.2
+          · exact hLocal.2 (by decide)
+
+theorem kadmos_generated_postincrement_receiver_rejected :
+    validateExprText .ts "x++.y" (.property (.postIncrement "x") "y") = false := by decide +kernel
+
+theorem kadmos_generated_postincrement_receiver_not_grammatical {lang source name field} :
+    ¬ ExprSyntax lang source (.property (.postIncrement name) field) := by
+  intro h
+  cases h with
+  | property _ _ _ hPower _ => simp [exprBindingPower] at hPower
+
+theorem kadmos_generated_python_comparison_chain_rejected :
+    validateFunctionExpr .python "a > b is not c"
+      (.binary .isNotIdentity (.binary .gt (.local "a") (.local "b")) (.local "c")) = false := by decide +kernel
+
+theorem kadmos_generated_python_nested_gt_rejected :
+    validateExprText .python "a > b > c"
+      (.binary .gt (.binary .gt (.local "a") (.local "b")) (.local "c")) = false := by decide +kernel
+
+theorem kadmos_generated_python_chain_not_grammatical {source a b c} :
+    ¬ ExprSyntax .python source (.binary .isNotIdentity (.binary .gt a b) c) := by
+  intro h
+  cases h with
+  | pythonIsNot _ _ hPower _ => simp [exprBindingPower] at hPower
+
+theorem kadmos_generated_function_header_cannot_own_body :
+    functionBodyLocatedCheck .python ⟨0,28⟩ ⟨4,5⟩
+      ⟨"f", [⟨"x", none⟩], .sequence (.doExpr (.local "f")) .empty⟩ = false := by decide +kernel
+
+theorem kadmos_generated_function_body_position_owned :
+    functionBodyLocatedCheck .python ⟨0,28⟩ ⟨27,28⟩
+      ⟨"f", [⟨"x", none⟩], .sequence (.doExpr (.local "f")) .empty⟩ = true := by decide +kernel
+
+theorem kadmos_generated_python_statement_must_start_line :
+    validateStmtSpan .python .function "x = return True" ⟨4,15⟩
+      (.returnValue (.bool true)) = false := by decide +kernel
+
+
+theorem kadmos_generated_ts_integral_member_dot_rejected :
+    validateExprText .ts "1.foo" (.property (.integer 1) "foo") = false := by decide +kernel
+
+theorem kadmos_generated_python_integral_member_dot_rejected :
+    validateExprText .python "1.foo" (.property (.integer 1) "foo") = false := by decide +kernel

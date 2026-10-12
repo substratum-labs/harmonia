@@ -290,7 +290,7 @@ theorem kadmos_generated_boolean_world_return_stmt_derives :
   exact .tsReturn hLocal
 
 theorem kadmos_generated_boolean_world_body_derives :
-    StmtSyntax .ts .function
+    StmtSyntax .ts .body
       ((⟨2015, 2119⟩ : SourceSpan).text balanceTsSource)
       booleanWorldBody := by
   have hText : ((⟨2015, 2119⟩ : SourceSpan).text balanceTsSource) =
@@ -353,7 +353,7 @@ theorem kadmos_generated_boolean_world_statement_certificate_checked :
   decide +kernel
 
 theorem kadmos_generated_boolean_world_statement_certificate_sound :
-    StmtDerives .ts .function balanceTsSource ⟨2015, 2119⟩
+    StmtDerives .ts .body balanceTsSource ⟨2015, 2119⟩
       booleanWorldBody :=
   validateStmtCertificate_sound
     kadmos_generated_boolean_world_statement_certificate_checked
