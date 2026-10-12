@@ -317,6 +317,20 @@ def tsModuleType : String → Option String
       some "readonly { readonly id: string; readonly from: string; readonly to: string; readonly guard: string | boolean; readonly directive: string | null; readonly effects: readonly string[] }[]"
   | _ => none
 
+/-- A source-level sequence is right-nested: its first item (and the child
+    of a final wrapper) is one statement, never another sibling sequence.
+    Without this premise the same `a; b; c;` bytes derive two ASTs. -/
+def SingleStatement : TargetStmt → Prop
+  | .sequence _ _ => False
+  | _ => True
+
+/-- In a Python suite, a subsequent nonempty physical line cannot be
+    dedented before the suite closes. The first line's indentation is already
+    owned by the `if` header rule. -/
+def suiteLinesWithin (indent bodySource : String) : Bool :=
+  ((bodySource.splitSourceOn "\n").drop 1).all (fun line =>
+    line.isEmpty || line.startsWith indent)
+
 inductive StmtSyntax : TargetLang → SurfaceControl → String → TargetStmt → Prop where
   | empty (lang : TargetLang) (control : SurfaceControl) :
       StmtSyntax lang control "" .empty
@@ -354,6 +368,7 @@ inductive StmtSyntax : TargetLang → SurfaceControl → String → TargetStmt �
   | pythonIfThen {conditionSource bodySource : String}
       {condition : TargetExpr} {body : TargetStmt}
       (hCondition : ExprSyntax .python conditionSource condition)
+      (hSuite : suiteLinesWithin "        " bodySource = true)
       (hBody : StmtSyntax .python .function bodySource body) :
       StmtSyntax .python .function
         ("if " ++ conditionSource ++ ":\n        " ++ bodySource)
@@ -364,17 +379,20 @@ inductive StmtSyntax : TargetLang → SurfaceControl → String → TargetStmt �
       (hIndentSteps : indent.length % 4 = 0)
       (hIndentSpaces : indent.toList.all (· == ' ') = true)
       (hCondition : ExprSyntax .python conditionSource condition)
+      (hSuite : suiteLinesWithin indent bodySource = true)
       (hBody : StmtSyntax .python .function bodySource body) :
       StmtSyntax .python .function
         ("if " ++ conditionSource ++ ":\n" ++ indent ++ bodySource)
         (.ifThenElse condition body .empty)
   | pythonSequence {firstSource restSource : String}
       {first rest : TargetStmt}
+      (hSingle : SingleStatement first)
       (hFirst : StmtSyntax .python .function firstSource first)
       (hRest : StmtSyntax .python .function restSource rest) :
       StmtSyntax .python .function (firstSource ++ "\n    " ++ restSource)
         (.sequence first rest)
   | pythonFinal {source : String} {last : TargetStmt}
+      (hSingle : SingleStatement last)
       (hLast : StmtSyntax .python .function source last) :
       StmtSyntax .python .function source (.sequence last .empty)
   | pythonModuleAssign {name valueSource : String} {value : TargetExpr}
@@ -393,17 +411,20 @@ inductive StmtSyntax : TargetLang → SurfaceControl → String → TargetStmt �
   | tsIfThen {conditionSource bodySource : String}
       {condition : TargetExpr} {body : TargetStmt}
       (hCondition : ExprSyntax .ts conditionSource condition)
+      (hSingle : SingleStatement body)
       (hBody : StmtSyntax .ts .function bodySource body) :
       StmtSyntax .ts .function
         ("if (" ++ conditionSource ++ ") " ++ bodySource)
         (.ifThenElse condition body .empty)
   | tsSequence {firstSource restSource : String}
       {first rest : TargetStmt}
+      (hSingle : SingleStatement first)
       (hFirst : StmtSyntax .ts .function firstSource first)
       (hRest : StmtSyntax .ts .function restSource rest) :
       StmtSyntax .ts .function (firstSource ++ "\n  " ++ restSource)
         (.sequence first rest)
   | tsFinal {source : String} {last : TargetStmt}
+      (hSingle : SingleStatement last)
       (hLast : StmtSyntax .ts .function source last) :
       StmtSyntax .ts .function source (.sequence last .empty)
   | tsModuleConst {name typeSource valueSource : String} {value : TargetExpr}
@@ -435,6 +456,18 @@ inductive StmtSyntax : TargetLang → SurfaceControl → String → TargetStmt �
       StmtSyntax .ts .loop "break;" (.breakTarget "loop")
   | loopBreakPython :
       StmtSyntax .python .loop "break" (.breakTarget "loop")
+
+theorem StmtSyntax.no_nested_sequence_first {lang source first rest tail} :
+    ¬ StmtSyntax lang .function source
+      (.sequence (.sequence first rest) tail) := by
+  intro h
+  cases h <;> simp [SingleStatement] at *
+
+theorem StmtSyntax.no_unbraced_ts_sequence {source condition first rest} :
+    ¬ StmtSyntax .ts .function source
+      (.ifThenElse condition (.sequence first rest) .empty) := by
+  intro h
+  cases h <;> simp [SingleStatement] at *
 
 inductive StmtDerives : TargetLang → SurfaceControl → String → SourceSpan → TargetStmt → Prop where
   | ofSyntax {lang : TargetLang} {control : SurfaceControl}

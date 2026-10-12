@@ -274,6 +274,7 @@ theorem kadmos_generated_boolean_world_if_stmt_derives :
     decide +kernel
   rw [hText]
   exact .tsIfThen kadmos_generated_boolean_world_condition_derives
+    (by simp [SingleStatement])
     kadmos_generated_boolean_world_throw_stmt_derives
 
 theorem kadmos_generated_boolean_world_return_stmt_derives :
@@ -297,8 +298,10 @@ theorem kadmos_generated_boolean_world_body_derives :
         ((⟨2106, 2119⟩ : SourceSpan).text balanceTsSource) := by
     decide +kernel
   rw [hText]
-  exact .tsSequence kadmos_generated_boolean_world_if_stmt_derives
-    (.tsFinal kadmos_generated_boolean_world_return_stmt_derives)
+  exact .tsSequence (by simp [SingleStatement, booleanWorldIf])
+    kadmos_generated_boolean_world_if_stmt_derives
+    (.tsFinal (by simp [SingleStatement])
+      kadmos_generated_boolean_world_return_stmt_derives)
 
 theorem kadmos_generated_boolean_world_raw_body_matches :
     (parseGenerated .ts balanceTsSource).toOption.bind

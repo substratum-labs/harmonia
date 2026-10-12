@@ -2,6 +2,8 @@
 
 Status: **T-398 IN_PROGRESS; physical proof-strategy R3 ACCEPT admits Task 2A implementation, which is underway.** Parent archived the valid independent R3 report for clean source `e3996929ff34c89574a9753f4f02b511405f8008`, session `01a12d29-3253-7851-ac84-6630f0f3e887`, structured success/is_error=false, exit0/291.8s. R1/R2 review findings are closed at the **plan** level; R3 is not source-code correspondence acceptance. This task now implements the independent full-source `SourceParses` grammar/validator, checked parser, uniqueness and four actual-source kernel acceptance facts under the [corrected design](../superpowers/specs/2026-10-11-t398-k02-checked-syntax-and-simulation-design.md) and [plan](../superpowers/plans/2026-10-11-t398-k02-generated-correspondence.md). No independent `SourceParses` theorem, universal TS/Python b/n target-step correspondence, constructor-totality theorem, new CI gate or merge existed at task start. Parent owns Grok, later review and integration; owner thread `01a11179-2107-7842-8ea3-adaac2c2993a` uses only isolated source/coordinator workspaces.
 
+**2026-10-12 physical resumption:** The inherited `SingleStatement`/`suiteLinesWithin` change was reproduced RED in the Python Boolean syntax target and repaired by supplying the new proof premises. Generated auditing now rejects `Classical.choice`; explicit `safeInt` conjunction proofs and a constructive source-span list proof remove the observed Generated dependencies. Verification of the final diff is recorded below. **Stage 3c is still incomplete:** the independent reviewer reproduced four remaining source-grammar defects, and complete checked-source admission and Tasks 2B–4 remain absent. No parser-success or audit-success result below is a correspondence theorem.
+
 **Current checkpoint (owner continuation after parent steer):** Task 2A remains **IN_PROGRESS and incomplete**. The partial grammar now excludes language literal/control words from expression-local names, has a separate inductive argument-list sort, and constrains subtraction's right operand so the outer subtraction is left-associated in this fragment. Joint structural induction proves both expression and argument validator soundness; closed kernel tests reject the reported `true`-as-local and `f(x)`-as-bare-argument trees. This does **not** establish full expression precedence or `SourceParses.unique`. Both actual 400-line Python sources now have complete, absolute-offset `ChunkedLines` derivations from 16 independently checked bounded chunks. The generic `ChunkedLines.toPrefixLinesAt` and `PrefixLinesAt.toLinesAt` proofs erase the partition to one contiguous full-source physical-line derivation, including the final empty line after the emitted trailing newline. `lake build kadmosGeneratedK02PythonLinesTest` exited 0 using `--tstack=131072` solely for that test target. The exact Generated inventory passed with 15 product modules, 27 test/audit modules, 48 certified closure modules and 23 test targets; nine disposable-tree checks passed, including rejection of changed or commented-out proof-resource options. Full runtime AST mapping and the four checked-program admissions are still absent. `ProgramDerives`, all four complete source validators, `SourceParses.unique`, checked `parseGenerated_sound`, and source-bound certificate integration remain the open Task 2A gate. None of these line or fragment facts is a generated-step correspondence claim or admission to Task 2B/3.
 
 **Next constituent slice after checkpoint `24eaa324faeaaef689565895cea478e83f975662`:** The separate argument grammar now admits multiple arguments through a validated lexical token stream and a deterministic first comma at delimiter depth zero. Its soundness remains in the joint structural proof. RED `lake build kadmosGeneratedK02SourceGrammarTest` failed the intended `f(a, b)` and nested `f(g(a, b), c)` facts; GREEN passed after the rule. The actual pinned Python source span `⟨6105,6140⟩` for `_div(_number(left), _number(right))` now derives its nested call AST from source, and an `ideal_div` call-target mutation is rejected. Actual Python constructor span `⟨12175,12211⟩` for `self._invariant(_INITIAL, candidate)` likewise derives with argument order checked. The TS parser represents the source keyword `this` as `.local "this"`; a separate `ExprSyntax.tsThis` production owns that spelling while ordinary expression identifiers still exclude reserved words. Actual TS constructor span `⟨11893,11933⟩` for `this.checkInvariants("Ready", candidate)` derives and a changed call target is rejected. Separate kernel facts confirm the raw expression decoder proposes these same three ASTs; those facts are candidate equality, while the independent grammar supplies the source derivation. `#print axioms` on argument validator soundness and both constructor-call derivations showed `[propext, Quot.sound]`. These are reached source-expression constituents, **not** complete helper bodies or program admission. Serial Lake builds for SourceGrammar, SourceValidator, PythonBooleanSyntax, SourceModule, SourceLex, PythonLines, normal Generated audit, normal World audit, and `lake build` all exited 0. Generated audit: 7,382 theorems / 9,813 declarations; World audit: 9,015 / 12,063; each observed only `[propext, Quot.sound, Classical.choice]`. Live exact inventory and nine disposable-tree checks exited 0. The full Task 2A source-program gate remains open.
@@ -23,6 +25,8 @@ Status: **T-398 IN_PROGRESS; physical proof-strategy R3 ACCEPT admits Task 2A im
 **Current cursor/statement batch after `7dc8a1fb7bdbcabffe4ade34780ce7b321ddb6b7`:** The same independent statement grammar/certificate now checks source-owned TS/Python expression statements and local bindings, plus TS postincrement and Python `+=` on captured parse cursors. Actual pinned spans include TS `seen.add(raw);` `⟨6448,6462⟩`, Python `seen.add(identity)` `⟨7353,7371⟩`, TS `let index = 0;` `⟨2695,2709⟩`, Python `position = 0` `⟨2907,2919⟩`, TS `index++;` `⟨3658,3666⟩` and Python `position += 1` `⟨3132,3145⟩`. Every positive statement has a separate kernel raw statement-parser AST match and a checked `StmtDerives` fact; changed call target/argument, binder name, mutability or update operator is rejected. Focused RED was confirmed on a small `index++`/missing-augment rule probe; a whole-file RED attempt overflowed the default Lean stack before reaching the intended false fact, so the small probe is the semantic RED evidence. The dedicated statement certificate target passes, and selected derivations depend only on `[propext, Quot.sound]`. Serial SourceValidator, PythonBooleanSyntax, SourceModule, normal Generated audit, normal World audit and `lake build` all exited 0. Generated audit: 7,660 theorems / 10,206 declarations; World audit: 9,134 / 12,286; each observed only `[propext, Quot.sound, Classical.choice]`. Exact inventory passes with 18 product modules, 28 test/audit modules, 52 closure modules and 24 targets; nine disposable-tree checks pass. This remains fragment syntax certification, not whole helper execution or program correspondence.
 
 **Current comparison/depth-branch batch after `834e4edc4d82b2a89fd31a5c016f76317806b54d`:** Focused RED `/private/tmp/t398-comparison-red.lean` showed both TS and Python `depth > 128` missing from the source grammar. Independent `ExprSyntax` now owns actual TS/Python `depth > 128` and TS `seen.size >= 128`, with separate kernel raw expression-decoder matches. `exprBindingPower` checks operator nesting; the declarative grammar theorem rejects a comparison as an unparenthesized subtraction operand, and a wrong operator AST fails the validator. Actual TS `if (depth > 128) throw new Error(...)` has a complete `StmtDerives` certificate and raw block-parser match. Actual Python nested `if depth > 128:` uses 12 source spaces; the new certificate form checks exact indentation, its final-sequence body wrapper, and the raw suite parser candidate under the emitted nesting level. A changed indentation is rejected. Selected derivations print only `[propext, Quot.sound]`. After an interrupted audit attempted to rebuild two heavy witnesses concurrently, the owned process was stopped, its children checked gone, and the affected dependencies were rebuilt one at a time. Serial SourceGrammar, SourceValidator, StatementCertificate, focused tests, closed SourceValidator, PythonBooleanSyntax, SourceModule, normal Generated audit, normal World audit and `lake build` exited 0. Generated audit: 7,753 theorems / 10,320 declarations; World audit: 9,193 / 12,359; each observed only `[propext, Quot.sound, Classical.choice]`. Exact inventory 18 product / 28 test / 52 closure / 24 targets and nine disposable-tree checks pass. These are bounded source fragments; complete sanitizer and full program mapping are still open.
+
+**Current statement-boundary batch (verification in progress):** `/private/tmp/t398-stmt-sequence-ambiguity.lean` produced two different `StmtSyntax` ASTs for the same TS `a;\n  b;\n  c;` source, each with only `propext`. An independent `SingleStatement` grammar premise now requires the first child of a sibling sequence or final wrapper to be one statement; a kernel theorem rejects the former left-nested tree while retaining the right-nested tree. TS unbraced `if` likewise cannot swallow a sequence of following siblings; a separate braced-body grammar rule remains necessary for actual multi-statement blocks. `/private/tmp/t398-python-dedent-ambiguity.lean` then exhibited an invalid Python `if` tree that swallowed a line dedented from 8 to 4 spaces. `suiteLinesWithin` is now a source-text premise of Python suite derivations and checked certificates; the exact dedented source fails a kernel Boolean fact, while the actual pinned 12-space depth refusal still derives. These constraints remove concrete ambiguities but do **not** yet prove all statement or program uniqueness.
 
 The parent interruption of the previous owner process was intentional coordination, not a technical failure. The parent independently compiled four ambiguity witnesses in `/private/tmp/t398-parent-expr-ambiguity.lean` and found that three Python line chunks pass at `--tstack=65536` while the old monolithic 16-chunk proof fails even at larger stack/recursion settings. I reproduced the ambiguity witness (exit 0), preserved checkpoint `3be57ae36f9df19693f3d11c9fe402b12fdb1c19` and existing WIP, and used bounded compositional line derivations instead. `--tstack` changes Lean's physical thread stack, not kernel trust or proof reduction. The larger expression/statement/program syntax derivations remain to be designed and checked; no source-string-to-program theorem is inferred from line coverage.
 
@@ -183,3 +187,166 @@ Prior physical R1/R2/R3 reports read from the isolated internal harmonia-registr
 ## Self-review and limits
 
 The new spec/plan are source-bound to K-02, not a mechanical old-name replacement. The theorem target is an explicit constructor followed by exactly one DEBIT for all bounded b and safe n, with total constructor execution in the conclusion. It has a separate target store/request/observation relation, exact Bridge-dependent dimensions, and a required parser/operational semantics of every reached generated helper body. An unexecuted source span may be version-locked by exact syntax but cannot justify runtime behavior. The accepted prior model cases are from `balanceCandidate`, not `Balance.balanceWorld`. New generated files, theorem, tests, CI, host-language conformance and Linux checks are future implementation gates. Source exact-byte serialization, pinned Kadmos admission and basic Node/CPython primitive behavior remain explicitly trusted; solver UNSAT, hashes and finite traces are not kernel proofs. If the full reached fragment is too large to model without an ideal helper macro, the parent must decide on more formalization or an explicitly authorized alternative backend. No product code was started in this invocation.
+
+## 2026-10-12 physical resumption: compile repair and strict audit
+
+The existing isolated source branch is `feat/t396-generated-correspondence`; the toolchain remains `leanprover/lean4:v4.16.0`. The six inherited modified files were preserved and incorporated into this continuation. The initial `lake build kadmosGeneratedK02PythonBooleanSyntaxTest` exited 1 with the expected missing suite and `SingleStatement` premises at the `pythonIfThen`, `pythonSequence` and two `pythonFinal` calls. The corrected proof uses `(by decide +kernel)` for the suite, `(by simp [SingleStatement, pythonBooleanIf])` for the first sequence item, and `(by simp [SingleStatement])` for each final item. The same target then exited 0.
+
+The first ordinary Generated audit exited 0 under its historical choice-permitting policy (7,781 theorems / 10,358 declarations). Its log exposed `Classical.choice` in `SourceSpan.prefix_then_slice` and the symbolic balance bounds/invariant/branch proofs. This was **not** a strict audit success. Separate RED strict dependency probes rejected the balance guard theorem and span theorem before their proof changes.
+
+The balance proofs now construct both `safeInt` inequalities explicitly before calling `omega`. Their statement types and reference semantics are unchanged. Lean 4.16's `List.take_add` itself depends on `Classical.choice`; the new private `sourceTake_add` proves the required take/drop equation by structural induction instead. `SourceSpan.prefix_then_slice` now depends only on `[propext]`, and `generated_balance_guard_reject`, `generated_balance_accept` and `generated_balance_bounds_reject` each depend only on `[propext, Quot.sound]`. These three theorems concern `interpret balanceCandidate`, not target execution.
+
+The Generated audit selects its existing exact source/test manifest and passes `allowChoice := false` through every declaration and unused-axiom check. Its printed whitelist is `[propext, Quot.sound]`. Other legacy audit commands retain their existing policy; no Quorum/CAP policy was weakened. `KadmosGeneratedK02AuditRejection.choice_dependency` deliberately depends on `Classical.choice` and the new strict declaration command rejects it under `#guard_msgs`; it is confined to the existing rejection root. The inventory suite gained two strict-policy mutations. Changing the Generated command to allow choice initially passed the old inventory check (RED); it is now rejected. An independent reviewer found that a commented strict command could mask a weakened live command. The reproduced mutation initially failed the rejection assertion (RED); comparing the matched region against the comment/string-scrubbed live source fixes it (GREEN, all 11 mutation tests).
+
+Independent review was read-only and used actual `lake env lean --stdin` processes. It found no further Critical/Important defect in this continuation's witness repair, constructive proof changes, or strict policy changes. Its audit-policy finding was fixed and tested. It **did not accept Stage 3c**. The remaining source-grammar findings are:
+
+1. `balance - event.amount` derives both `sub balance (property event amount)` and `property (sub balance event) amount`. Postfix receiver and unary/callee precedence restrictions are still missing.
+2. `return true;` derives both a bare return and `sequence (return true) empty`. `SingleStatement` forbids a nested sequence head but does not distinguish a single statement from a canonical statement-list body.
+3. The current suite rule and function grammar accept `def f(x: Any) -> bool:\n    if True:\n        if True:\n        return True`. CPython `compile` rejects it: `IndentationError: expected an indented block after 'if' statement on line 3`. `suiteLinesWithin` checks a minimum prefix without the enclosing indentation context.
+4. The formatted-wrapper grammar accepts TS `` `a` + `b` `` and Python `f"a" + f"b"` as one formatted literal containing the internal closing quotes and operator text. Delimiter ownership and escape decoding remain open.
+
+Kernel probes independently confirmed the expression/statement ambiguities and formatted-wrapper admissions. The initial combined reproducer's function application needed explicit string/name parameters; the corrected focused function-layout probe exited 0. These are counterexamples to the adequacy/canonicality of the current grammar, not failures of its validator-to-grammar soundness proof. They must be corrected before a whole-program uniqueness theorem can be established.
+
+A live interface probe imported `SourceValidator` and `TargetProgramParser`, then checked `validateSource_sound`, `parseGenerated_sound` and `SourceParses.unique`. It exited 1 with all three identifiers unknown. `parseGenerated` still dispatches directly to the raw TS/Python decoders. `TargetSimulation.lean`, `BalanceSimulation.lean`, `BalanceCorrespondence.lean` and their four requested test targets are absent. Therefore the constructor-for-all-b, helper/branch simulation, reached-path adequacy and universal `k02_balance_one_call` deliverables are not proved. No Stage 3c completion, checked parser admission, CI acceptance, push, merge or integration is claimed by this receipt.
+
+Final serial verification results are recorded below. One earlier aggregate rebuild was interrupted (exit 130) because Lake launched several expensive closed-source roots concurrently; its result is not counted as verification. The affected roots are rebuilt individually before the final ordinary audit.
+
+### Final serial command receipt
+
+Every command below ran as an actual CLI process, in this order. Exit codes are observed process results.
+
+| Command | Exit | Seconds |
+| --- | ---: | ---: |
+| `lake build kadmosGeneratedK02SourceLexTest` | 0 | 97.54 |
+| `lake build kadmosGeneratedK02SourceValidatorTest` | 0 | 144.34 |
+| `lake build kadmosGeneratedK02PythonBooleanSyntaxTest` | 0 | 126.86 |
+| `lake build kadmosGeneratedK02SourceModuleTest` | 0 | 103.53 |
+| `lake build kadmosGeneratedK02BalanceTSStepTest` | 0 | 59.95 |
+| `lake build kadmosGeneratedK02SourceGrammarTest` | 0 | 0.27 |
+| `lake build kadmosGeneratedK02BalanceTSParseTest` | 0 | 0.25 |
+| `lake build kadmosGeneratedK02BalancePythonParseTest` | 0 | 0.26 |
+| `lake build kadmosGeneratedK02BalanceTSCertificateTest` | 0 | 0.27 |
+| `lake build kadmosGeneratedK02BalancePythonCertificateTest` | 0 | 0.26 |
+| `lake build kadmosGeneratedK02AuditRejection` | 0 | 0.26 |
+| `lake build kadmosGeneratedK02Audit` | 0 | 54.89 |
+| `lake build kadmosWorldAudit` | 0 | 39.06 |
+| `lake build foundationsTest foundationsAudit foundationsAuditRejection` | 0 | 12.84 |
+| `lake build distributedTest distributedAudit distributedAuditRejection` | 0 | 47.15 |
+| `lake build kadmosWorldTest kadmosWorldAuditRejection` | 0 | 47.48 |
+| `lake build kadmosBridgeSyntaxTest kadmosBridgeCertificateTest kadmosBridgeFixturesTest kadmosBridgeAudit kadmosBridgeAuditRejection` | 0 | 23.82 |
+| `lake build` | 0 | 0.27 |
+| `python3 scripts/check_kadmos_generated_k02_artifacts.py` | 0 | 0.07 |
+| `python3 scripts/test_kadmos_generated_k02_artifacts.py` | 0 | 0.09 |
+| `python3 scripts/check_kadmos_generated_k02_audit.py` | 0 | 1.07 |
+| `python3 scripts/test_kadmos_generated_k02_audit.py` | 0 | 5.47 |
+
+Portable output excerpts (all audit counts are observed, not fixed acceptance constants):
+
+```text
+$ lake build kadmosGeneratedK02SourceLexTest
+Build completed successfully.
+exit 0
+
+$ lake build kadmosGeneratedK02SourceValidatorTest
+Build completed successfully.
+exit 0
+
+$ lake build kadmosGeneratedK02PythonBooleanSyntaxTest
+Build completed successfully.
+exit 0
+
+$ lake build kadmosGeneratedK02SourceModuleTest
+Build completed successfully.
+exit 0
+
+$ lake build kadmosGeneratedK02BalanceTSStepTest
+Build completed successfully.
+exit 0
+
+$ lake build kadmosGeneratedK02SourceGrammarTest
+Build completed successfully.
+exit 0
+
+$ lake build kadmosGeneratedK02BalanceTSParseTest
+Build completed successfully.
+exit 0
+
+$ lake build kadmosGeneratedK02BalancePythonParseTest
+Build completed successfully.
+exit 0
+
+$ lake build kadmosGeneratedK02BalanceTSCertificateTest
+Build completed successfully.
+exit 0
+
+$ lake build kadmosGeneratedK02BalancePythonCertificateTest
+Build completed successfully.
+exit 0
+
+$ lake build kadmosGeneratedK02AuditRejection
+Build completed successfully.
+exit 0
+
+$ lake build kadmosGeneratedK02Audit
+KADMOS GENERATED K-02 AUDIT PASS: 7782 theorems; 10359 declarations; observed axioms [propext,
+ Quot.sound]; whitelist [propext, Quot.sound]
+exit 0
+
+$ lake build kadmosWorldAudit
+KADMOS WORLD AUDIT PASS: 9205 theorems; 12378 declarations; observed axioms [propext,
+ Quot.sound,
+ Classical.choice]; whitelist [propext, Quot.sound, Classical.choice]
+exit 0
+
+$ lake build foundationsTest foundationsAudit foundationsAuditRejection
+AUDIT PASS: 52 theorems; observed axioms [propext, Quot.sound]; whitelist [propext, Quot.sound, Classical.choice]
+exit 0
+
+$ lake build distributedTest distributedAudit distributedAuditRejection
+DISTRIBUTED AUDIT PASS: 336 theorems; 594 declarations; observed axioms [propext,
+ Quot.sound,
+ Classical.choice]; whitelist [propext, Quot.sound, Classical.choice]
+exit 0
+
+$ lake build kadmosWorldTest kadmosWorldAuditRejection
+Build completed successfully.
+exit 0
+
+$ lake build kadmosBridgeSyntaxTest kadmosBridgeCertificateTest kadmosBridgeFixturesTest kadmosBridgeAudit kadmosBridgeAuditRejection
+KADMOS BRIDGE AUDIT PASS: 1691 theorems; 2163 declarations; observed axioms [propext,
+ Quot.sound]; whitelist [propext, Quot.sound, Classical.choice]
+exit 0
+
+$ lake build
+Build completed successfully.
+exit 0
+
+$ python3 scripts/check_kadmos_generated_k02_artifacts.py
+K-02 ARTIFACT PASS: {'files': 10, 'fixturesLeanSha256': '3006d2ece39affff067b4116fe16a3aeb61cff4fd9ba0dac2fba43fd574382c3'}
+exit 0
+
+$ python3 scripts/test_kadmos_generated_k02_artifacts.py
+Ran 8 tests in 0.042s
+OK
+exit 0
+
+$ python3 scripts/check_kadmos_generated_k02_audit.py
+KADMOS GENERATED K-02 INVENTORY PASS: {'generated_modules': 18, 'generated_tests': 28, 'certified_closure': 52, 'test_targets': 24, 'world_inventory': 30}
+exit 0
+
+$ python3 scripts/test_kadmos_generated_k02_audit.py
+Ran 11 tests in 5.431s
+OK
+exit 0
+
+```
+
+Observed build warnings, deduplicated (not hidden or counted as errors):
+
+```text
+warning: ././././Harmonia/Applications/Kadmos/Bridge/Certificate.lean:185:54: try 'simp' instead of 'simpa'
+```
+
+The [portable Generated theorem dependency listing](2026-10-12-t398-generated-axioms.txt) records every theorem axiom list printed by the final strict audit. The audit also checks every selected safe declaration and declared source axiom, including unused axioms. The old World audit retains its historical policy and any observed choice dependencies there are reported in its output above; strict Generated acceptance is separate.
+
+Additional compatibility command, after the serial receipt: `lake build quorumTest quorumAudit quorumAuditRejection capTest capAudit capAuditRejection` exited 0. Quorum audit: 15 theorems / 17 declarations, observed `[propext, Quot.sound]`; CAP audit: 63 theorems / 157 declarations, observed `[propext]`. Their existing policies are unchanged.

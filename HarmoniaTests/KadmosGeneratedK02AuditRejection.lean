@@ -17,4 +17,11 @@ theorem indirect : True := protocol
 /-- error: axiom audit rejected KadmosGeneratedK02EscapedUnsafe.unused: KadmosGeneratedK02EscapedUnsafe.unused -/
 #guard_msgs in
 #audit_module HarmoniaTests.KadmosGeneratedK02Rejection.Unsafe
+theorem choice_dependency (h : Nonempty Nat) : ∃ _ : Nat, True :=
+  ⟨Classical.choice h, True.intro⟩
+
+/-- error: axiom audit rejected KadmosGeneratedK02Rejection.choice_dependency: Classical.choice -/
+#guard_msgs in
+#audit_kadmos_generated_declaration KadmosGeneratedK02Rejection.choice_dependency
+
 end KadmosGeneratedK02Rejection

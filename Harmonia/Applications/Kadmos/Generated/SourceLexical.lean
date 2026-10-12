@@ -11,6 +11,20 @@ structure SourceSpan where
 def SourceSpan.text (source : String) (span : SourceSpan) : String :=
   String.mk ((source.toList.drop span.start).take (span.stop - span.start))
 
+/-- Constructive span concatenation; Init's `List.take_add` in Lean 4.16
+    has a `Classical.choice` dependency, so the source checker uses this
+    direct structural proof. -/
+private theorem sourceTake_add (xs : List Char) (m n : Nat) :
+    xs.take (m + n) = xs.take m ++ (xs.drop m).take n := by
+  induction m generalizing xs with
+  | zero => simp only [Nat.zero_add, List.take_zero, List.drop_zero, List.nil_append]
+  | succ m ih =>
+      cases xs with
+      | nil => simp
+      | cons x xs =>
+          simpa only [Nat.succ_add, List.take_succ_cons, List.drop_succ_cons,
+            List.cons_append] using congrArg (List.cons x) (ih xs)
+
 theorem SourceSpan.prefix_then_slice (source : String) (middle stop : Nat)
     (hOrder : middle ≤ stop) :
     (SourceSpan.text source ⟨0, middle⟩) ++
@@ -23,12 +37,12 @@ theorem SourceSpan.prefix_then_slice (source : String) (middle stop : Nat)
       (List.take middle source.toList ++
         List.take (stop - middle) (List.drop middle source.toList)) =
     String.mk (List.take stop source.toList)
-  congr 1
+  apply congrArg String.mk
   calc
     List.take middle source.toList ++
         List.take (stop - middle) (List.drop middle source.toList) =
       List.take (middle + (stop - middle)) source.toList :=
-        (List.take_add source.toList middle (stop - middle)).symm
+        (sourceTake_add source.toList middle (stop - middle)).symm
     _ = List.take stop source.toList := by rw [hAdd]
 
 theorem SourceSpan.whole (source : String) :

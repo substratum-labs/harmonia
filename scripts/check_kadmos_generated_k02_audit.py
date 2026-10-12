@@ -90,6 +90,17 @@ def check(root):
     tests = {module_name(root, path) for path in test_paths if not trap(module_name(root, path))}
     inventory = product | tests
     policy = (root / 'HarmoniaTests/AuditPolicy.lean').read_text()
+    strict_command = re.search(
+        r'elab\s+"#audit_kadmos_generated_k02"\s*:\s*command\s*=>\s*do\s+'
+        r'let\s+env\s*←\s*getEnv\s+'
+        r'HarmoniaAudit\.auditSelected\s+'
+        r'\(HarmoniaAudit\.kadmosGeneratedK02Declaration\s+env\)\s+'
+        r'"kadmos generated K-02"\s+true\s+"KADMOS GENERATED K-02 AUDIT PASS"\s+false'
+        r'(?=\s+(?:elab|namespace|end)\b)', policy)
+    if not strict_command or (
+            scrub(policy)[strict_command.start():strict_command.end()] !=
+            scrub(strict_command.group(0))):
+        raise AuditInventoryError('generated K-02 strict axiom policy differs')
     manifest = generated_manifest(policy)
     if manifest != inventory:
         raise AuditInventoryError(f'generated K-02 manifest mismatch: missing={sorted(inventory-manifest)}, extra={sorted(manifest-inventory)}')

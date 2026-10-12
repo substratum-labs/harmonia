@@ -781,11 +781,19 @@ private def splitLastFormat (source separator : String) :
       some (joinSourceWith separator (first :: rest).reverse, last)
   | _ => none
 
+def singleStatementCheck : TargetStmt → Bool
+  | .sequence _ _ => false
+  | _ => true
+
+theorem singleStatementCheck_sound {stmt : TargetStmt}
+    (h : singleStatementCheck stmt = true) : SingleStatement stmt := by
+  cases stmt <;> simp [singleStatementCheck, SingleStatement] at *
+
 def validateStmtText (lang : TargetLang) (control : SurfaceControl)
     (source : String) : TargetStmt → Bool
   | .sequence first rest =>
       if rest == .empty then
-        control == .function &&
+        control == .function && singleStatementCheck first &&
           validateStmtText lang .function source first
       else if control == .function then
         let delimiter := if lang == .ts then "\n  " else "\n    "
@@ -793,7 +801,8 @@ def validateStmtText (lang : TargetLang) (control : SurfaceControl)
           else splitLastFormat source delimiter
         match parts with
         | some (firstText, restText) =>
-            source == firstText ++ delimiter ++ restText &&
+            singleStatementCheck first &&
+              source == firstText ++ delimiter ++ restText &&
               validateStmtText lang .function firstText first &&
               validateStmtText lang .function restText rest
         | none => false
@@ -808,6 +817,7 @@ def validateStmtText (lang : TargetLang) (control : SurfaceControl)
                 | some (conditionText, bodyText) =>
                     source == "if (" ++ conditionText ++ ") " ++ bodyText &&
                       validateFunctionExpr .ts conditionText cond &&
+                      singleStatementCheck yes &&
                       validateStmtText .ts .function bodyText yes
                 | none => false
             | none => false
@@ -818,6 +828,7 @@ def validateStmtText (lang : TargetLang) (control : SurfaceControl)
                 | some (conditionText, bodyText) =>
                     source == "if " ++ conditionText ++ ":\n        " ++ bodyText &&
                       validateFunctionExpr .python conditionText cond &&
+                      suiteLinesWithin "        " bodyText &&
                       validateStmtText .python .function bodyText yes
                 | none => false
             | none => false
@@ -920,11 +931,15 @@ theorem validateStmtText_sound (lang : TargetLang) (control : SurfaceControl)
       · subst rest
         simp only [validateStmtText, beq_self_eq_true, ↓reduceIte,
           Bool.and_eq_true, beq_iff_eq] at h
-        rcases h with ⟨hControl, hFirst⟩
+        rcases h with ⟨⟨hControl, hSingle⟩, hFirst⟩
         subst control
         cases lang with
-        | ts => exact .tsFinal (ihFirst .function source hFirst)
-        | python => exact .pythonFinal (ihFirst .function source hFirst)
+        | ts =>
+            exact .tsFinal (singleStatementCheck_sound hSingle)
+              (ihFirst .function source hFirst)
+        | python =>
+            exact .pythonFinal (singleStatementCheck_sound hSingle)
+              (ihFirst .function source hFirst)
       · cases lang <;> cases control <;>
           simp [validateStmtText, hr] at h
         case neg.ts.function =>
@@ -933,9 +948,10 @@ theorem validateStmtText_sound (lang : TargetLang) (control : SurfaceControl)
           | some parts =>
               rcases parts with ⟨firstText, restText⟩
               simp only [hs, Bool.and_eq_true, beq_iff_eq] at h
-              rcases h with ⟨⟨hSource, hFirst⟩, hRest⟩
+              rcases h with ⟨⟨⟨hSingle, hSource⟩, hFirst⟩, hRest⟩
               subst source
-              exact .tsSequence (ihFirst .function firstText hFirst)
+              exact .tsSequence (singleStatementCheck_sound hSingle)
+                (ihFirst .function firstText hFirst)
                 (ihRest .function restText hRest)
         case neg.python.function =>
           cases hs : splitLastFormat source "\n    " with
@@ -943,9 +959,10 @@ theorem validateStmtText_sound (lang : TargetLang) (control : SurfaceControl)
           | some parts =>
               rcases parts with ⟨firstText, restText⟩
               simp only [hs, Bool.and_eq_true, beq_iff_eq] at h
-              rcases h with ⟨⟨hSource, hFirst⟩, hRest⟩
+              rcases h with ⟨⟨⟨hSingle, hSource⟩, hFirst⟩, hRest⟩
               subst source
-              exact .pythonSequence (ihFirst .function firstText hFirst)
+              exact .pythonSequence (singleStatementCheck_sound hSingle)
+                (ihFirst .function firstText hFirst)
                 (ihRest .function restText hRest)
   | ifThenElse condition yes no ihYes ihNo =>
       by_cases hn : no = .empty
@@ -961,9 +978,10 @@ theorem validateStmtText_sound (lang : TargetLang) (control : SurfaceControl)
               | some parts =>
                   rcases parts with ⟨conditionText, bodyText⟩
                   simp only [hp, hs, Bool.and_eq_true, beq_iff_eq] at h
-                  rcases h with ⟨⟨hSource, hCond⟩, hBody⟩
+                  rcases h with ⟨⟨⟨hSource, hCond⟩, hSingle⟩, hBody⟩
                   subst source
                   exact .tsIfThen (validateFunctionExpr_sound hCond)
+                    (singleStatementCheck_sound hSingle)
                     (ihYes .function bodyText hBody)
         case pos.python.function =>
           cases hp : afterSourcePrefix source "if " with
@@ -974,10 +992,10 @@ theorem validateStmtText_sound (lang : TargetLang) (control : SurfaceControl)
               | some parts =>
                   rcases parts with ⟨conditionText, bodyText⟩
                   simp only [hp, hs, Bool.and_eq_true, beq_iff_eq] at h
-                  rcases h with ⟨⟨hSource, hCond⟩, hBody⟩
+                  rcases h with ⟨⟨⟨hSource, hCond⟩, hSuite⟩, hBody⟩
                   subst source
                   exact .pythonIfThen (validateFunctionExpr_sound hCond)
-                    (ihYes .function bodyText hBody)
+                    hSuite (ihYes .function bodyText hBody)
       · simp [validateStmtText, hn] at h
   | assign target value =>
       cases target with

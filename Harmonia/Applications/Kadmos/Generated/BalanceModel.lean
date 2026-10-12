@@ -34,13 +34,17 @@ private theorem finOne_context (c : Fin 1 → Int) (n : Int)
 
 theorem generated_balance_bounds (b : Int) (hb : 0 ≤ b) (hB : b ≤ S) :
     checkBounds balanceCandidate (generatedBalanceState b) = none := by
-  have hs : safeInt b := by unfold safeInt S at *; omega
+  have hs : safeInt b := by
+    unfold safeInt
+    constructor <;> (unfold S at *; omega)
   have hB' : b ≤ 9007199254740991 := by simpa [S] using hB
   simp [checkBounds, inBounds, balanceCandidate, generatedBalanceState, hs, hb, hB']
 
 theorem generated_balance_invariants (b : Int) (hb : 0 ≤ b) (hB : b ≤ S) :
     checkInvariants balanceCandidate (generatedBalanceState b) = none := by
-  have hs : safeInt b := by unfold safeInt S at *; omega
+  have hs : safeInt b := by
+    unfold safeInt
+    constructor <;> (unfold S at *; omega)
   have hneg : ¬ b < 0 := by omega
   simp [checkInvariants, checkInvariantList, balanceCandidate, generatedBalanceState,
     eval, requireInt, checkedInt, hs, invariantPass, Bind.bind, Functor.map,
@@ -64,8 +68,12 @@ theorem generated_balance_guard_reject (b n : Int)
     (hb : 0 ≤ b) (hB : b ≤ S) (hn : -S ≤ n) (hN : n ≤ 0) :
     interpret balanceCandidate (generatedBalanceState b) (generatedBalanceRequest n) =
       ⟨generatedBalanceState b, ⟨.rejected .guardFalse, none⟩⟩ := by
-  have sb : safeInt b := by unfold safeInt S at *; omega
-  have sn : safeInt n := by unfold safeInt S at *; omega
+  have sb : safeInt b := by
+    unfold safeInt
+    constructor <;> (unfold S at *; omega)
+  have sn : safeInt n := by
+    unfold safeInt
+    constructor <;> (unfold S at *; omega)
   simp only [interpret, attempt, generated_balance_initialized, generated_balance_lookup]
   simp [
     runAction, generatedBalanceRequest, balanceCandidate, generatedBalanceState,
@@ -77,9 +85,15 @@ theorem generated_balance_accept (b n : Int)
     (hb : 0 ≤ b) (hB : b ≤ S) (hn : 0 < n) (hnb : n ≤ b) :
     interpret balanceCandidate (generatedBalanceState b) (generatedBalanceRequest n) =
       ⟨generatedBalanceState (b - n), ⟨.accepted, none⟩⟩ := by
-  have sb : safeInt b := by unfold safeInt S at *; omega
-  have sn : safeInt n := by unfold safeInt S at *; omega
-  have sd : safeInt (b - n) := by unfold safeInt S at *; omega
+  have sb : safeInt b := by
+    unfold safeInt
+    constructor <;> (unfold S at *; omega)
+  have sn : safeInt n := by
+    unfold safeInt
+    constructor <;> (unfold S at *; omega)
+  have sd : safeInt (b - n) := by
+    unfold safeInt
+    constructor <;> (unfold S at *; omega)
   have hd : 0 ≤ b - n := by omega
   have hD : b - n ≤ S := by omega
   simp only [interpret, attempt, generated_balance_initialized, generated_balance_lookup]
@@ -103,9 +117,15 @@ theorem generated_balance_bounds_reject (b n : Int)
     (hb : 0 ≤ b) (hB : b ≤ S) (hbn : b < n) (hN : n ≤ S) :
     interpret balanceCandidate (generatedBalanceState b) (generatedBalanceRequest n) =
       ⟨generatedBalanceState b, ⟨.rejected (.bounds 0), none⟩⟩ := by
-  have sb : safeInt b := by unfold safeInt S at *; omega
-  have sn : safeInt n := by unfold safeInt S at *; omega
-  have sd : safeInt (b - n) := by unfold safeInt S at *; omega
+  have sb : safeInt b := by
+    unfold safeInt
+    constructor <;> (unfold S at *; omega)
+  have sn : safeInt n := by
+    unfold safeInt
+    constructor <;> (unfold S at *; omega)
+  have sd : safeInt (b - n) := by
+    unfold safeInt
+    constructor <;> (unfold S at *; omega)
   have hn : 0 < n := by omega
   have hd : b - n < 0 := by omega
   have hpub : publishCandidate balanceCandidate (generatedBalanceState (b - n)) =

@@ -80,7 +80,9 @@ theorem kadmos_generated_python_boolean_if_derives :
     decide +kernel
   rw [hText]
   exact .pythonIfThen kadmos_generated_python_boolean_condition_derives
-    (.pythonFinal kadmos_generated_python_boolean_raise_derives)
+    (by decide +kernel)
+    (.pythonFinal (by simp [SingleStatement])
+      kadmos_generated_python_boolean_raise_derives)
 
 theorem kadmos_generated_python_boolean_return_derives :
     StmtSyntax .python .function
@@ -103,8 +105,10 @@ theorem kadmos_generated_python_boolean_body_derives :
         ((⟨1736, 1748⟩ : SourceSpan).text balancePySource) := by
     decide +kernel
   rw [hText]
-  exact .pythonSequence kadmos_generated_python_boolean_if_derives
-    (.pythonFinal kadmos_generated_python_boolean_return_derives)
+  exact .pythonSequence (by simp [SingleStatement, pythonBooleanIf])
+    kadmos_generated_python_boolean_if_derives
+    (.pythonFinal (by simp [SingleStatement])
+      kadmos_generated_python_boolean_return_derives)
 
 theorem kadmos_generated_python_boolean_function_derives :
     FunctionDerives .python balancePySource ⟨1593, 1748⟩

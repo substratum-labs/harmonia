@@ -7,12 +7,13 @@ namespace HarmoniaAudit
 def allowed (n : Name) : Bool :=
   n == ``propext || n == ``Quot.sound || n == ``Classical.choice
 
-def checkDeclaration (n : Name) : CommandElabM (Array Name) := do
+def checkDeclaration (n : Name) (allowChoice : Bool := true) :
+    CommandElabM (Array Name) := do
   unless (← getEnv).contains n do
     throwError "axiom audit declaration does not exist: {n}"
   let axioms ← collectAxioms n
   for ax in axioms do
-    unless allowed ax do
+    unless allowed ax && (allowChoice || ax != ``Classical.choice) do
       throwError "axiom audit rejected {n}: {ax}"
   return axioms
 
@@ -88,7 +89,8 @@ def kadmosWorldDeclaration (env : Environment) (n : Name) : Bool :=
 /-- Shared scan: source axioms first, even unused; unsafe compiler placeholders
 are exempt only from the auxiliary scan, never theorem dependency checks. -/
 def auditSelected (select : Name → Bool) (label : String) (allObserved : Bool := false)
-    (summaryPrefix : String := "DISTRIBUTED AUDIT PASS") : CommandElabM Unit := do
+    (summaryPrefix : String := "DISTRIBUTED AUDIT PASS")
+    (allowChoice : Bool := true) : CommandElabM Unit := do
   let env ← getEnv
   let declarations := env.constants.toList.toArray.qsort (fun a b => a.1.toString < b.1.toString)
   for (n, info) in declarations do
@@ -96,7 +98,7 @@ def auditSelected (select : Name → Bool) (label : String) (allObserved : Bool 
       match info with
       | .axiomInfo _ =>
         let range ← findDeclarationRanges? n
-        unless info.isUnsafe && range.isNone do discard <| checkDeclaration n
+        unless info.isUnsafe && range.isNone do discard <| checkDeclaration n allowChoice
       | _ => pure ()
   let names := theoremNames env select
   if names.isEmpty then throwError "axiom audit found no {label} theorems"
@@ -104,20 +106,22 @@ def auditSelected (select : Name → Bool) (label : String) (allObserved : Bool 
   let mut count := 0
   for (n, info) in declarations do
     if select n && !info.isUnsafe then
-      let axioms ← checkDeclaration n
+      let axioms ← checkDeclaration n allowChoice
       count := count + 1
       if allObserved then
         for ax in axioms do
           if !observed.contains ax then observed := observed.push ax
   for n in names do
-    let axioms ← checkDeclaration n
+    let axioms ← checkDeclaration n allowChoice
     for ax in axioms do
       if !observed.contains ax then observed := observed.push ax
     logInfo m!"{n}: {axioms}"
+  let whitelist := if allowChoice then
+    "[propext, Quot.sound, Classical.choice]" else "[propext, Quot.sound]"
   if allObserved then
-    logInfo m!"{summaryPrefix}: {names.size} theorems; {count} declarations; observed axioms {observed}; whitelist [propext, Quot.sound, Classical.choice]"
+    logInfo m!"{summaryPrefix}: {names.size} theorems; {count} declarations; observed axioms {observed}; whitelist {whitelist}"
   else
-    logInfo m!"AUDIT PASS: {names.size} theorems; observed axioms {observed}; whitelist [propext, Quot.sound, Classical.choice]"
+    logInfo m!"AUDIT PASS: {names.size} theorems; observed axioms {observed}; whitelist {whitelist}"
 
 end HarmoniaAudit
 
@@ -227,7 +231,10 @@ end HarmoniaAudit
 elab "#audit_kadmos_generated_k02" : command => do
   let env ← getEnv
   HarmoniaAudit.auditSelected (HarmoniaAudit.kadmosGeneratedK02Declaration env)
-    "kadmos generated K-02" true "KADMOS GENERATED K-02 AUDIT PASS"
+    "kadmos generated K-02" true "KADMOS GENERATED K-02 AUDIT PASS" false
+
+elab "#audit_kadmos_generated_declaration " n:ident : command => do
+  discard <| HarmoniaAudit.checkDeclaration n.getId false
 
 namespace HarmoniaAudit
 

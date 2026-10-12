@@ -36,11 +36,12 @@ def validateStmtCertificate (lang : TargetLang) (source : String)
     match stmt, cert with
     | .empty, .empty => span.text source == ""
     | .sequence body .empty, .final bodySpan bodyCert =>
-        spanWithin span bodySpan &&
+        singleStatementCheck body && spanWithin span bodySpan &&
           span.text source == bodySpan.text source &&
           validateStmtCertificate lang source bodySpan body bodyCert
     | .sequence first rest, .sequence firstSpan restSpan firstCert restCert =>
-        spanWithin span firstSpan && spanWithin span restSpan &&
+        singleStatementCheck first && spanWithin span firstSpan &&
+          spanWithin span restSpan &&
           firstSpan.stop ≤ restSpan.start &&
           span.text source == firstSpan.text source ++
             statementSeparator lang ++ restSpan.text source &&
@@ -85,10 +86,12 @@ def validateStmtCertificate (lang : TargetLang) (source : String)
         spanWithin span condSpan && spanWithin span bodySpan &&
           condSpan.stop ≤ bodySpan.start &&
           (match lang with
-           | .ts => span.text source == "if (" ++ condSpan.text source ++
-               ") " ++ bodySpan.text source
-           | .python => span.text source == "if " ++ condSpan.text source ++
-               ":\n        " ++ bodySpan.text source) &&
+           | .ts => singleStatementCheck yes &&
+               span.text source == "if (" ++ condSpan.text source ++
+                 ") " ++ bodySpan.text source
+           | .python => suiteLinesWithin "        " (bodySpan.text source) &&
+               span.text source == "if " ++ condSpan.text source ++
+                 ":\n        " ++ bodySpan.text source) &&
           validateFunctionExpr lang (condSpan.text source) cond &&
           validateStmtCertificate lang source bodySpan yes bodyCert
     | .ifThenElse cond yes .empty,
@@ -97,6 +100,7 @@ def validateStmtCertificate (lang : TargetLang) (source : String)
           spanWithin span bodySpan && condSpan.stop ≤ bodySpan.start &&
           4 ≤ indent.length && indent.length % 4 == 0 &&
           indent.toList.all (· == ' ') &&
+          suiteLinesWithin indent (bodySpan.text source) &&
           span.text source == "if " ++ condSpan.text source ++
             ":\n" ++ indent ++ bodySpan.text source &&
           validateFunctionExpr .python (condSpan.text source) cond &&
@@ -129,15 +133,18 @@ theorem validateStmtCertificate_sound {lang source span stmt cert}
               simp only [validateStmtCertificate, spanWithin, Bool.and_eq_true,
                 beq_iff_eq] at h
               rcases h with ⟨⟨hBoundsStart, hBoundsStop⟩,
-                ⟨⟨hWithin, hSource⟩, hBody⟩⟩
+                ⟨⟨⟨hSingle, hWithin⟩, hSource⟩, hBody⟩⟩
               have hChild := ih hBody
               have hSyntax := StmtDerives.syntax hChild
               apply StmtDerives.ofSyntax
                 ⟨(by simpa using hBoundsStart), (by simpa using hBoundsStop)⟩
               rw [hSource]
               cases lang with
-              | ts => exact .tsFinal hSyntax
-              | python => exact .pythonFinal hSyntax
+              | ts =>
+                  exact .tsFinal (singleStatementCheck_sound hSingle) hSyntax
+              | python =>
+                  exact .pythonFinal (singleStatementCheck_sound hSingle)
+                    hSyntax
           | _ => simp [validateStmtCertificate] at h
       | _ => simp [validateStmtCertificate] at h
   | sequence firstSpan restSpan firstCert restCert ihFirst ihRest =>
@@ -146,16 +153,20 @@ theorem validateStmtCertificate_sound {lang source span stmt cert}
           simp only [validateStmtCertificate, spanWithin, Bool.and_eq_true,
             beq_iff_eq] at h
           rcases h with ⟨⟨hBoundsStart, hBoundsStop⟩,
-            ⟨⟨⟨⟨hFirstWithin, hRestWithin⟩, hOrder⟩,
-              hSource⟩, hFirst⟩, hRest⟩
+            ⟨⟨⟨⟨⟨hSingle, hFirstWithin⟩, hRestWithin⟩,
+              hOrder⟩, hSource⟩, hFirst⟩, hRest⟩
           have hFirstSyntax := StmtDerives.syntax (ihFirst hFirst)
           have hRestSyntax := StmtDerives.syntax (ihRest hRest)
           apply StmtDerives.ofSyntax
             ⟨(by simpa using hBoundsStart), (by simpa using hBoundsStop)⟩
           rw [hSource]
           cases lang with
-          | ts => exact .tsSequence hFirstSyntax hRestSyntax
-          | python => exact .pythonSequence hFirstSyntax hRestSyntax
+          | ts =>
+              exact .tsSequence (singleStatementCheck_sound hSingle)
+                hFirstSyntax hRestSyntax
+          | python =>
+              exact .pythonSequence (singleStatementCheck_sound hSingle)
+                hFirstSyntax hRestSyntax
       | _ => simp [validateStmtCertificate] at h
   | returnExpr exprSpan =>
       cases stmt with
@@ -281,15 +292,24 @@ theorem validateStmtCertificate_sound {lang source span stmt cert}
                 ⟨(by simpa using hBoundsStart), (by simpa using hBoundsStop)⟩
               cases lang with
               | ts =>
-                  simp at hSource
-                  rw [hSource]
+                  simp only [Bool.and_eq_true] at hSource
+                  rcases hSource with ⟨hSingle, hSource⟩
+                  have hText : span.text source = "if (" ++
+                      condSpan.text source ++ ") " ++ bodySpan.text source := by
+                    simpa only [beq_iff_eq] using hSource
+                  rw [hText]
                   exact .tsIfThen (validateFunctionExpr_sound hCond)
-                    hBodySyntax
+                    (singleStatementCheck_sound hSingle) hBodySyntax
               | python =>
-                  simp at hSource
-                  rw [hSource]
+                  simp only [Bool.and_eq_true] at hSource
+                  rcases hSource with ⟨hSuite, hSource⟩
+                  have hText : span.text source = "if " ++
+                      condSpan.text source ++ ":\n        " ++
+                        bodySpan.text source := by
+                    simpa only [beq_iff_eq] using hSource
+                  rw [hText]
                   exact .pythonIfThen (validateFunctionExpr_sound hCond)
-                    hBodySyntax
+                    hSuite hBodySyntax
           | _ => simp [validateStmtCertificate] at h
       | _ => simp [validateStmtCertificate] at h
   | ifThenIndented condSpan bodySpan indent bodyCert ih =>
@@ -303,6 +323,7 @@ theorem validateStmtCertificate_sound {lang source span stmt cert}
               rcases hRest with ⟨hPrefix, hBody⟩
               rcases hPrefix with ⟨hPrefix, hCond⟩
               rcases hPrefix with ⟨hPrefix, hSource⟩
+              rcases hPrefix with ⟨hPrefix, hSuite⟩
               rcases hPrefix with ⟨hPrefix, hIndentSpaces⟩
               rcases hPrefix with ⟨hPrefix, hIndentSteps⟩
               rcases hPrefix with ⟨hPrefix, hIndentLength⟩
@@ -319,7 +340,7 @@ theorem validateStmtCertificate_sound {lang source span stmt cert}
                 (by simpa using hIndentLength)
                 (by simpa using hIndentSteps)
                 hIndentSpaces
-                (validateFunctionExpr_sound hCond) hBodySyntax
+                (validateFunctionExpr_sound hCond) hSuite hBodySyntax
           | _ => simp [validateStmtCertificate] at h
       | _ => simp [validateStmtCertificate] at h
 

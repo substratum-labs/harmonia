@@ -497,3 +497,51 @@ theorem kadmos_generated_comparison_wrong_precedence_not_grammatical :
 #print axioms kadmos_generated_python_depth_comparison_derives
 #print axioms kadmos_generated_ts_size_comparison_derives
 #print axioms kadmos_generated_comparison_wrong_precedence_not_grammatical
+
+private def sequenceA : TargetStmt := .doExpr (.local "a")
+private def sequenceB : TargetStmt := .doExpr (.local "b")
+private def sequenceC : TargetStmt := .doExpr (.local "c")
+
+private theorem sequenceASyntax :
+    StmtSyntax .ts .function "a;" sequenceA :=
+  .tsDo (ExprSyntax.local (name := "a")
+    (expressionIdentifierCheck_sound (by decide +kernel)))
+
+private theorem sequenceBSyntax :
+    StmtSyntax .ts .function "b;" sequenceB :=
+  .tsDo (ExprSyntax.local (name := "b")
+    (expressionIdentifierCheck_sound (by decide +kernel)))
+
+private theorem sequenceCSyntax :
+    StmtSyntax .ts .function "c;" sequenceC :=
+  .tsDo (ExprSyntax.local (name := "c")
+    (expressionIdentifierCheck_sound (by decide +kernel)))
+
+theorem kadmos_generated_right_nested_sequence_derives :
+    StmtSyntax .ts .function "a;\n  b;\n  c;"
+      (.sequence sequenceA (.sequence sequenceB
+        (.sequence sequenceC .empty))) :=
+  .tsSequence (by simp [SingleStatement, sequenceA]) sequenceASyntax
+    (.tsSequence (by simp [SingleStatement, sequenceB]) sequenceBSyntax
+      (.tsFinal (by simp [SingleStatement, sequenceC]) sequenceCSyntax))
+
+theorem kadmos_generated_left_nested_sequence_not_grammatical :
+    ¬ StmtSyntax .ts .function "a;\n  b;\n  c;"
+      (.sequence (.sequence sequenceA (.sequence sequenceB .empty))
+        (.sequence sequenceC .empty)) :=
+  StmtSyntax.no_nested_sequence_first
+
+#print axioms kadmos_generated_right_nested_sequence_derives
+#print axioms kadmos_generated_left_nested_sequence_not_grammatical
+
+theorem kadmos_generated_python_dedented_line_rejected :
+    suiteLinesWithin "        " "return 1\n    return 2" = false := by
+  decide +kernel
+
+theorem kadmos_generated_unbraced_ts_if_cannot_swallow_sibling :
+    ¬ StmtSyntax .ts .function "if (true) a;\n  b;"
+      (.ifThenElse (.bool true)
+        (.sequence sequenceA (.sequence sequenceB .empty)) .empty) :=
+  StmtSyntax.no_unbraced_ts_sequence
+
+#print axioms kadmos_generated_unbraced_ts_if_cannot_swallow_sibling

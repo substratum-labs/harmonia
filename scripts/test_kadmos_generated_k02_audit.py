@@ -37,6 +37,26 @@ class GeneratedK02InventoryTests(unittest.TestCase):
         self.assertGreater(result['generated_modules'], 0)
         self.assertGreater(result['generated_tests'], 0)
 
+    def test_generated_audit_cannot_allow_choice(self):
+        self.change('HarmoniaTests/AuditPolicy.lean',
+                    '"kadmos generated K-02" true "KADMOS GENERATED K-02 AUDIT PASS" false',
+                    '"kadmos generated K-02" true "KADMOS GENERATED K-02 AUDIT PASS" true')
+        with self.assertRaisesRegex(AuditInventoryError, 'strict axiom policy'):
+            check(self.root)
+
+    def test_commented_strict_policy_cannot_mask_allow_choice(self):
+        policy = self.root / 'HarmoniaTests/AuditPolicy.lean'
+        text = policy.read_text()
+        start = text.index('elab "#audit_kadmos_generated_k02"')
+        stop = text.index('elab "#audit_kadmos_generated_declaration ', start)
+        strict = text[start:stop]
+        weakened = strict.replace('AUDIT PASS" false', 'AUDIT PASS" true')
+        self.assertNotEqual(strict, weakened)
+        policy.write_text(text[:start] + '/-\n' + strict + 'namespace Decoy\nend Decoy\n-/\n' +
+                          weakened + text[stop:])
+        with self.assertRaisesRegex(AuditInventoryError, 'strict axiom policy'):
+            check(self.root)
+
     def test_nested_product_cannot_escape(self):
         path = self.root / 'Harmonia/Applications/Kadmos/Generated/Nested/Hidden.lean'
         path.parent.mkdir(parents=True)
