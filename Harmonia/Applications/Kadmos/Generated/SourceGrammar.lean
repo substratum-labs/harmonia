@@ -405,6 +405,29 @@ theorem Lexes.unique {lang source left right}
       | ofTrace _ _ rightCanonical =>
           exact CanonicalAt.unique leftCanonical rightCanonical
 
+/-- Delimiters inside validated quote/regex tokens are atomic. A comma is an
+    argument separator only when no parenthesis, bracket or brace is open. -/
+def firstTopLevelCommaAux : List String → List SourceToken → Option Nat
+  | _, [] => none
+  | stack, token :: rest =>
+      match token.text with
+      | "(" => firstTopLevelCommaAux (")" :: stack) rest
+      | "[" => firstTopLevelCommaAux ("]" :: stack) rest
+      | "{" => firstTopLevelCommaAux ("}" :: stack) rest
+      | ")" | "]" | "}" =>
+          match stack with
+          | expected :: tail =>
+              if token.text == expected then firstTopLevelCommaAux tail rest
+              else none
+          | [] => none
+      | "," =>
+          if stack.isEmpty then some token.start
+          else firstTopLevelCommaAux stack rest
+      | _ => firstTopLevelCommaAux stack rest
+
+def firstTopLevelComma (tokens : List SourceToken) : Option Nat :=
+  firstTopLevelCommaAux [] tokens
+
 /-- Physical line spans preserve blank lines, indentation, and the newline
     separator instead of relying on the decoder's offset-free `PythonLine`. -/
 structure LocatedSourceLine where
@@ -584,6 +607,7 @@ inductive ExprSyntax : TargetLang → String → TargetExpr → Prop where
   | tsNull : ExprSyntax .ts "null" .null
   | pythonNone : ExprSyntax .python "None" .null
   | tsUndefined : ExprSyntax .ts "undefined" .undefined
+  | tsThis : ExprSyntax .ts "this" (.local "this")
   | numeral {lang : TargetLang} {source : String} {n : Nat}
       (hNumeral : source.toNat? = some n) :
       ExprSyntax lang source (.integer (Int.ofNat n))
@@ -617,6 +641,15 @@ inductive ArgumentSyntax : TargetLang → String → TargetExpr → Prop where
   | one {lang : TargetLang} {source : String} {value : TargetExpr}
       (hValue : ExprSyntax lang source value) :
       ArgumentSyntax lang source (.sequence value .empty)
+  | more {lang : TargetLang} {firstText gap restText : String}
+      {tokens : List SourceToken} {first rest : TargetExpr}
+      (hLex : Lexes lang (firstText ++ "," ++ gap ++ restText) tokens)
+      (hComma : firstTopLevelComma tokens = some firstText.length)
+      (hGap : gap.toList.all Char.isWhitespace = true)
+      (hFirst : ExprSyntax lang firstText first)
+      (hRest : ArgumentSyntax lang restText rest) :
+      ArgumentSyntax lang (firstText ++ "," ++ gap ++ restText)
+        (.sequence first rest)
 end
 
 inductive ExprDerives : TargetLang → String → SourceSpan → TargetExpr → Prop where

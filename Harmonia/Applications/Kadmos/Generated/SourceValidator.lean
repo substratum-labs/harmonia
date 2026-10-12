@@ -565,6 +565,14 @@ private def tsModuleValueText (source name typeSource : String) : Option String 
   stripFinalSemicolon (String.mk (source.toList.drop
     ("const " ++ name ++ ": " ++ typeSource ++ " = ").length))
 
+private def argumentCommaPieces (source : String) (comma : Nat) :
+    String × String × String :=
+  let first := SourceSpan.text source ⟨0, comma⟩
+  let after := SourceSpan.suffix source (comma + 1)
+  let gap := String.mk (after.toList.takeWhile Char.isWhitespace)
+  let rest := String.mk (after.toList.drop gap.length)
+  (first, gap, rest)
+
 mutual
 /-- AST-guided source check: source text, rather than the raw decoder,
     determines these operator boundaries. -/
@@ -593,7 +601,9 @@ def validateExprText (lang : TargetLang) (source : String) : TargetExpr → Bool
   | .decimal literal =>
       source == literal && numberTokenCheck source && source.toList.contains '.'
   | .string value => validateStringLiteral lang source value
-  | .local name => expressionIdentifierCheck lang name && source == name
+  | .local name =>
+      if lang == .ts && name == "this" then source == "this"
+      else expressionIdentifierCheck lang name && source == name
   | .property receiver name =>
       match splitProperty source with
       | some (base, field) =>
@@ -618,7 +628,24 @@ def validateExprText (lang : TargetLang) (source : String) : TargetExpr → Bool
 
 def validateArgumentText (lang : TargetLang) (source : String) : TargetExpr → Bool
   | .empty => source == ""
-  | .sequence value .empty => validateExprText lang source value
+  | .sequence value rest =>
+      match rest with
+      | .empty => validateExprText lang source value
+      | _ =>
+          match tokenizeSource lang source with
+          | .error _ => false
+          | .ok tokens =>
+              match firstTopLevelComma tokens with
+              | none => false
+              | some comma =>
+                  let (firstText, gap, restText) :=
+                    argumentCommaPieces source comma
+                  validateLexes lang source tokens &&
+                    comma == firstText.length &&
+                    source == firstText ++ "," ++ gap ++ restText &&
+                    gap.toList.all Char.isWhitespace &&
+                    validateExprText lang firstText value &&
+                    validateArgumentText lang restText rest
   | _ => false
 end
 
@@ -651,7 +678,41 @@ private theorem validateExprAndArgument_sound (lang : TargetLang) (expr : Target
         | empty =>
             simp only [validateArgumentText] at h
             exact .one (ihValue.1 source h)
-        | _ => simp [validateArgumentText] at h
+        | sequence next tail =>
+            simp only [validateArgumentText] at h
+            cases ht : tokenizeSource lang source with
+            | error error => simp [ht] at h
+            | ok tokens =>
+                cases hc : firstTopLevelComma tokens with
+                | none => simp [ht, hc] at h
+                | some comma =>
+                    rcases hp : argumentCommaPieces source comma with
+                      ⟨firstText, gap, restText⟩
+                    simp only [ht, hc, hp, Bool.and_eq_true, beq_iff_eq] at h
+                    rcases h with ⟨⟨⟨⟨⟨hLex, hOffset⟩, hSource⟩, hGap⟩,
+                      hFirst⟩, hTail⟩
+                    have hLexDerived : Lexes lang
+                        (firstText ++ "," ++ gap ++ restText) tokens := by
+                      rw [← hSource]
+                      exact validateLexes_sound hLex
+                    have hComma : firstTopLevelComma tokens =
+                        some firstText.length := by
+                      simpa only [hOffset] using hc
+                    have hDerived : ArgumentSyntax lang
+                        (firstText ++ "," ++ gap ++ restText)
+                        (.sequence value (.sequence next tail)) :=
+                      .more hLexDerived hComma hGap
+                        (ihValue.1 firstText hFirst)
+                        (ihRest.2 restText hTail)
+                    exact hSource.symm ▸ hDerived
+        | _ =>
+            simp only [validateArgumentText] at h
+            cases ht : tokenizeSource lang source with
+            | error _ => simp [ht] at h
+            | ok tokens =>
+                cases hc : firstTopLevelComma tokens with
+                | none => simp [ht, hc] at h
+                | some _ => simp [ht, hc] at h
   | call callee args ihCallee ihArgs =>
       constructor
       · intro source h
@@ -725,10 +786,21 @@ private theorem validateExprAndArgument_sound (lang : TargetLang) (expr : Target
   | «local» name =>
       constructor
       · intro source h
-        simp [validateExprText] at h
-        rcases h with ⟨hne, heq⟩
-        subst source
-        exact ExprSyntax.local (expressionIdentifierCheck_sound hne)
+        cases hc : (lang == .ts && name == "this") with
+        | true =>
+            simp only [validateExprText, hc, beq_iff_eq] at h
+            have hPair : lang = .ts ∧ name = "this" := by
+              simpa only [Bool.and_eq_true, beq_iff_eq] using hc
+            rcases hPair with ⟨rfl, rfl⟩
+            simp at h
+            subst source
+            exact .tsThis
+        | false =>
+            simp only [validateExprText, hc, Bool.false_eq_true, ite_false,
+              Bool.and_eq_true, beq_iff_eq] at h
+            rcases h with ⟨hne, heq⟩
+            subst source
+            exact ExprSyntax.local (expressionIdentifierCheck_sound hne)
       · intro source h
         simp [validateArgumentText] at h
   | property receiver name ih =>
