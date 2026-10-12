@@ -327,6 +327,28 @@ theorem kadmos_generated_boolean_world_function_derives :
     (identifierTextCheck_sound (name := "value") (by decide))
     kadmos_generated_boolean_world_body_derives
 
+theorem kadmos_generated_boolean_world_function_item_owned :
+    validateSourceItem .ts balanceTsSource
+      (.functionDecl ⟨1964, 2121⟩ ⟨2015, 2119⟩ booleanWorldFunction) = true := by
+  decide +kernel
+
+theorem kadmos_generated_boolean_world_function_item_derives :
+    ItemDerives .ts balanceTsSource
+      (.functionDecl ⟨1964, 2121⟩ ⟨2015, 2119⟩ booleanWorldFunction) :=
+  validateSourceItem_sound kadmos_generated_boolean_world_function_item_owned
+
+theorem kadmos_generated_boolean_world_function_name_mutation_rejected :
+    validateSourceItem .ts balanceTsSource
+      (.functionDecl ⟨1964, 2121⟩ ⟨2015, 2119⟩
+        { booleanWorldFunction with qualifiedName := "idealBooleanWorld" }) = false := by
+  decide +kernel
+
+theorem kadmos_generated_boolean_world_function_body_mutation_rejected :
+    validateSourceItem .ts balanceTsSource
+      (.functionDecl ⟨1964, 2121⟩ ⟨2015, 2119⟩
+        { booleanWorldFunction with body := .returnValue (.bool true) }) = false := by
+  decide +kernel
+
 theorem kadmos_generated_boolean_world_raw_function_matches :
     (parseGenerated .ts balanceTsSource).toOption.bind
       (fun program => program.functions.find? (fun function =>

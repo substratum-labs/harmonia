@@ -1,5 +1,7 @@
 import Harmonia.Applications.Kadmos.Generated.SourceValidator
 import Harmonia.Applications.Kadmos.Generated.TargetExpressionParser
+import Harmonia.Applications.Kadmos.Generated.TargetTSStatementParser
+import Harmonia.Applications.Kadmos.Generated.TargetProgramParser
 import Harmonia.Applications.Kadmos.Generated.Fixtures
 import HarmoniaTests.KadmosGeneratedK02SourceLex
 
@@ -75,6 +77,55 @@ theorem kadmos_generated_balance_ts_prefix_derives :
             (validateOrderedItems_sound hPrefix.1.2)
             (validateNontriviaOwned_sound hPrefix.2)
 
+private def booleanCandidate (source : String)
+    (bodySpan : SourceSpan) : Option TargetFunction := do
+  let body ← (parseTSBlock (bodySpan.text source)).toOption
+  return ⟨"booleanWorld", [⟨"value", none⟩], body⟩
+
+private def balanceTSWithBoolean : Option (List SourceItem) := do
+  let items ← balanceTSModulePrefix
+  let function ← booleanCandidate balanceTsSource ⟨2015, 2119⟩
+  return items ++ [.functionDecl ⟨1964, 2121⟩ ⟨2015, 2119⟩ function]
+
+theorem kadmos_generated_balance_ts_boolean_prefix_owned :
+    (do
+      let items ← balanceTSWithBoolean
+      let tokens ← tokenCandidate
+      pure (validateSourceItems .ts balanceTsSource items &&
+        validateOrderedItems items &&
+        validateNontriviaOwned tokens items 2121)) = some true := by
+  decide +kernel
+
+theorem kadmos_generated_balance_ts_boolean_prefix_derives :
+    PrefixDerives .ts balanceTsSource 2121 := by
+  have hPrefix := kadmos_generated_balance_ts_boolean_prefix_owned
+  have hLex := kadmos_generated_balance_ts_token_coverage
+  cases ht : tokenCandidate with
+  | none =>
+      have hNoTokens : (tokenizeSource .ts balanceTsSource).toOption = none := by
+        simpa [tokenCandidate] using ht
+      simp [hNoTokens] at hLex
+  | some tokens =>
+      cases hi : balanceTSWithBoolean with
+      | none => simp [hi, ht] at hPrefix
+      | some items =>
+          simp [hi, ht] at hPrefix
+          have hTokens : (tokenizeSource .ts balanceTsSource).toOption =
+              some tokens := by simpa [tokenCandidate] using ht
+          have hLexBool : validateLexes .ts balanceTsSource tokens = true := by
+            simpa [hTokens] using hLex
+          exact .ofItems (validateLexes_sound hLexBool)
+            (validateSourceItems_sound hPrefix.1.1)
+            (validateOrderedItems_sound hPrefix.1.2)
+            (validateNontriviaOwned_sound hPrefix.2)
+
+theorem kadmos_generated_balance_ts_boolean_raw_program_field_matches :
+    (parseGenerated .ts balanceTsSource).toOption.bind
+      (fun program => program.functions.find?
+        (·.qualifiedName == "booleanWorld")) =
+      booleanCandidate balanceTsSource ⟨2015, 2119⟩ := by
+  decide +kernel
+
 private def orderRhs (span : SourceSpan) : Option TargetExpr :=
   (parseTargetExpr .ts (span.text orderTsSource)).toOption
 
@@ -130,6 +181,52 @@ theorem kadmos_generated_order_ts_prefix_derives :
             (validateSourceItems_sound hPrefix.1.1)
             (validateOrderedItems_sound hPrefix.1.2)
             (validateNontriviaOwned_sound hPrefix.2)
+
+private def orderTSWithBoolean : Option (List SourceItem) := do
+  let items ← orderTSModulePrefix
+  let function ← booleanCandidate orderTsSource ⟨2071, 2175⟩
+  return items ++ [.functionDecl ⟨2020, 2177⟩ ⟨2071, 2175⟩ function]
+
+theorem kadmos_generated_order_ts_boolean_prefix_owned :
+    (do
+      let items ← orderTSWithBoolean
+      let tokens ← (tokenizeSource .ts orderTsSource).toOption
+      pure (validateSourceItems .ts orderTsSource items &&
+        validateOrderedItems items &&
+        validateNontriviaOwned tokens items 2177)) = some true := by
+  decide +kernel
+
+theorem kadmos_generated_order_ts_boolean_prefix_derives :
+    PrefixDerives .ts orderTsSource 2177 := by
+  have hPrefix := kadmos_generated_order_ts_boolean_prefix_owned
+  have hLex := kadmos_generated_order_ts_token_coverage
+  cases ht : (tokenizeSource .ts orderTsSource).toOption with
+  | none => simp [ht] at hLex
+  | some tokens =>
+      cases hi : orderTSWithBoolean with
+      | none => simp [hi] at hPrefix
+      | some items =>
+          simp [hi, ht] at hPrefix
+          have hLexBool : validateLexes .ts orderTsSource tokens = true := by
+            simpa [ht] using hLex
+          exact .ofItems (validateLexes_sound hLexBool)
+            (validateSourceItems_sound hPrefix.1.1)
+            (validateOrderedItems_sound hPrefix.1.2)
+            (validateNontriviaOwned_sound hPrefix.2)
+
+theorem kadmos_generated_order_ts_boolean_raw_program_field_matches :
+    (parseGenerated .ts orderTsSource).toOption.bind
+      (fun program => program.functions.find?
+        (·.qualifiedName == "booleanWorld")) =
+      booleanCandidate orderTsSource ⟨2071, 2175⟩ := by
+  decide +kernel
+
+theorem kadmos_generated_balance_ts_missing_boolean_function_unowned :
+    (do
+      let items ← balanceTSModulePrefix
+      let tokens ← tokenCandidate
+      pure (validateNontriviaOwned tokens items 2121)) = some false := by
+  decide +kernel
 
 private def dropTypeAlias : List SourceItem → List SourceItem
   | first :: second :: _alias :: rest => first :: second :: rest

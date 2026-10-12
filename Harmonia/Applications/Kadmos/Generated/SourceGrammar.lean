@@ -426,12 +426,14 @@ inductive ErasedDerives : TargetLang → String → SourceSpan → Prop where
     for every executable statement and for every erased declaration. -/
 inductive SourceItem where
   | runtime (control : SurfaceControl) (span : SourceSpan) (stmt : TargetStmt)
+  | functionDecl (span bodySpan : SourceSpan) (function : TargetFunction)
   | tsTypeImport (span : SourceSpan) (names : List String) (moduleName : String)
   | tsWorldDataType (span : SourceSpan)
   deriving DecidableEq, Repr
 
 def SourceItem.span : SourceItem → SourceSpan
   | .runtime _ span _ => span
+  | .functionDecl span _ _ => span
   | .tsTypeImport span _ _ => span
   | .tsWorldDataType span => span
 
@@ -440,6 +442,13 @@ inductive ItemDerives : TargetLang → String → SourceItem → Prop where
       {span : SourceSpan} {stmt : TargetStmt}
       (hStmt : StmtDerives lang control source span stmt) :
       ItemDerives lang source (.runtime control span stmt)
+  | functionDecl {lang : TargetLang} {source : String}
+      {span bodySpan : SourceSpan} {function : TargetFunction}
+      (hFunction : FunctionDerives lang source span function)
+      (hBody : StmtDerives lang .function source bodySpan function.body)
+      (hWithin : span.start ≤ bodySpan.start ∧
+        bodySpan.stop ≤ span.stop) :
+      ItemDerives lang source (.functionDecl span bodySpan function)
   | tsTypeImport {source : String} {span : SourceSpan}
       {names : List String} {moduleName : String}
       (hNames : TypeNames names)

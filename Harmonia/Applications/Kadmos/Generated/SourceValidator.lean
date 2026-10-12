@@ -663,8 +663,135 @@ theorem validateExprSpan_sound {lang source span expr}
   exact .ofSyntax h.1
     (validateExprText_sound lang (span.text source) expr h.2)
 
+/-- Function bodies choose a source production by the low-level AST node;
+    these branches still validate every operand through `ExprSyntax`. -/
+def validateFunctionExpr (lang : TargetLang) (source : String)
+    (expr : TargetExpr) : Bool :=
+  match lang, expr with
+  | .ts, .binary .strictNe (.unary .typeof value) right =>
+      validateTSStrictNeTypeofValue source value right
+  | .python, .binary .isNotIdentity left right =>
+      validatePythonIsNotValues source left right
+  | .ts, .newExpr value => validateTSNewValue source value
+  | _, _ => validateExprText lang source expr
+
+theorem validateFunctionExpr_sound {lang source expr}
+    (h : validateFunctionExpr lang source expr = true) :
+    ExprSyntax lang source expr := by
+  cases lang with
+  | ts =>
+      cases expr with
+      | binary op left right =>
+          cases op <;> simp only [validateFunctionExpr] at h
+          case strictNe =>
+            cases left with
+            | unary unaryOp value =>
+                cases unaryOp <;> simp only [validateFunctionExpr] at h
+                case typeof => exact validateTSStrictNeTypeofValue_sound h
+                all_goals exact validateExprText_sound .ts source _ h
+            | _ => exact validateExprText_sound .ts source _ h
+          all_goals exact validateExprText_sound .ts source _ h
+      | newExpr value => exact validateTSNewValue_sound h
+      | _ => exact validateExprText_sound .ts source _ h
+  | python =>
+      cases expr with
+      | binary op left right =>
+          cases op <;> simp only [validateFunctionExpr] at h
+          case isNotIdentity => exact validatePythonIsNotValues_sound h
+          all_goals exact validateExprText_sound .python source _ h
+      | _ => exact validateExprText_sound .python source _ h
+
+private def joinSourceWith (separator : String) : List String → String
+  | [] => ""
+  | [last] => last
+  | first :: rest => first ++ separator ++ joinSourceWith separator rest
+
+private def splitLastFormat (source separator : String) :
+    Option (String × String) :=
+  match (source.splitSourceOn separator).reverse with
+  | last :: first :: rest =>
+      some (joinSourceWith separator (first :: rest).reverse, last)
+  | _ => none
+
 def validateStmtText (lang : TargetLang) (control : SurfaceControl)
     (source : String) : TargetStmt → Bool
+  | .sequence first rest =>
+      if rest == .empty then
+        control == .function &&
+          validateStmtText lang .function source first
+      else if control == .function then
+        let delimiter := if lang == .ts then "\n  " else "\n    "
+        let parts := if lang == .ts then splitFirstFormat source delimiter
+          else splitLastFormat source delimiter
+        match parts with
+        | some (firstText, restText) =>
+            source == firstText ++ delimiter ++ restText &&
+              validateStmtText lang .function firstText first &&
+              validateStmtText lang .function restText rest
+        | none => false
+      else false
+  | .ifThenElse cond yes no =>
+      if no == .empty && control == .function then
+        match lang with
+        | .ts =>
+            match afterSourcePrefix source "if (" with
+            | some remaining =>
+                match splitFirstFormat remaining ") " with
+                | some (conditionText, bodyText) =>
+                    source == "if (" ++ conditionText ++ ") " ++ bodyText &&
+                      validateFunctionExpr .ts conditionText cond &&
+                      validateStmtText .ts .function bodyText yes
+                | none => false
+            | none => false
+        | .python =>
+            match afterSourcePrefix source "if " with
+            | some remaining =>
+                match splitFirstFormat remaining ":\n        " with
+                | some (conditionText, bodyText) =>
+                    source == "if " ++ conditionText ++ ":\n        " ++ bodyText &&
+                      validateFunctionExpr .python conditionText cond &&
+                      validateStmtText .python .function bodyText yes
+                | none => false
+            | none => false
+      else false
+  | .returnValue value =>
+      if control == .function then
+        match lang with
+        | .ts =>
+            match afterSourcePrefix source "return " with
+            | some withClose =>
+                match stripFinalSemicolon withClose with
+                | some valueText =>
+                    source == "return " ++ valueText ++ ";" &&
+                      validateFunctionExpr .ts valueText value
+                | none => false
+            | none => false
+        | .python =>
+            match afterSourcePrefix source "return " with
+            | some valueText =>
+                source == "return " ++ valueText &&
+                  validateFunctionExpr .python valueText value
+            | none => false
+      else false
+  | .throwValue value =>
+      if control == .function then
+        match lang with
+        | .ts =>
+            match afterSourcePrefix source "throw " with
+            | some withClose =>
+                match stripFinalSemicolon withClose with
+                | some valueText =>
+                    source == "throw " ++ valueText ++ ";" &&
+                      validateFunctionExpr .ts valueText value
+                | none => false
+            | none => false
+        | .python =>
+            match afterSourcePrefix source "raise " with
+            | some valueText =>
+                source == "raise " ++ valueText &&
+                  validateFunctionExpr .python valueText value
+            | none => false
+      else false
   | .assign (.local name) value =>
       match afterSourcePrefix source (name ++ " = ") with
       | some valueSource =>
@@ -719,7 +846,71 @@ theorem validateStmtText_sound (lang : TargetLang) (control : SurfaceControl)
     (source : String) (stmt : TargetStmt)
     (h : validateStmtText lang control source stmt = true) :
     StmtSyntax lang control source stmt := by
-  cases stmt with
+  induction stmt generalizing source control with
+  | sequence first rest ihFirst ihRest =>
+      by_cases hr : rest = .empty
+      · subst rest
+        simp only [validateStmtText, beq_self_eq_true, ↓reduceIte,
+          Bool.and_eq_true, beq_iff_eq] at h
+        rcases h with ⟨hControl, hFirst⟩
+        subst control
+        cases lang with
+        | ts => exact .tsFinal (ihFirst .function source hFirst)
+        | python => exact .pythonFinal (ihFirst .function source hFirst)
+      · cases lang <;> cases control <;>
+          simp [validateStmtText, hr] at h
+        case neg.ts.function =>
+          cases hs : splitFirstFormat source "\n  " with
+          | none => simp [hs] at h
+          | some parts =>
+              rcases parts with ⟨firstText, restText⟩
+              simp only [hs, Bool.and_eq_true, beq_iff_eq] at h
+              rcases h with ⟨⟨hSource, hFirst⟩, hRest⟩
+              subst source
+              exact .tsSequence (ihFirst .function firstText hFirst)
+                (ihRest .function restText hRest)
+        case neg.python.function =>
+          cases hs : splitLastFormat source "\n    " with
+          | none => simp [hs] at h
+          | some parts =>
+              rcases parts with ⟨firstText, restText⟩
+              simp only [hs, Bool.and_eq_true, beq_iff_eq] at h
+              rcases h with ⟨⟨hSource, hFirst⟩, hRest⟩
+              subst source
+              exact .pythonSequence (ihFirst .function firstText hFirst)
+                (ihRest .function restText hRest)
+  | ifThenElse condition yes no ihYes ihNo =>
+      by_cases hn : no = .empty
+      · subst no
+        cases lang <;> cases control <;>
+          simp [validateStmtText] at h
+        case pos.ts.function =>
+          cases hp : afterSourcePrefix source "if (" with
+          | none => simp [hp] at h
+          | some remaining =>
+              cases hs : splitFirstFormat remaining ") " with
+              | none => simp [hp, hs] at h
+              | some parts =>
+                  rcases parts with ⟨conditionText, bodyText⟩
+                  simp only [hp, hs, Bool.and_eq_true, beq_iff_eq] at h
+                  rcases h with ⟨⟨hSource, hCond⟩, hBody⟩
+                  subst source
+                  exact .tsIfThen (validateFunctionExpr_sound hCond)
+                    (ihYes .function bodyText hBody)
+        case pos.python.function =>
+          cases hp : afterSourcePrefix source "if " with
+          | none => simp [hp] at h
+          | some remaining =>
+              cases hs : splitFirstFormat remaining ":\n        " with
+              | none => simp [hp, hs] at h
+              | some parts =>
+                  rcases parts with ⟨conditionText, bodyText⟩
+                  simp only [hp, hs, Bool.and_eq_true, beq_iff_eq] at h
+                  rcases h with ⟨⟨hSource, hCond⟩, hBody⟩
+                  subst source
+                  exact .pythonIfThen (validateFunctionExpr_sound hCond)
+                    (ihYes .function bodyText hBody)
+      · simp [validateStmtText, hn] at h
   | assign target value =>
       cases target with
       | «local» name =>
@@ -800,6 +991,48 @@ theorem validateStmtText_sound (lang : TargetLang) (control : SurfaceControl)
       all_goals
         rcases h with ⟨rfl, rfl⟩
         first | exact .loopBreakTS | exact .switchBreak | exact .loopBreakPython
+  | returnValue value =>
+      cases lang <;> cases control <;> simp [validateStmtText] at h
+      case ts.function =>
+        cases hp : afterSourcePrefix source "return " with
+        | none => simp [hp] at h
+        | some withClose =>
+            cases hs : stripFinalSemicolon withClose with
+            | none => simp [hp, hs] at h
+            | some valueText =>
+                simp only [hp, hs, Bool.and_eq_true, beq_iff_eq] at h
+                rcases h with ⟨hSource, hValue⟩
+                subst source
+                exact .tsReturn (validateFunctionExpr_sound hValue)
+      case python.function =>
+        cases hp : afterSourcePrefix source "return " with
+        | none => simp [hp] at h
+        | some valueText =>
+            simp only [hp, Bool.and_eq_true, beq_iff_eq] at h
+            rcases h with ⟨hSource, hValue⟩
+            subst source
+            exact .pythonReturn (validateFunctionExpr_sound hValue)
+  | throwValue value =>
+      cases lang <;> cases control <;> simp [validateStmtText] at h
+      case ts.function =>
+        cases hp : afterSourcePrefix source "throw " with
+        | none => simp [hp] at h
+        | some withClose =>
+            cases hs : stripFinalSemicolon withClose with
+            | none => simp [hp, hs] at h
+            | some valueText =>
+                simp only [hp, hs, Bool.and_eq_true, beq_iff_eq] at h
+                rcases h with ⟨hSource, hValue⟩
+                subst source
+                exact .tsThrow (validateFunctionExpr_sound hValue)
+      case python.function =>
+        cases hp : afterSourcePrefix source "raise " with
+        | none => simp [hp] at h
+        | some valueText =>
+            simp only [hp, Bool.and_eq_true, beq_iff_eq] at h
+            rcases h with ⟨hSource, hValue⟩
+            subst source
+            exact .pythonRaise (validateFunctionExpr_sound hValue)
   | _ => simp [validateStmtText] at h
 
 theorem validateStmtSpan_sound {lang control source span stmt}
@@ -867,10 +1100,90 @@ theorem validateErasedWorldDataAlias_sound {lang source span}
     simpa only [hSource] using ErasedSyntax.tsWorldDataAlias
   exact .ofSyntax ⟨(by simpa using hStart), (by simpa using hStop)⟩ hSyntax
 
+/-- The two currently certified boolean helpers use different source-level
+    headers. Their bodies remain recursive statement derivations. -/
+def validateFunctionText (lang : TargetLang) (source bodySource : String)
+    (function : TargetFunction) : Bool :=
+  match function.params with
+  | [⟨param, none⟩] =>
+      identifierTextCheck function.qualifiedName &&
+      identifierTextCheck param &&
+      validateStmtText lang .function bodySource function.body &&
+      (match lang with
+       | .ts =>
+           source == "function " ++ function.qualifiedName ++ "(" ++ param ++
+             ": unknown): boolean {\n  " ++ bodySource ++ "\n}"
+       | .python =>
+           source == "def " ++ function.qualifiedName ++ "(" ++ param ++
+             ": Any) -> bool:\n    " ++ bodySource)
+  | _ => false
+
+theorem validateFunctionText_sound {lang source bodySource function}
+    (h : validateFunctionText lang source bodySource function = true) :
+    FunctionSyntax lang source function ∧
+      StmtSyntax lang .function bodySource function.body := by
+  cases function with
+  | mk name params body =>
+      cases params with
+      | nil => simp [validateFunctionText] at h
+      | cons first rest =>
+          cases rest with
+          | cons second tail => simp [validateFunctionText] at h
+          | nil =>
+              cases first with
+              | mk param defaultValue =>
+                  cases defaultValue with
+                  | some value => simp [validateFunctionText] at h
+                  | none =>
+                      cases lang with
+                      | ts =>
+                          simp only [validateFunctionText,
+                            Bool.and_eq_true, beq_iff_eq] at h
+                          rcases h with ⟨⟨⟨hName, hParam⟩, hBody⟩, hSource⟩
+                          subst source
+                          have hStmt := validateStmtText_sound .ts .function
+                            bodySource body hBody
+                          exact ⟨.tsUnknownToBool
+                            (identifierTextCheck_sound hName)
+                            (identifierTextCheck_sound hParam) hStmt, hStmt⟩
+                      | python =>
+                          simp only [validateFunctionText,
+                            Bool.and_eq_true, beq_iff_eq] at h
+                          rcases h with ⟨⟨⟨hName, hParam⟩, hBody⟩, hSource⟩
+                          subst source
+                          have hStmt := validateStmtText_sound .python .function
+                            bodySource body hBody
+                          exact ⟨.pythonAnyToBool
+                            (identifierTextCheck_sound hName)
+                            (identifierTextCheck_sound hParam) hStmt, hStmt⟩
+
+def validateFunctionItem (lang : TargetLang) (source : String)
+    (span bodySpan : SourceSpan) (function : TargetFunction) : Bool :=
+  span.start ≤ span.stop && span.stop ≤ source.length &&
+  bodySpan.start ≤ bodySpan.stop && bodySpan.stop ≤ source.length &&
+  span.start ≤ bodySpan.start && bodySpan.stop ≤ span.stop &&
+  validateFunctionText lang (span.text source) (bodySpan.text source) function
+
+theorem validateFunctionItem_sound {lang source span bodySpan function}
+    (h : validateFunctionItem lang source span bodySpan function = true) :
+    ItemDerives lang source (.functionDecl span bodySpan function) := by
+  simp only [validateFunctionItem, Bool.and_eq_true] at h
+  rcases h with ⟨⟨⟨⟨⟨⟨hStart, hStop⟩, hBodyStart⟩,
+    hBodyStop⟩, hWithinStart⟩, hWithinStop⟩, hText⟩
+  obtain ⟨hFunction, hBody⟩ := validateFunctionText_sound hText
+  exact .functionDecl
+    (.ofSyntax ⟨(by simpa using hStart), (by simpa using hStop)⟩
+      hFunction)
+    (.ofSyntax ⟨(by simpa using hBodyStart), (by simpa using hBodyStop)⟩
+      hBody)
+    ⟨(by simpa using hWithinStart), (by simpa using hWithinStop)⟩
+
 def validateSourceItem (lang : TargetLang) (source : String) :
     SourceItem → Bool
   | .runtime control span stmt =>
       validateStmtSpan lang control source span stmt
+  | .functionDecl span bodySpan function =>
+      validateFunctionItem lang source span bodySpan function
   | .tsTypeImport span names moduleName =>
       validateErasedTypeImport lang source span names moduleName
   | .tsWorldDataType span =>
@@ -882,6 +1195,8 @@ theorem validateSourceItem_sound {lang source item}
   cases item with
   | runtime control span stmt =>
       exact .runtime (validateStmtSpan_sound h)
+  | functionDecl span bodySpan function =>
+      exact validateFunctionItem_sound h
   | tsTypeImport span names moduleName =>
       simp only [validateSourceItem, validateErasedTypeImport,
         Bool.and_eq_true, beq_iff_eq] at h

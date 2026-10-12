@@ -123,6 +123,27 @@ theorem kadmos_generated_python_boolean_function_derives :
     (identifierTextCheck_sound (name := "value") (by decide))
     kadmos_generated_python_boolean_body_derives
 
+theorem kadmos_generated_python_boolean_function_item_owned :
+    validateSourceItem .python balancePySource
+      (.functionDecl ⟨1593, 1748⟩ ⟨1631, 1748⟩ pythonBooleanFunction) = true := by
+  decide +kernel
+
+theorem kadmos_generated_python_boolean_function_item_derives :
+    ItemDerives .python balancePySource
+      (.functionDecl ⟨1593, 1748⟩ ⟨1631, 1748⟩ pythonBooleanFunction) :=
+  validateSourceItem_sound kadmos_generated_python_boolean_function_item_owned
+
+theorem kadmos_generated_python_boolean_function_body_mutation_rejected :
+    validateSourceItem .python balancePySource
+      (.functionDecl ⟨1593, 1748⟩ ⟨1631, 1748⟩
+        { pythonBooleanFunction with body := .returnValue (.bool true) }) = false := by
+  decide +kernel
+
+theorem kadmos_generated_python_boolean_function_span_mutation_rejected :
+    validateSourceItem .python balancePySource
+      (.functionDecl ⟨1593, 1748⟩ ⟨1632, 1748⟩ pythonBooleanFunction) = false := by
+  decide +kernel
+
 private def findPythonBoolean : TargetStmt → Option TargetStmt
   | .sequence first rest =>
       (findPythonBoolean first).orElse fun _ => findPythonBoolean rest
