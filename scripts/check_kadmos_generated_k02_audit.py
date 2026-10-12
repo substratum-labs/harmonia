@@ -13,6 +13,11 @@ from check_distributed_audit import (AuditInventoryError, scrub, parse_manifest,
 
 TEST_TARGETS = (
     'kadmosGeneratedK02LexerTest',
+    'kadmosGeneratedK02SourceGrammarTest',
+    'kadmosGeneratedK02SourceLexTest',
+    'kadmosGeneratedK02SourceModuleTest',
+    'kadmosGeneratedK02SourceValidatorTest',
+    'kadmosGeneratedK02PythonBooleanSyntaxTest',
     'kadmosGeneratedK02MachineTest',
     'kadmosGeneratedK02ExpressionParserTest',
     'kadmosGeneratedK02StatementParserTest',

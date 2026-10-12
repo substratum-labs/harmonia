@@ -61,6 +61,21 @@ lean_lib kadmosBridgeAuditRejection where
 lean_lib kadmosGeneratedK02LexerTest where
   roots := #[`HarmoniaTests.KadmosGeneratedK02Lexer]
 
+lean_lib kadmosGeneratedK02SourceGrammarTest where
+  roots := #[`HarmoniaTests.KadmosGeneratedK02SourceGrammar]
+
+lean_lib kadmosGeneratedK02SourceLexTest where
+  roots := #[`HarmoniaTests.KadmosGeneratedK02SourceLex]
+
+lean_lib kadmosGeneratedK02SourceValidatorTest where
+  roots := #[`HarmoniaTests.KadmosGeneratedK02SourceValidator]
+
+lean_lib kadmosGeneratedK02SourceModuleTest where
+  roots := #[`HarmoniaTests.KadmosGeneratedK02SourceModule]
+
+lean_lib kadmosGeneratedK02PythonBooleanSyntaxTest where
+  roots := #[`HarmoniaTests.KadmosGeneratedK02PythonBooleanSyntax]
+
 lean_lib kadmosGeneratedK02MachineTest where
   roots := #[`HarmoniaTests.KadmosGeneratedK02Machine]
 
