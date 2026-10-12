@@ -11,11 +11,108 @@ structure SourceSpan where
 def SourceSpan.text (source : String) (span : SourceSpan) : String :=
   String.mk ((source.toList.drop span.start).take (span.stop - span.start))
 
+theorem SourceSpan.prefix_then_slice (source : String) (middle stop : Nat)
+    (hOrder : middle ≤ stop) :
+    (SourceSpan.text source ⟨0, middle⟩) ++
+      (SourceSpan.text source ⟨middle, stop⟩) =
+      SourceSpan.text source ⟨0, stop⟩ := by
+  unfold SourceSpan.text
+  have hAdd : middle + (stop - middle) = stop := Nat.add_sub_of_le hOrder
+  simp only [Nat.sub_zero, List.drop_zero]
+  change String.mk
+      (List.take middle source.toList ++
+        List.take (stop - middle) (List.drop middle source.toList)) =
+    String.mk (List.take stop source.toList)
+  congr 1
+  calc
+    List.take middle source.toList ++
+        List.take (stop - middle) (List.drop middle source.toList) =
+      List.take (middle + (stop - middle)) source.toList :=
+        (List.take_add source.toList middle (stop - middle)).symm
+    _ = List.take stop source.toList := by rw [hAdd]
+
+theorem SourceSpan.whole (source : String) :
+    SourceSpan.text source ⟨0, source.length⟩ = source := by
+  cases source with
+  | mk data =>
+      simp [SourceSpan.text, String.length, List.take_length]
+
+theorem SourceSpan.prefix_length (source : String) (stop : Nat)
+    (hStop : stop ≤ source.length) :
+    (SourceSpan.text source ⟨0, stop⟩).length = stop := by
+  cases source with
+  | mk data =>
+      have hLength : stop ≤ data.length := by
+        simpa [String.length] using hStop
+      simp [SourceSpan.text, String.length, List.length_take,
+        Nat.min_eq_left hLength]
+
+def SourceSpan.suffix (source : String) (start : Nat) : String :=
+  String.mk (source.toList.drop start)
+
+theorem SourceSpan.suffix_zero (source : String) :
+    SourceSpan.suffix source 0 = source := by
+  cases source
+  rfl
+
+theorem SourceSpan.suffix_split (source : String) (start stop : Nat)
+    (hOrder : start ≤ stop) :
+    SourceSpan.suffix source start =
+      SourceSpan.text source ⟨start, stop⟩ ++
+        SourceSpan.suffix source stop := by
+  unfold SourceSpan.suffix SourceSpan.text
+  have hAdd : start + (stop - start) = stop := Nat.add_sub_of_le hOrder
+  have hDrop : (source.toList.drop start).drop (stop - start) =
+      source.toList.drop stop := by
+    simp [List.drop_drop, hAdd]
+  change String.mk (source.toList.drop start) =
+    String.mk ((source.toList.drop start).take (stop - start) ++
+      source.toList.drop stop)
+  rw [← hDrop]
+  exact congrArg String.mk
+    (List.take_append_drop (stop - start) (source.toList.drop start)).symm
+
+theorem SourceSpan.suffix_end (source : String) :
+    SourceSpan.suffix source source.length = "" := by
+  cases source with
+  | mk data => simp [SourceSpan.suffix, String.length]
+
+theorem SourceSpan.prefix_drop (source : String) (count : Nat) :
+    source = String.mk (source.toList.take count) ++
+      String.mk (source.toList.drop count) := by
+  cases source with
+  | mk data =>
+      change String.mk data =
+        String.mk (data.take count ++ data.drop count)
+      exact congrArg String.mk (List.take_append_drop count data).symm
+
 /-- Surface identifier grammar, stated without reference to the decoder. -/
 def IdentifierText (name : String) : Prop :=
   ∃ first rest, name.toList = first :: rest ∧
     (first.isAlpha || first == '_' || first == '$') = true ∧
     rest.all (fun c => c.isAlphanum || c == '_' || c == '$') = true
+
+/-- A name in expression position cannot be a language literal or keyword.
+    Property keys and declaration binders use `IdentifierText` separately. -/
+def expressionReserved : TargetLang → List String
+  | .ts => ["true", "false", "null", "undefined", "this", "new", "typeof",
+      "if", "else", "return", "throw", "switch", "case", "default",
+      "while", "for", "break", "continue", "const", "let", "function",
+      "class", "import", "export", "void", "delete", "instanceof", "in"]
+  | .python => ["True", "False", "None", "and", "or", "not", "is", "in",
+      "if", "else", "elif", "for", "while", "return", "raise", "try",
+      "except", "finally", "def", "class", "lambda", "yield", "await",
+      "async", "import", "from", "as", "with", "nonlocal", "global",
+      "pass", "break", "continue", "del"]
+
+def ExpressionIdentifier (lang : TargetLang) (name : String) : Prop :=
+  IdentifierText name ∧ name ∉ expressionReserved lang
+
+/-- In the current binary subtraction fragment the rightmost surface
+    delimiter owns the outer node, giving left association. Full program
+    syntax will refine this to token-level top-level delimiter ownership. -/
+def RightmostSubOperand (rightText : String) : Prop :=
+  rightText.splitSourceOn " - " = [rightText]
 
 def numberTokenCheck (source : String) : Bool :=
   match source.splitSourceOn "." with
@@ -327,6 +424,96 @@ inductive LinesAt : String → Nat → List LocatedSourceLine → Prop where
       LinesAt (head ++ "\n" ++ rest) offset
         (⟨offset, offset + head.length, head, true⟩ :: tail)
 
+/-- A chunk ending at a physical newline. These compose without creating a
+    spurious empty final line at each chunk boundary. -/
+inductive PrefixLinesAt : String → Nat → List LocatedSourceLine → Prop where
+  | empty (offset : Nat) : PrefixLinesAt "" offset []
+  | next {head rest : String} {offset : Nat}
+      {tail : List LocatedSourceLine}
+      (hNoNewline : head.toList.contains '\n' = false)
+      (hRest : PrefixLinesAt rest (offset + head.length + 1) tail) :
+      PrefixLinesAt (head ++ "\n" ++ rest) offset
+        (⟨offset, offset + head.length, head, true⟩ :: tail)
+
+def prefixLinesSource : List LocatedSourceLine → String
+  | [] => ""
+  | first :: rest => first.raw ++ "\n" ++ prefixLinesSource rest
+
+structure LocatedLineChunk where
+  text : String
+  lines : List LocatedSourceLine
+  deriving DecidableEq, Repr
+
+/-- Full-source indentation ownership by bounded chunks. Each chunk has a
+    constituent line derivation; the recursive source equation leaves no gap. -/
+inductive ChunkedLines : String → Nat → List LocatedLineChunk → Prop where
+  | empty (offset : Nat) : ChunkedLines "" offset []
+  | cons {chunkText rest : String} {offset : Nat}
+      {lines : List LocatedSourceLine} {tail : List LocatedLineChunk}
+      (hChunk : PrefixLinesAt chunkText offset lines)
+      (hRest : ChunkedLines rest (offset + chunkText.length) tail) :
+      ChunkedLines (chunkText ++ rest) offset
+        (⟨chunkText, lines⟩ :: tail)
+
+theorem prefixLinesSource_append (left right : List LocatedSourceLine) :
+    prefixLinesSource (left ++ right) =
+      prefixLinesSource left ++ prefixLinesSource right := by
+  induction left with
+  | nil => simp [prefixLinesSource]
+  | cons first rest ih =>
+      simp [prefixLinesSource, ih, String.append_assoc]
+
+theorem PrefixLinesAt.append {left right : String} {offset : Nat}
+    {leftLines rightLines : List LocatedSourceLine}
+    (hLeft : PrefixLinesAt left offset leftLines)
+    (hRight : PrefixLinesAt right (offset + left.length) rightLines) :
+    PrefixLinesAt (left ++ right) offset (leftLines ++ rightLines) := by
+  induction hLeft with
+  | empty => simpa using hRight
+  | @next head rest offset tail hNoNewline hRest ih =>
+      have hRightRest : PrefixLinesAt right
+          ((offset + head.length + 1) + rest.length) rightLines := by
+        have hNl : ("\n" : String).length = 1 := by decide
+        simpa [String.length_append, hNl, Nat.add_assoc, Nat.add_left_comm,
+          Nat.add_comm] using hRight
+      have hTail := ih hRightRest
+      simpa [String.append_assoc] using
+        (PrefixLinesAt.next (head := head)
+          (rest := rest ++ right) (offset := offset)
+          hNoNewline hTail)
+
+def flattenedChunkLines : List LocatedLineChunk → List LocatedSourceLine
+  | [] => []
+  | chunk :: rest => chunk.lines ++ flattenedChunkLines rest
+
+/-- Chunk boundaries are only a proof engineering device. The result is a
+    single independent line derivation for the complete emitted source. -/
+theorem ChunkedLines.toPrefixLinesAt {source : String} {offset : Nat}
+    {chunks : List LocatedLineChunk}
+    (h : ChunkedLines source offset chunks) :
+    PrefixLinesAt source offset (flattenedChunkLines chunks) := by
+  induction h with
+  | empty => exact .empty _
+  | cons hChunk hRest ih =>
+      simpa [flattenedChunkLines] using PrefixLinesAt.append hChunk ih
+
+theorem PrefixLinesAt.toLinesAt {source : String} {offset : Nat}
+    {lines : List LocatedSourceLine}
+    (h : PrefixLinesAt source offset lines) :
+    LinesAt source offset
+      (lines ++ [⟨offset + source.length, offset + source.length, "", false⟩]) := by
+  induction h with
+  | @empty offset =>
+      simpa using (LinesAt.final (source := "") (offset := offset) (by decide))
+  | @next head rest offset tail hNoNewline hRest ih =>
+      have hNl : ("\n" : String).length = 1 := by decide
+      have hTail : LinesAt rest (offset + head.length + 1)
+          (tail ++ [⟨offset + (head ++ "\n" ++ rest).length,
+            offset + (head ++ "\n" ++ rest).length, "", false⟩]) := by
+        simpa [String.length_append, hNl, Nat.add_assoc,
+          Nat.add_left_comm, Nat.add_comm] using ih
+      simpa using LinesAt.next hNoNewline hTail
+
 def formatOpen : TargetLang → String
   | .ts => "${"
   | .python => "{"
@@ -363,16 +550,16 @@ inductive FormatWrapper : TargetLang → String → String → Prop where
   | pythonSingle (content : String) :
       FormatWrapper .python ("f'" ++ content ++ "'") content
 
-/-- Source productions, independent of the executable decoder. -/
+mutual
+/-- Source productions, independent of the executable decoder. Argument
+    sequences have their own sort: a bare expression cannot also be an
+    argument-list AST for the same source. -/
 inductive ExprSyntax : TargetLang → String → TargetExpr → Prop where
   | empty (lang : TargetLang) : ExprSyntax lang "" .empty
-  | singleArgument {lang : TargetLang} {source : String} {value : TargetExpr}
-      (hValue : ExprSyntax lang source value) :
-      ExprSyntax lang source (.sequence value .empty)
   | call {lang : TargetLang} {calleeText argsText : String}
       {callee args : TargetExpr}
       (hCallee : ExprSyntax lang calleeText callee)
-      (hArgs : ExprSyntax lang argsText args) :
+      (hArgs : ArgumentSyntax lang argsText args) :
       ExprSyntax lang (calleeText ++ "(" ++ argsText ++ ")") (.call callee args)
   | tsTypeof {valueText : String} {value : TargetExpr}
       (hValue : ExprSyntax .ts valueText value) :
@@ -408,7 +595,7 @@ inductive ExprSyntax : TargetLang → String → TargetExpr → Prop where
       (hLiteral : StringLiteralSyntax lang source value) :
       ExprSyntax lang source (.string value)
   | local {lang : TargetLang} {name : String}
-      (hName : IdentifierText name) : ExprSyntax lang name (.local name)
+      (hName : ExpressionIdentifier lang name) : ExprSyntax lang name (.local name)
   | property {lang : TargetLang} {base name : String} {receiver : TargetExpr}
       (hBase : ExprSyntax lang base receiver)
       (hName : IdentifierText name) :
@@ -416,13 +603,21 @@ inductive ExprSyntax : TargetLang → String → TargetExpr → Prop where
   | sub {lang : TargetLang} {leftText rightText : String}
       {left right : TargetExpr}
       (hLeft : ExprSyntax lang leftText left)
-      (hRight : ExprSyntax lang rightText right) :
+      (hRight : ExprSyntax lang rightText right)
+      (hRightmost : RightmostSubOperand rightText) :
       ExprSyntax lang (leftText ++ " - " ++ rightText) (.binary .sub left right)
   | formatted {lang : TargetLang} {source content : String} {parts : TargetExpr}
       (hWrap : FormatWrapper lang source content)
       (hParts : FormatSyntax lang content parts)
       (hNonempty : parts != .empty) :
       ExprSyntax lang source (.formatted parts)
+
+inductive ArgumentSyntax : TargetLang → String → TargetExpr → Prop where
+  | empty (lang : TargetLang) : ArgumentSyntax lang "" .empty
+  | one {lang : TargetLang} {source : String} {value : TargetExpr}
+      (hValue : ExprSyntax lang source value) :
+      ArgumentSyntax lang source (.sequence value .empty)
+end
 
 inductive ExprDerives : TargetLang → String → SourceSpan → TargetExpr → Prop where
   | ofSyntax {lang : TargetLang} {source : String} {span : SourceSpan}

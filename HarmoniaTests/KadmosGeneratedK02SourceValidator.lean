@@ -284,7 +284,7 @@ theorem kadmos_generated_boolean_world_return_stmt_derives :
   rw [hText]
   have hLocal : ExprSyntax .ts "value" (.local "value") :=
     ExprSyntax.local (name := "value")
-      ⟨'v', ['a', 'l', 'u', 'e'], rfl, by decide, by decide⟩
+      (expressionIdentifierCheck_sound (by decide +kernel))
   exact .tsReturn hLocal
 
 theorem kadmos_generated_boolean_world_body_derives :

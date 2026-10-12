@@ -90,7 +90,7 @@ theorem kadmos_generated_python_boolean_return_derives :
   rw [hText]
   have hLocal : ExprSyntax .python "value" (.local "value") :=
     ExprSyntax.local (name := "value")
-      ⟨'v', ['a', 'l', 'u', 'e'], rfl, by decide, by decide⟩
+      (expressionIdentifierCheck_sound (by decide +kernel))
   exact .pythonReturn hLocal
 
 theorem kadmos_generated_python_boolean_body_derives :

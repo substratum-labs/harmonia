@@ -18,6 +18,7 @@ TEST_TARGETS = (
     'kadmosGeneratedK02SourceModuleTest',
     'kadmosGeneratedK02SourceValidatorTest',
     'kadmosGeneratedK02PythonBooleanSyntaxTest',
+    'kadmosGeneratedK02PythonLinesTest',
     'kadmosGeneratedK02MachineTest',
     'kadmosGeneratedK02ExpressionParserTest',
     'kadmosGeneratedK02StatementParserTest',
@@ -42,10 +43,29 @@ REJECTION_ROOT = 'HarmoniaTests.KadmosGeneratedK02AuditRejection'
 REJECTION_PREFIX = 'HarmoniaTests.KadmosGeneratedK02Rejection.'
 FOUNDATION = {'Harmonia.Core.TransitionSystem', 'Harmonia.Core.Execution',
               'Harmonia.Core.Invariant', 'Harmonia.Core.Refinement'}
+PYTHON_LINES_STACK = '  moreLeanArgs := #["--tstack=131072"]'
 
 
 def trap(name):
     return name == REJECTION_ROOT or name.startswith(REJECTION_PREFIX)
+
+
+def checked_lake_roots_source(lake):
+    """Permit only the dedicated Python-line proof's exact resource option.
+
+    The shared strict `target_roots` parser then sees the same literal roots
+    declaration; no arbitrary target suffix or proof option is accepted.
+    """
+    match = re.search(
+        r'(?ms)^lean_lib kadmosGeneratedK02PythonLinesTest where\n(.*?)(?=^lean_lib |\Z)',
+        lake)
+    if not match:
+        raise AuditInventoryError('missing Python line-certificate target')
+    block = match.group(1)
+    if len(re.findall(r'(?m)^' + re.escape(PYTHON_LINES_STACK) + r'$', block)) != 1:
+        raise AuditInventoryError('Python line-certificate stack option differs')
+    stripped = block.replace(PYTHON_LINES_STACK, '', 1)
+    return lake[:match.start(1)] + stripped + lake[match.end(1):]
 
 
 def generated_manifest(source):
@@ -73,15 +93,16 @@ def check(root):
     if manifest != inventory:
         raise AuditInventoryError(f'generated K-02 manifest mismatch: missing={sorted(inventory-manifest)}, extra={sorted(manifest-inventory)}')
     lake = (root / 'lakefile.lean').read_text()
+    lake_roots = checked_lake_roots_source(lake)
     roots = set()
     for target in TEST_TARGETS:
-        named = target_roots(lake, target)
+        named = target_roots(lake_roots, target)
         if any(trap(name) for name in named):
             raise AuditInventoryError(f'{target} reaches a rejection root')
         roots.update(named)
     if roots != tests - {AUDIT_ROOT}:
         raise AuditInventoryError(f'generated K-02 test root mismatch: missing={sorted(tests-{AUDIT_ROOT}-roots)}, extra={sorted(roots-(tests-{AUDIT_ROOT}))}')
-    audit_roots = target_roots(lake, AUDIT_TARGET)
+    audit_roots = target_roots(lake_roots, AUDIT_TARGET)
     if set(audit_roots) != {'HarmoniaTests.AuditPolicy', AUDIT_ROOT}:
         raise AuditInventoryError('generated K-02 audit roots differ from exact pair')
     closure = import_closure(root, AUDIT_ROOT)
@@ -94,12 +115,12 @@ def check(root):
     if closure - allowed:
         raise AuditInventoryError(f'unknown generated K-02 audit import: {sorted(closure-allowed)}')
     for target in (*TEST_TARGETS, AUDIT_TARGET):
-        target_closure = set().union(*(import_closure(root, name) for name in target_roots(lake, target)))
+        target_closure = set().union(*(import_closure(root, name) for name in target_roots(lake_roots, target)))
         if any(trap(name) for name in target_closure):
             raise AuditInventoryError(f'{target} includes a rejection trap')
         if target_closure - closure:
             raise AuditInventoryError(f'{target} has unaudited source: {sorted(target_closure-closure)}')
-    rejection_roots = set(target_roots(lake, REJECTION_TARGET))
+    rejection_roots = set(target_roots(lake_roots, REJECTION_TARGET))
     expected_rejections = {REJECTION_ROOT, REJECTION_PREFIX+'Unused', REJECTION_PREFIX+'Unsafe'}
     if rejection_roots != expected_rejections:
         raise AuditInventoryError('generated K-02 rejection roots differ from exact set')

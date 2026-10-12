@@ -76,6 +76,15 @@ lean_lib kadmosGeneratedK02SourceModuleTest where
 lean_lib kadmosGeneratedK02PythonBooleanSyntaxTest where
   roots := #[`HarmoniaTests.KadmosGeneratedK02PythonBooleanSyntax]
 
+lean_lib kadmosGeneratedK02PythonLinesTest where
+  roots := #[`HarmoniaTests.KadmosGeneratedK02PythonLines01,
+    `HarmoniaTests.KadmosGeneratedK02PythonLines02,
+    `HarmoniaTests.KadmosGeneratedK02PythonLinesAll,
+    `HarmoniaTests.KadmosGeneratedK02PythonOrderLinesAll]
+  -- The closed 19 KB source-line certificates need a larger Lean thread
+  -- stack; this changes resource capacity, not proof trust or reduction mode.
+  moreLeanArgs := #["--tstack=131072"]
+
 lean_lib kadmosGeneratedK02MachineTest where
   roots := #[`HarmoniaTests.KadmosGeneratedK02Machine]
 

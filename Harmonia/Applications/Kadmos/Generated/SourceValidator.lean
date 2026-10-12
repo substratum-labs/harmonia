@@ -36,6 +36,9 @@ def identifierTextCheck (name : String) : Bool :=
       (first.isAlpha || first == '_' || first == '$') &&
         rest.all (fun c => c.isAlphanum || c == '_' || c == '$')
 
+def expressionIdentifierCheck (lang : TargetLang) (name : String) : Bool :=
+  identifierTextCheck name && !(expressionReserved lang).contains name
+
 theorem identifierTextCheck_sound {name : String}
     (h : identifierTextCheck name = true) : IdentifierText name := by
   unfold identifierTextCheck at h
@@ -46,6 +49,13 @@ theorem identifierTextCheck_sound {name : String}
   | cons first rest =>
       simp only [hs, Bool.and_eq_true] at h
       exact ⟨first, rest, hs, h.1, h.2⟩
+
+theorem expressionIdentifierCheck_sound {lang name}
+    (h : expressionIdentifierCheck lang name = true) :
+    ExpressionIdentifier lang name := by
+  simp only [expressionIdentifierCheck, Bool.and_eq_true, Bool.not_eq_true] at h
+  exact ⟨identifierTextCheck_sound h.1, by
+    simpa [List.contains_eq_mem] using h.2⟩
 
 def decodeSurfaceChars : List Char → Option (List Char)
   | [] => some []
@@ -366,6 +376,89 @@ theorem validateLinesAt_sound {source offset lines}
   rw [h.1]
   exact validateLineList_sound h.2
 
+def validatePrefixLineList (offset : Nat) : List LocatedSourceLine → Bool
+  | [] => true
+  | first :: rest =>
+      first.start == offset && first.stop == offset + first.raw.length &&
+      first.terminated && !first.raw.toList.contains '\n' &&
+      validatePrefixLineList (offset + first.raw.length + 1) rest
+
+def validatePrefixLinesAt (source : String) (offset : Nat)
+    (lines : List LocatedSourceLine) : Bool :=
+  source == prefixLinesSource lines && validatePrefixLineList offset lines
+
+theorem validatePrefixLineList_sound {offset lines}
+    (h : validatePrefixLineList offset lines = true) :
+    PrefixLinesAt (prefixLinesSource lines) offset lines := by
+  induction lines generalizing offset with
+  | nil => exact .empty offset
+  | cons first rest ih =>
+      simp only [validatePrefixLineList, Bool.and_eq_true, beq_iff_eq,
+        Bool.not_eq_true] at h
+      rcases h with ⟨⟨⟨⟨hStart, hStop⟩, hTerm⟩, hNoNewline⟩, hRest⟩
+      cases first with
+      | mk start stop raw terminated =>
+          dsimp at hStart hStop hTerm
+          subst start
+          subst stop
+          subst terminated
+          have hNo : raw.toList.contains '\n' = false := by
+            simpa using hNoNewline
+          simpa [prefixLinesSource] using
+            (PrefixLinesAt.next (head := raw)
+              (rest := prefixLinesSource rest) (offset := offset)
+              hNo (ih hRest))
+
+theorem validatePrefixLinesAt_sound {source offset lines}
+    (h : validatePrefixLinesAt source offset lines = true) :
+    PrefixLinesAt source offset lines := by
+  simp only [validatePrefixLinesAt, Bool.and_eq_true, beq_iff_eq] at h
+  rw [h.1]
+  exact validatePrefixLineList_sound h.2
+
+def validateChunkedLines (remaining : String) (offset : Nat) :
+    List LocatedLineChunk → Bool
+  | [] => remaining == ""
+  | chunk :: rest =>
+      String.mk (remaining.toList.take chunk.text.length) == chunk.text &&
+      validatePrefixLinesAt chunk.text offset chunk.lines &&
+      validateChunkedLines
+        (String.mk (remaining.toList.drop chunk.text.length))
+        (offset + chunk.text.length) rest
+
+theorem validateChunkedLines_sound {remaining offset chunks}
+    (h : validateChunkedLines remaining offset chunks = true) :
+    ChunkedLines remaining offset chunks := by
+  induction chunks generalizing remaining offset with
+  | nil =>
+      simp [validateChunkedLines] at h
+      subst remaining
+      exact .empty offset
+  | cons chunk rest ih =>
+      simp only [validateChunkedLines, Bool.and_eq_true,
+        beq_iff_eq] at h
+      rcases h with ⟨⟨hPrefix, hChunk⟩, hRest⟩
+      have hSource : remaining = chunk.text ++
+          String.mk (remaining.toList.drop chunk.text.length) := by
+        calc
+          remaining = String.mk (remaining.toList.take chunk.text.length) ++
+              String.mk (remaining.toList.drop chunk.text.length) :=
+            SourceSpan.prefix_drop remaining chunk.text.length
+          _ = chunk.text ++
+              String.mk (remaining.toList.drop chunk.text.length) := by
+            rw [hPrefix]
+      cases chunk with
+      | mk text lines =>
+          dsimp at hPrefix hChunk hRest hSource
+          have hDerived : ChunkedLines
+              (text ++ String.mk (remaining.toList.drop text.length)) offset
+              (⟨text, lines⟩ :: rest) :=
+            .cons (validatePrefixLinesAt_sound hChunk) (ih hRest)
+          exact Eq.mp
+            (congrArg (fun value =>
+              ChunkedLines value offset (⟨text, lines⟩ :: rest)) hSource.symm)
+            hDerived
+
 private def locateLineParts (offset : Nat) : List String → List LocatedSourceLine
   | [] => []
   | [last] => [⟨offset, offset + last.length, last, false⟩]
@@ -377,6 +470,11 @@ private def locateLineParts (offset : Nat) : List String → List LocatedSourceL
     them against the independent line relation before they are trusted. -/
 def locateSourceLines (source : String) : List LocatedSourceLine :=
   locateLineParts 0 (source.splitSourceOn "\n")
+
+def shiftSourceLines (offset : Nat) (lines : List LocatedSourceLine) :
+    List LocatedSourceLine :=
+  lines.map (fun line =>
+    { line with start := offset + line.start, stop := offset + line.stop })
 
 def validateFormatText (lang : TargetLang) (source : String) : TargetExpr → Bool
   | .empty => source == ""
@@ -467,11 +565,11 @@ private def tsModuleValueText (source name typeSource : String) : Option String 
   stripFinalSemicolon (String.mk (source.toList.drop
     ("const " ++ name ++ ": " ++ typeSource ++ " = ").length))
 
+mutual
 /-- AST-guided source check: source text, rather than the raw decoder,
     determines these operator boundaries. -/
 def validateExprText (lang : TargetLang) (source : String) : TargetExpr → Bool
   | .empty => source == ""
-  | .sequence value .empty => validateExprText lang source value
   | .call callee args =>
       match splitFirstFormat source "(" with
       | none => false
@@ -481,7 +579,7 @@ def validateExprText (lang : TargetLang) (source : String) : TargetExpr → Bool
           | some argsText =>
               source == calleeText ++ "(" ++ argsText ++ ")" &&
               validateExprText lang calleeText callee &&
-              validateExprText lang argsText args
+              validateArgumentText lang argsText args
   | .bool value =>
       source == (if lang == .ts then
         (if value then "true" else "false")
@@ -495,7 +593,7 @@ def validateExprText (lang : TargetLang) (source : String) : TargetExpr → Bool
   | .decimal literal =>
       source == literal && numberTokenCheck source && source.toList.contains '.'
   | .string value => validateStringLiteral lang source value
-  | .local name => identifierTextCheck name && source == name
+  | .local name => expressionIdentifierCheck lang name && source == name
   | .property receiver name =>
       match splitProperty source with
       | some (base, field) =>
@@ -506,7 +604,9 @@ def validateExprText (lang : TargetLang) (source : String) : TargetExpr → Bool
       match splitSub source with
       | some (leftText, rightText) =>
           source == leftText ++ " - " ++ rightText &&
-            validateExprText lang leftText left && validateExprText lang rightText right
+            validateExprText lang leftText left &&
+            validateExprText lang rightText right &&
+            (rightText.splitSourceOn " - ") == [rightText]
       | none => false
   | .formatted parts =>
       match wrapperContent lang source with
@@ -516,111 +616,192 @@ def validateExprText (lang : TargetLang) (source : String) : TargetExpr → Bool
             parts != .empty && validateFormatText lang content parts
   | _ => false
 
+def validateArgumentText (lang : TargetLang) (source : String) : TargetExpr → Bool
+  | .empty => source == ""
+  | .sequence value .empty => validateExprText lang source value
+  | _ => false
+end
+
 def validateExprSpan (lang : TargetLang) (source : String)
     (span : SourceSpan) (expr : TargetExpr) : Bool :=
   span.start ≤ span.stop && span.stop ≤ source.length &&
     validateExprText lang (span.text source) expr
 
-theorem validateExprText_sound (lang : TargetLang) (source : String)
-    (expr : TargetExpr) (h : validateExprText lang source expr = true) :
-    ExprSyntax lang source expr := by
-  induction expr generalizing source with
+private theorem validateExprAndArgument_sound (lang : TargetLang) (expr : TargetExpr) :
+    (∀ source, validateExprText lang source expr = true → ExprSyntax lang source expr) ∧
+    (∀ source, validateArgumentText lang source expr = true →
+      ArgumentSyntax lang source expr) := by
+  induction expr with
   | empty =>
-      simp [validateExprText] at h
-      subst source
-      exact .empty lang
+      constructor
+      · intro source h
+        simp [validateExprText] at h
+        subst source
+        exact .empty lang
+      · intro source h
+        simp [validateArgumentText] at h
+        subst source
+        exact .empty lang
   | sequence value rest ihValue ihRest =>
-      cases rest <;> simp [validateExprText] at h
-      exact .singleArgument (ihValue source h)
+      constructor
+      · intro source h
+        simp [validateExprText] at h
+      · intro source h
+        cases rest with
+        | empty =>
+            simp only [validateArgumentText] at h
+            exact .one (ihValue.1 source h)
+        | _ => simp [validateArgumentText] at h
   | call callee args ihCallee ihArgs =>
-      simp only [validateExprText] at h
-      cases hs : splitFirstFormat source "(" with
-      | none => simp [hs] at h
-      | some parts =>
-          rcases parts with ⟨calleeText, afterOpen⟩
-          cases hp : stripFinalParen afterOpen with
-          | none => simp [hs, hp] at h
-          | some argsText =>
-              simp only [hs, hp, Bool.and_eq_true, beq_iff_eq] at h
-              rcases h with ⟨⟨hSource, hCallee⟩, hArgs⟩
-              subst source
-              exact .call (ihCallee calleeText hCallee) (ihArgs argsText hArgs)
-  | bool value =>
-      cases lang <;> simp [validateExprText] at h
-      · subst source; exact .tsBool value
-      · subst source; exact .pythonBool value
-  | null =>
-      cases lang <;> simp [validateExprText] at h
-      · subst source; exact .tsNull
-      · subst source; exact .pythonNone
-  | undefined =>
-      simp [validateExprText] at h
-      rcases h with ⟨rfl, rfl⟩
-      exact .tsUndefined
-  | integer n =>
-      simp only [validateExprText] at h
-      cases hv : source.toNat? with
-      | none => simp [hv] at h
-      | some value =>
-          simp only [hv, beq_iff_eq] at h
-          subst n
-          exact .numeral hv
-  | decimal literal =>
-      simp only [validateExprText, Bool.and_eq_true, beq_iff_eq] at h
-      rcases h with ⟨⟨hSource, hNumber⟩, hDot⟩
-      subst literal
-      exact .decimal hNumber hDot
-  | string value =>
-      simp only [validateExprText] at h
-      exact .string (validateStringLiteral_sound h)
-  | «local» name =>
-      simp [validateExprText] at h
-      rcases h with ⟨hne, heq⟩
-      subst source
-      exact ExprSyntax.local (identifierTextCheck_sound hne)
-  | property receiver name ih =>
-      simp only [validateExprText] at h
-      cases hs : splitProperty source with
-      | none => simp [hs] at h
-      | some parts =>
-          rcases parts with ⟨base, field⟩
-          simp only [hs, Bool.and_eq_true, beq_iff_eq] at h
-          rcases h with ⟨⟨⟨hne, heq⟩, hconcat⟩, hrec⟩
-          subst source
-          subst field
-          exact .property (ih base hrec) (identifierTextCheck_sound hne)
-  | binary op left right ihLeft ihRight =>
-      cases op <;> simp [validateExprText] at h
-      case sub =>
-        cases hs : splitSub source with
+      constructor
+      · intro source h
+        simp only [validateExprText] at h
+        cases hs : splitFirstFormat source "(" with
         | none => simp [hs] at h
         | some parts =>
-            rcases parts with ⟨leftText, rightText⟩
+            rcases parts with ⟨calleeText, afterOpen⟩
+            cases hp : stripFinalParen afterOpen with
+            | none => simp [hs, hp] at h
+            | some argsText =>
+                simp only [hs, hp, Bool.and_eq_true, beq_iff_eq] at h
+                rcases h with ⟨⟨hSource, hCallee⟩, hArgs⟩
+                subst source
+                exact .call (ihCallee.1 calleeText hCallee)
+                  (ihArgs.2 argsText hArgs)
+      · intro source h
+        simp [validateArgumentText] at h
+  | bool value =>
+      constructor
+      · intro source h
+        cases lang <;> simp [validateExprText] at h
+        · subst source; exact .tsBool value
+        · subst source; exact .pythonBool value
+      · intro source h
+        simp [validateArgumentText] at h
+  | null =>
+      constructor
+      · intro source h
+        cases lang <;> simp [validateExprText] at h
+        · subst source; exact .tsNull
+        · subst source; exact .pythonNone
+      · intro source h
+        simp [validateArgumentText] at h
+  | undefined =>
+      constructor
+      · intro source h
+        simp [validateExprText] at h
+        rcases h with ⟨rfl, rfl⟩
+        exact .tsUndefined
+      · intro source h
+        simp [validateArgumentText] at h
+  | integer n =>
+      constructor
+      · intro source h
+        simp only [validateExprText] at h
+        cases hv : source.toNat? with
+        | none => simp [hv] at h
+        | some value =>
+            simp only [hv, beq_iff_eq] at h
+            subst n
+            exact .numeral hv
+      · intro source h
+        simp [validateArgumentText] at h
+  | decimal literal =>
+      constructor
+      · intro source h
+        simp only [validateExprText, Bool.and_eq_true, beq_iff_eq] at h
+        rcases h with ⟨⟨hSource, hNumber⟩, hDot⟩
+        subst literal
+        exact .decimal hNumber hDot
+      · intro source h
+        simp [validateArgumentText] at h
+  | string value =>
+      constructor
+      · intro source h
+        simp only [validateExprText] at h
+        exact .string (validateStringLiteral_sound h)
+      · intro source h
+        simp [validateArgumentText] at h
+  | «local» name =>
+      constructor
+      · intro source h
+        simp [validateExprText] at h
+        rcases h with ⟨hne, heq⟩
+        subst source
+        exact ExprSyntax.local (expressionIdentifierCheck_sound hne)
+      · intro source h
+        simp [validateArgumentText] at h
+  | property receiver name ih =>
+      constructor
+      · intro source h
+        simp only [validateExprText] at h
+        cases hs : splitProperty source with
+        | none => simp [hs] at h
+        | some parts =>
+            rcases parts with ⟨base, field⟩
             simp only [hs, Bool.and_eq_true, beq_iff_eq] at h
-            rcases h with ⟨⟨hconcat, hleft⟩, hright⟩
+            rcases h with ⟨⟨⟨hne, heq⟩, hconcat⟩, hrec⟩
             subst source
-            exact .sub (ihLeft leftText hleft) (ihRight rightText hright)
+            subst field
+            exact .property (ih.1 base hrec) (identifierTextCheck_sound hne)
+      · intro source h
+        simp [validateArgumentText] at h
+  | binary op left right ihLeft ihRight =>
+      constructor
+      · intro source h
+        cases op <;> simp [validateExprText] at h
+        case sub =>
+          cases hs : splitSub source with
+          | none => simp [hs] at h
+          | some parts =>
+              rcases parts with ⟨leftText, rightText⟩
+              simp only [hs, Bool.and_eq_true, beq_iff_eq] at h
+              rcases h with ⟨⟨⟨hconcat, hleft⟩, hright⟩, hRightmost⟩
+              subst source
+              exact .sub (ihLeft.1 leftText hleft) (ihRight.1 rightText hright)
+                (by simpa [RightmostSubOperand] using hRightmost)
+      · intro source h
+        simp [validateArgumentText] at h
   | formatted parts ih =>
-      simp only [validateExprText] at h
-      cases hw : wrapperContent lang source with
-      | none => simp [hw] at h
-      | some content =>
-          simp only [hw, Bool.and_eq_true, beq_iff_eq] at h
-          rcases h with ⟨⟨hRebuild, hNonempty⟩, hParts⟩
-          cases lang with
-          | ts =>
-              simp [wrapperRebuild] at hRebuild
-              subst source
-              exact .formatted (.ts content)
-                (validateFormatText_sound .ts content parts hParts)
-                (by simpa using hNonempty)
-          | python =>
-              simp [wrapperRebuild] at hRebuild
-              subst source
-              exact .formatted (.pythonDouble content)
-                (validateFormatText_sound .python content parts hParts)
-                (by simpa using hNonempty)
-  | _ => simp [validateExprText] at h
+      constructor
+      · intro source h
+        simp only [validateExprText] at h
+        cases hw : wrapperContent lang source with
+        | none => simp [hw] at h
+        | some content =>
+            simp only [hw, Bool.and_eq_true, beq_iff_eq] at h
+            rcases h with ⟨⟨hRebuild, hNonempty⟩, hParts⟩
+            cases lang with
+            | ts =>
+                simp [wrapperRebuild] at hRebuild
+                subst source
+                exact .formatted (.ts content)
+                  (validateFormatText_sound .ts content parts hParts)
+                  (by simpa using hNonempty)
+            | python =>
+                simp [wrapperRebuild] at hRebuild
+                subst source
+                exact .formatted (.pythonDouble content)
+                  (validateFormatText_sound .python content parts hParts)
+                  (by simpa using hNonempty)
+      · intro source h
+        simp [validateArgumentText] at h
+  | _ =>
+      constructor
+      · intro source h
+        simp [validateExprText] at h
+      · intro source h
+        simp [validateArgumentText] at h
+
+theorem validateExprText_sound (lang : TargetLang) (source : String)
+    (expr : TargetExpr) (h : validateExprText lang source expr = true) :
+    ExprSyntax lang source expr :=
+  (validateExprAndArgument_sound lang expr).1 source h
+
+theorem validateArgumentText_sound (lang : TargetLang) (source : String)
+    (args : TargetExpr) (h : validateArgumentText lang source args = true) :
+    ArgumentSyntax lang source args :=
+  (validateExprAndArgument_sound lang args).2 source h
 
 /-- Form-specific checks avoid unfolding the whole recursive expression
     checker when a selected AST constructor is already known. -/
