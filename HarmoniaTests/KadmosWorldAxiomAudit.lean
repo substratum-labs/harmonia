@@ -4,6 +4,7 @@ import Harmonia.Applications.Kadmos.Bridge.Syntax
 import Harmonia.Applications.Kadmos.Generated.TargetCertificate
 import Harmonia.Applications.Kadmos.Generated.TargetObservation
 import Harmonia.Applications.Kadmos.Generated.SourceValidator
+import Harmonia.Applications.Kadmos.Generated.SourceStatementCertificate
 import Harmonia.Applications.Kadmos
 import HarmoniaTests.KadmosWorldIR
 import HarmoniaTests.KadmosWorldInterpreter

@@ -272,6 +272,8 @@ def tsModuleType : String → Option String
   | _ => none
 
 inductive StmtSyntax : TargetLang → SurfaceControl → String → TargetStmt → Prop where
+  | empty (lang : TargetLang) (control : SurfaceControl) :
+      StmtSyntax lang control "" .empty
   | pythonRaise {valueSource : String} {value : TargetExpr}
       (hValue : ExprSyntax .python valueSource value) :
       StmtSyntax .python .function ("raise " ++ valueSource)

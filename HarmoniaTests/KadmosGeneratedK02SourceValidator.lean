@@ -1,4 +1,5 @@
 import Harmonia.Applications.Kadmos.Generated.SourceValidator
+import Harmonia.Applications.Kadmos.Generated.SourceStatementCertificate
 import Harmonia.Applications.Kadmos.Generated.TargetExpressionParser
 import Harmonia.Applications.Kadmos.Generated.TargetProgramParser
 import Harmonia.Applications.Kadmos.Generated.Fixtures
@@ -336,6 +337,32 @@ theorem kadmos_generated_boolean_world_function_item_derives :
     ItemDerives .ts balanceTsSource
       (.functionDecl ⟨1964, 2121⟩ ⟨2015, 2119⟩ booleanWorldFunction) :=
   validateSourceItem_sound kadmos_generated_boolean_world_function_item_owned
+
+private def booleanWorldBodyCertificate : StmtCertificate :=
+  .sequence ⟨2015, 2103⟩ ⟨2106, 2119⟩
+    (.ifThen ⟨2019, 2045⟩ ⟨2047, 2103⟩
+      (.throwExpr ⟨2053, 2102⟩))
+    (.final ⟨2106, 2119⟩ (.returnExpr ⟨2113, 2118⟩))
+
+theorem kadmos_generated_boolean_world_statement_certificate_checked :
+    validateStmtCertificate .ts balanceTsSource ⟨2015, 2119⟩
+      booleanWorldBody booleanWorldBodyCertificate = true := by
+  decide +kernel
+
+theorem kadmos_generated_boolean_world_statement_certificate_sound :
+    StmtDerives .ts .function balanceTsSource ⟨2015, 2119⟩
+      booleanWorldBody :=
+  validateStmtCertificate_sound
+    kadmos_generated_boolean_world_statement_certificate_checked
+
+theorem kadmos_generated_boolean_world_statement_span_mutation_rejected :
+    validateStmtCertificate .ts balanceTsSource ⟨2015, 2119⟩
+      booleanWorldBody
+      (.sequence ⟨2015, 2103⟩ ⟨2106, 2119⟩
+        (.ifThen ⟨2019, 2045⟩ ⟨2047, 2103⟩
+          (.throwExpr ⟨2054, 2102⟩))
+        (.final ⟨2106, 2119⟩ (.returnExpr ⟨2113, 2118⟩))) = false := by
+  decide +kernel
 
 theorem kadmos_generated_boolean_world_function_name_mutation_rejected :
     validateSourceItem .ts balanceTsSource

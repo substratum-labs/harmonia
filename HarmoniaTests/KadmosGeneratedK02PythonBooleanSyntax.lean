@@ -1,4 +1,5 @@
 import Harmonia.Applications.Kadmos.Generated.SourceValidator
+import Harmonia.Applications.Kadmos.Generated.SourceStatementCertificate
 import Harmonia.Applications.Kadmos.Generated.TargetProgramParser
 import Harmonia.Applications.Kadmos.Generated.Fixtures
 
@@ -132,6 +133,32 @@ theorem kadmos_generated_python_boolean_function_item_derives :
     ItemDerives .python balancePySource
       (.functionDecl ⟨1593, 1748⟩ ⟨1631, 1748⟩ pythonBooleanFunction) :=
   validateSourceItem_sound kadmos_generated_python_boolean_function_item_owned
+
+private def pythonBooleanBodyCertificate : StmtCertificate :=
+  .sequence ⟨1631, 1731⟩ ⟨1736, 1748⟩
+    (.ifThen ⟨1634, 1657⟩ ⟨1667, 1731⟩
+      (.final ⟨1667, 1731⟩ (.throwExpr ⟨1673, 1731⟩)))
+    (.final ⟨1736, 1748⟩ (.returnExpr ⟨1743, 1748⟩))
+
+theorem kadmos_generated_python_boolean_statement_certificate_checked :
+    validateStmtCertificate .python balancePySource ⟨1631, 1748⟩
+      pythonBooleanBody pythonBooleanBodyCertificate = true := by
+  decide +kernel
+
+theorem kadmos_generated_python_boolean_statement_certificate_sound :
+    StmtDerives .python .function balancePySource ⟨1631, 1748⟩
+      pythonBooleanBody :=
+  validateStmtCertificate_sound
+    kadmos_generated_python_boolean_statement_certificate_checked
+
+theorem kadmos_generated_python_boolean_statement_span_mutation_rejected :
+    validateStmtCertificate .python balancePySource ⟨1631, 1748⟩
+      pythonBooleanBody
+      (.sequence ⟨1631, 1731⟩ ⟨1736, 1748⟩
+        (.ifThen ⟨1634, 1657⟩ ⟨1667, 1731⟩
+          (.final ⟨1667, 1731⟩ (.throwExpr ⟨1674, 1731⟩)))
+        (.final ⟨1736, 1748⟩ (.returnExpr ⟨1743, 1748⟩))) = false := by
+  decide +kernel
 
 theorem kadmos_generated_python_boolean_function_body_mutation_rejected :
     validateSourceItem .python balancePySource
