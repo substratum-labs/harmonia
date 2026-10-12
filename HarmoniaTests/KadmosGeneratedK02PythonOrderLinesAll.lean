@@ -1,4 +1,4 @@
-import Harmonia.Applications.Kadmos.Generated.SourceValidator
+import Harmonia.Applications.Kadmos.Generated.SourceLexicalValidator
 import Harmonia.Applications.Kadmos.Generated.Fixtures
 
 open Harmonia.Applications.Kadmos.Generated
