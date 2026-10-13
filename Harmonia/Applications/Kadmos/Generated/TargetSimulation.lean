@@ -17,6 +17,7 @@ inductive TargetFocus where
 inductive ResumeFrame where
   | binaryLeft (op : BinaryOp) (right : TargetExpr)
   | binaryRight (op : BinaryOp) (left : TargetValue)
+  | stmtIf (yes no : TargetStmt)
   | stmtSequence (rest : TargetStmt)
   | stmtReturn | stmtThrow
   | stmtAssignField (name : String)
@@ -54,6 +55,12 @@ inductive SmallStep (program : TargetProgram) : TargetConfig → TargetConfig �
         ⟨m, f, .value (integerValue program.lang n), c⟩
   | string {m f c} (s : String) :
       SmallStep program ⟨m, f, .eval (.string s), c⟩ ⟨m, f, .value (.string s), c⟩
+  | localRead {m f c name value} (h : localValue m f name = .ok value) :
+      SmallStep program ⟨m, f, .eval (.local name), c⟩ ⟨m, f, .value value, c⟩
+  | global {m f c name value} (h : localValue m f name = .ok value) :
+      SmallStep program ⟨m, f, .eval (.global name), c⟩ ⟨m, f, .value value, c⟩
+  | checkerField {m f c name value} (h : readCheckerField m name = .ok value) :
+      SmallStep program ⟨m, f, .eval (.checkerField name), c⟩ ⟨m, f, .value value, c⟩
   | binaryEnter {m f c op left right} :
       SmallStep program ⟨m, f, .eval (.binary op left right), c⟩
         ⟨m, f, .eval left, .binaryLeft op right :: c⟩
@@ -72,6 +79,20 @@ inductive SmallStep (program : TargetProgram) : TargetConfig → TargetConfig �
       SmallStep program ⟨m, f, .value right, .binaryRight op left :: c⟩
         ⟨m, f, exprResultFocus result, c⟩
 
+  | stmtIfEnter {m f c cond yes no} :
+      SmallStep program ⟨m, f, .exec (.ifThenElse cond yes no), c⟩
+        ⟨m, f, .eval cond, .stmtIf yes no :: c⟩
+  | stmtIfTrue {m f c yes no value}
+      (h : sourceTruthy program.lang m value = .ok true) :
+      SmallStep program ⟨m, f, .value value, .stmtIf yes no :: c⟩
+        ⟨m, f, .exec yes, c⟩
+  | stmtIfFalse {m f c yes no value}
+      (h : sourceTruthy program.lang m value = .ok false) :
+      SmallStep program ⟨m, f, .value value, .stmtIf yes no :: c⟩
+        ⟨m, f, .exec no, c⟩
+  | stmtIfRaised {m f c yes no value} :
+      SmallStep program ⟨m, f, .exit (.raised value), .stmtIf yes no :: c⟩
+        ⟨m, f, .exit (.raised value), c⟩
   | stmtEmpty {m f c} :
       SmallStep program ⟨m, f, .exec .empty, c⟩ ⟨m, f, .exit .normal, c⟩
   | stmtSequence {m f c first rest} :
@@ -204,6 +225,12 @@ inductive DepthDerivesExpr (program : TargetProgram) :
   | integer {m f} (n : Int) : DepthDerivesExpr program m f (.integer n)
       ⟨m, .ok (integerValue program.lang n)⟩ 0
   | string {m f} (s : String) : DepthDerivesExpr program m f (.string s) ⟨m, .ok (.string s)⟩ 0
+  | localRead {m f name value} (h : localValue m f name = .ok value) :
+      DepthDerivesExpr program m f (.local name) ⟨m, .ok value⟩ 0
+  | global {m f name value} (h : localValue m f name = .ok value) :
+      DepthDerivesExpr program m f (.global name) ⟨m, .ok value⟩ 0
+  | checkerField {m f name value} (h : readCheckerField m name = .ok value) :
+      DepthDerivesExpr program m f (.checkerField name) ⟨m, .ok value⟩ 0
   | binaryLeftRaised {m f left right op final value rank}
       (hLeft : DepthDerivesExpr program m f left ⟨final, .error value⟩ rank) :
       DepthDerivesExpr program m f (.binary op left right) ⟨final, .error value⟩ (1 + rank)
@@ -231,6 +258,9 @@ theorem expr_path_runs_cont {program machine frame expr outcome rank}
   | bool b => exact Runs.single (.bool b)
   | integer n => exact Runs.single (.integer n)
   | string s => exact Runs.single (.string s)
+  | localRead h => exact .single (.localRead h)
+  | global h => exact .single (.global h)
+  | checkerField h => exact .single (.checkerField h)
   | binaryLeftRaised _ ih =>
       exact ((Runs.single .binaryEnter).trans (ih _)).tail .binaryLeftRaised
   | binaryRightRaised _ _ ihLeft ihRight =>
@@ -263,6 +293,12 @@ theorem evalExpr_adequate {program machine frame expr outcome rank k}
   | string s => cases k with
       | zero => exfalso; omega
       | succ k => simp only [evalExpr]; rfl
+  | localRead h | global h | checkerField h =>
+      cases k with
+      | zero => exact False.elim (by omega)
+      | succ k =>
+          simp [evalExpr, h, Bind.bind, Pure.pure, Except.bind, Except.pure]
+          rfl
   | @binaryLeftRaised m f left right op final value rank hLeft ih =>
       cases k with
       | zero => exfalso; omega
@@ -284,7 +320,16 @@ theorem evalExpr_adequate {program machine frame expr outcome rank k}
           have hr' : rightRank < k := by omega
           simp [Bind.bind, Pure.pure, Functor.map, Except.bind, Except.pure, Except.map, evalExpr, ihLeft hl, ihRight hr', hOp, hApply]
 
-/-- Syntax coverage of this first proof slice; `.add` needs a separate
+/-- Adequacy forces any two supported paths of the same expression to have
+    the same result, even if their derivation ranks differ. -/
+theorem DepthDerivesExpr.deterministic {program m f expr out₁ out₂ r₁ r₂}
+    (h₁ : DepthDerivesExpr program m f expr out₁ r₁)
+    (h₂ : DepthDerivesExpr program m f expr out₂ r₂) : out₁ = out₂ := by
+  have hk₁ : r₁ < max r₁ r₂ + 1 := Nat.lt_succ_of_le (Nat.le_max_left _ _)
+  have hk₂ : r₂ < max r₁ r₂ + 1 := Nat.lt_succ_of_le (Nat.le_max_right _ _)
+  exact Except.ok.inj ((evalExpr_adequate h₁ hk₁).symm.trans (evalExpr_adequate h₂ hk₂))
+
+/-- Syntax coverage of this read-only proof slice; `.add` needs a separate
     Python list-concatenation rule before entering the common binary case. -/
 inductive ScalarSyntax : TargetExpr → Prop where
   | undefined : ScalarSyntax .undefined
@@ -292,6 +337,9 @@ inductive ScalarSyntax : TargetExpr → Prop where
   | bool (b : Bool) : ScalarSyntax (.bool b)
   | integer (n : Int) : ScalarSyntax (.integer n)
   | string (s : String) : ScalarSyntax (.string s)
+  | localRead (name : String) : ScalarSyntax (.local name)
+  | global (name : String) : ScalarSyntax (.global name)
+  | checkerField (name : String) : ScalarSyntax (.checkerField name)
   | binary {op left right} (hOp : op ≠ .add)
       (hLeft : ScalarSyntax left) (hRight : ScalarSyntax right) :
       ScalarSyntax (.binary op left right)
@@ -324,6 +372,39 @@ theorem evalScalar_sound {program machine frame expr outcome k}
       cases k with
       | zero => simp [evalExpr] at h
       | succ k => simp only [evalExpr] at h; cases h; exact ⟨0, .string s, by omega⟩
+  | localRead name =>
+      cases k with
+      | zero => simp [evalExpr] at h
+      | succ k =>
+          cases hv : localValue machine frame name with
+          | error e =>
+              simp [evalExpr, hv, Bind.bind, Pure.pure, Except.bind, Except.pure] at h
+          | ok value =>
+              simp only [evalExpr, hv, Bind.bind, Pure.pure, Except.bind, Except.pure] at h
+              cases h
+              exact ⟨0, .localRead hv, by omega⟩
+  | global name =>
+      cases k with
+      | zero => simp [evalExpr] at h
+      | succ k =>
+          cases hv : localValue machine frame name with
+          | error e =>
+              simp [evalExpr, hv, Bind.bind, Pure.pure, Except.bind, Except.pure] at h
+          | ok value =>
+              simp only [evalExpr, hv, Bind.bind, Pure.pure, Except.bind, Except.pure] at h
+              cases h
+              exact ⟨0, .global hv, by omega⟩
+  | checkerField name =>
+      cases k with
+      | zero => simp [evalExpr] at h
+      | succ k =>
+          cases hv : readCheckerField machine name with
+          | error e =>
+              simp [evalExpr, hv, Bind.bind, Pure.pure, Except.bind, Except.pure] at h
+          | ok value =>
+              simp only [evalExpr, hv, Bind.bind, Pure.pure, Except.bind, Except.pure] at h
+              cases h
+              exact ⟨0, .checkerField hv, by omega⟩
   | @binary op left right hOp _ _ ihLeft ihRight =>
       cases k with
       | zero => simp [evalExpr] at h
@@ -367,7 +448,7 @@ theorem evalScalar_sound {program machine frame expr outcome k}
 theorem DepthDerivesExpr.machine_eq {program m f expr out rank}
     (h : DepthDerivesExpr program m f expr out rank) : out.machine = m := by
   induction h with
-  | undefined | null | bool | integer | string => rfl
+  | undefined | null | bool | integer | string | localRead | global | checkerField => rfl
   | binaryLeftRaised _ ih => exact ih
   | binaryRightRaised _ _ ihLeft ihRight => exact ihRight.trans ihLeft
   | binary _ _ _ _ ihLeft ihRight => exact ihRight.trans ihLeft
@@ -377,6 +458,22 @@ theorem DepthDerivesExpr.machine_eq {program m f expr out rank}
     first/rest, body/cleanup and expression siblings share predecessor fuel. -/
 inductive DepthDerivesStmt (program : TargetProgram) :
     TargetMachine → TargetFrame → TargetStmt → StmtOutcome → Nat → Prop where
+  | ifTrue {m f cond yes no middle value out rCond rBranch}
+      (hCond : DepthDerivesExpr program m f cond ⟨middle, .ok value⟩ rCond)
+      (hTruth : sourceTruthy program.lang middle value = .ok true)
+      (hBranch : DepthDerivesStmt program middle f yes out rBranch) :
+      DepthDerivesStmt program m f (.ifThenElse cond yes no) out
+        (1 + max rCond rBranch)
+  | ifFalse {m f cond yes no middle value out rCond rBranch}
+      (hCond : DepthDerivesExpr program m f cond ⟨middle, .ok value⟩ rCond)
+      (hTruth : sourceTruthy program.lang middle value = .ok false)
+      (hBranch : DepthDerivesStmt program middle f no out rBranch) :
+      DepthDerivesStmt program m f (.ifThenElse cond yes no) out
+        (1 + max rCond rBranch)
+  | ifRaised {m f cond yes no final value rank}
+      (hCond : DepthDerivesExpr program m f cond ⟨final, .error value⟩ rank) :
+      DepthDerivesStmt program m f (.ifThenElse cond yes no)
+        ⟨final, f, .raised value⟩ (1 + rank)
   | empty {m f} : DepthDerivesStmt program m f .empty ⟨m, f, .normal⟩ 0
   | returnVoid {m f} :
       DepthDerivesStmt program m f .returnVoid ⟨m, f, .returned .undefined⟩ 0
@@ -461,6 +558,15 @@ theorem stmt_path_runs_cont {program machine frame stmt outcome rank}
     Runs program ⟨machine, frame, .exec stmt, continuation⟩
       ⟨outcome.machine, outcome.frame, .exit outcome.control, continuation⟩ := by
   induction h generalizing continuation with
+  | ifTrue hc ht hb ih =>
+      exact (((Runs.single .stmtIfEnter).trans (expr_path_runs_cont hc _)).trans
+        (.single (.stmtIfTrue ht))).trans (ih _)
+  | ifFalse hc ht hb ih =>
+      exact (((Runs.single .stmtIfEnter).trans (expr_path_runs_cont hc _)).trans
+        (.single (.stmtIfFalse ht))).trans (ih _)
+  | ifRaised hc =>
+      exact ((Runs.single .stmtIfEnter).trans (expr_path_runs_cont hc _)).trans
+        (.single .stmtIfRaised)
   | empty => exact .single .stmtEmpty
   | returnVoid => exact .single .stmtReturnVoid
   | breakTarget label => exact .single .stmtBreak
@@ -518,6 +624,22 @@ theorem execStmt_adequate {program machine frame stmt outcome rank k}
     (h : DepthDerivesStmt program machine frame stmt outcome rank)
     (hr : rank < k) : execStmt k program machine frame stmt = .ok outcome := by
   induction h generalizing k with
+  | @ifTrue m f cond yes no middle value out rc rb hc ht hb ih
+  | @ifFalse m f cond yes no middle value out rc rb hc ht hb ih =>
+      cases k with
+      | zero => exact False.elim (by omega)
+      | succ k =>
+          have hck : rc < k := by omega
+          have hbk : rb < k := by omega
+          simp [execStmt, evalExpr_adequate hc hck, ht, ih hbk,
+            Bind.bind, Pure.pure, Except.bind, Except.pure]
+  | @ifRaised m f cond yes no final value rank hc =>
+      cases k with
+      | zero => exact False.elim (by omega)
+      | succ k =>
+          have hk : rank < k := by omega
+          simp [execStmt, evalExpr_adequate hc hk,
+            Bind.bind, Pure.pure, Except.bind, Except.pure]
   | empty | returnVoid | breakTarget | continueTarget =>
       cases k with
       | zero => exact False.elim (by omega)
@@ -602,6 +724,14 @@ theorem execStmt_adequate {program machine frame stmt outcome rank k}
               ihh hhk, ihc hck, hf, Bind.bind, Pure.pure, Except.bind, Except.pure]
           all_goals first | exact False.elim (he hf) | rfl
 
+/-- Two supported statement paths cannot choose different control or heaps. -/
+theorem DepthDerivesStmt.deterministic {program m f stmt out₁ out₂ r₁ r₂}
+    (h₁ : DepthDerivesStmt program m f stmt out₁ r₁)
+    (h₂ : DepthDerivesStmt program m f stmt out₂ r₂) : out₁ = out₂ := by
+  have hk₁ : r₁ < max r₁ r₂ + 1 := Nat.lt_succ_of_le (Nat.le_max_left _ _)
+  have hk₂ : r₂ < max r₁ r₂ + 1 := Nat.lt_succ_of_le (Nat.le_max_right _ _)
+  exact Except.ok.inj ((execStmt_adequate h₁ hk₁).symm.trans (execStmt_adequate h₂ hk₂))
+
 /-- Finite address/descriptor checks. Values stored in the heap do not
     recursively traverse objects: liveness checks references, including cycles. -/
 def liveValueCheck (m : TargetMachine) : TargetValue → Bool
@@ -674,6 +804,18 @@ def HeapWF (lang : TargetLang) (m : TargetMachine) : Prop := heapWFCheck lang m 
 
 instance (lang : TargetLang) (m : TargetMachine) : Decidable (HeapWF lang m) :=
   inferInstanceAs (Decidable (heapWFCheck lang m = true))
+
+/-- The structural invariant entails freshness of the next object address.
+    The host clone can therefore preserve every older object on replacement. -/
+theorem HeapWF.object_fresh {lang m} (h : HeapWF lang m) :
+    ∀ e ∈ m.objects, e.1 ≠ m.nextObject := by
+  unfold HeapWF heapWFCheck at h
+  simp only [Bool.and_eq_true, and_assoc] at h
+  obtain ⟨_, _, _, _, _, ho, _⟩ := h
+  intro entry hEntry
+  have hLive := (List.all_eq_true.mp ho) entry hEntry
+  simp only [Bool.and_eq_true, decide_eq_true_eq] at hLive
+  exact Nat.ne_of_lt hLive.1.1
 
 def FrameWF (m : TargetMachine) (f : TargetFrame) : Prop := frameWFCheck m f = true
 

@@ -3,6 +3,40 @@ import Harmonia.Applications.Kadmos.Generated.TargetObservation
 
 namespace Harmonia.Applications.Kadmos.Generated
 
+/-- Convert the source safe-signed interval to the host's absolute-value
+    check. This is symbolic in the amount and uses no enumeration. -/
+theorem signed_natAbs {n : Int}
+    (h : -Harmonia.Applications.Kadmos.S ≤ n ∧ n ≤ Harmonia.Applications.Kadmos.S) :
+    n.natAbs ≤ 9007199254740991 := by
+  cases n <;> simp [Harmonia.Applications.Kadmos.S, Int.natAbs] at * <;> omega
+
+theorem balance_natAbs {b : Int}
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S) :
+    b.natAbs ≤ 9007199254740991 := by
+  apply signed_natAbs
+  constructor
+  · have hs : 0 ≤ Harmonia.Applications.Kadmos.S := by decide
+    omega
+  · exact hb.2
+
+/-- The accepted effect's intermediate lies in the bounded balance domain. -/
+theorem balance_accept_difference_bounds {b n : Int}
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S)
+    (hn : 0 < n ∧ n ≤ b) :
+    -Harmonia.Applications.Kadmos.S ≤ b - n ∧
+      b - n ≤ Harmonia.Applications.Kadmos.S := by
+  have hs : 0 ≤ Harmonia.Applications.Kadmos.S := by decide
+  constructor <;> omega
+
+/-- Bounds rejection evaluates a safe negative intermediate, only after
+    guard success. No subtraction bound is assumed on the guard-reject path. -/
+theorem balance_reject_difference_bounds {b n : Int}
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S)
+    (hn : b < n ∧ n ≤ Harmonia.Applications.Kadmos.S) :
+    -Harmonia.Applications.Kadmos.S ≤ b - n ∧
+      b - n ≤ Harmonia.Applications.Kadmos.S := by
+  constructor <;> omega
+
 /-- Canonical own-data descriptor used by constructor copies in both models. -/
 def balanceDataDescriptor (lang : TargetLang) (b : Int) : Descriptor :=
   ⟨some (integerValue lang b), none, none, true, true, true⟩
@@ -18,6 +52,20 @@ def emptyBalanceHistory (lang : TargetLang) (m : TargetMachine) : HeapObject :=
   ⟨(if lang == .ts then .jsArray else .pythonList),
     (if lang == .ts then some m.objectPrototype else none),
     [], [], [], false, false⟩
+
+set_option maxRecDepth 4096 in
+/-- One-key numeric context cloning needs host budget two, uniformly in b.
+    Freshness records the physical frame; this theorem neither runs nor
+    assumes correctness of a generated constructor or rollback helper. -/
+theorem cloneValue_balance {lang m b ref k}
+    (ho : objectAt m ref = .ok (balanceHeapObject lang m b))
+    (hf : ∀ e ∈ m.objects, e.1 ≠ m.nextObject) :
+    cloneValue (k + 2) m (.object ref) =
+      .ok ((allocObject m (balanceHeapObject lang m b)).1, .object m.nextObject) := by
+  cases lang <;>
+    simp [cloneValue, ho, balanceHeapObject, balanceDataDescriptor, integerValue,
+      replaceObject_allocObject hf, Bind.bind, Pure.pure, Except.bind, Except.pure,
+      List.forIn_cons, List.forIn_nil]
 
 /-- Post-construction representation. The live context and copied seed have
     exactly one enumerable, mutable own-data field; history is empty/mutable.

@@ -229,7 +229,8 @@ theorem binary_sub_py_float_safe (m : TargetMachine) (b n : Int)
       .ok (.ok (.number .pyFloat (b - n))) := by
   simp [binaryValue, numeric, resultTag, safeIntermediate, h]
 
-private def localValue (m : TargetMachine) (frame : TargetFrame) (name : String) :
+/-- Read the actual receiver/local/captured/global cell in lexical lookup order. -/
+def localValue (m : TargetMachine) (frame : TargetFrame) (name : String) :
     Except TargetError TargetValue :=
   if name == "this" || name == "self" then
     match frame.receiver with
@@ -372,7 +373,8 @@ private def regexSource (m : TargetMachine) (ref : ObjRef) :
       | _ => throw .badDescriptor
   | none => throw .badDescriptor
 
-private def cloneValue (fuel : Nat) (m : TargetMachine) (value : TargetValue) :
+/-- The existing recursive host clone, with its own budget independent of evaluator depth. -/
+def cloneValue (fuel : Nat) (m : TargetMachine) (value : TargetValue) :
     Except TargetError (TargetMachine × TargetValue) :=
   match fuel with
   | 0 => .error .exhaustedFuel
@@ -1877,7 +1879,8 @@ def canonicalBalanceSeed (lang : TargetLang) (balance : Int) : TargetSeed :=
 def defaultContextSeed (lang : TargetLang) : TargetSeed :=
   ⟨lang, .noArgument, 0, [], false, false⟩
 
-private def allocateSeed (m : TargetMachine) (seed : TargetSeed) :
+/-- Allocate the external seed recipe; generated constructor/reset calls follow separately. -/
+def allocateSeed (m : TargetMachine) (seed : TargetSeed) :
     Except TargetError (TargetMachine × TargetValue) := do
   if seed.shape == .noArgument then return (m, .null)
   if !safeIntermediate seed.balance then throw .outsideNumericDomain
@@ -1893,6 +1896,20 @@ private def allocateSeed (m : TargetMachine) (seed : TargetSeed) :
   let (updated, ref) := allocObject m
     ⟨kind, proto, ("balance", descriptor) :: extra, [], [], false, seed.proxy⟩
   return (updated, .object ref)
+
+/-- All safe canonical balances have a successful physical seed allocation.
+    This is a wrapper obligation, not generated constructor totality. -/
+theorem allocateSeed_balance {lang m b} (hb : b.natAbs ≤ 9007199254740991) :
+    allocateSeed m (canonicalBalanceSeed lang b) =
+      .ok ((allocObject m
+        ⟨(if lang == .ts then .jsOrdinary else .pythonDict),
+          (if lang == .ts then some m.objectPrototype else none),
+          [("balance", ⟨some (.number (if lang == .ts then .jsNumber else .pyInt) b),
+            none, none, true, true, true⟩)], [], [], false, false⟩).1,
+        .object m.nextObject) := by
+  cases lang <;>
+    simp [allocateSeed, canonicalBalanceSeed, safeIntermediate, hb, number, hostDescriptor, allocObject,
+      Bind.bind, Pure.pure, Except.bind, Except.pure]
 
 private def installTSMethodsGo (m : TargetMachine) (moduleFrame : TargetFrame) :
     List TargetFunction → TargetMachine × List (String × ClosureRef)

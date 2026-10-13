@@ -218,3 +218,73 @@ theorem kadmos_generated_trace_exceeds_depth_budget {program m f} :
         ⟨m, f, .value (.bool true), []⟩ 253 ∧
       evalExpr 7 program m f (equalityTree 6) = .ok ⟨m, .ok (.bool true)⟩ := by
   exact ⟨equalityTree_counted 6 [], evalExpr_adequate (equalityTree_depth 6) (by decide)⟩
+
+-- Local/captured-cell reads must be semantic leaves, not assumed helper calls.
+theorem kadmos_generated_local_depth {program m f name value}
+    (h : localValue m f name = .ok value) :
+    DepthDerivesExpr program m f (.local name) ⟨m, .ok value⟩ 0 :=
+  .localRead h
+
+theorem kadmos_generated_guard_short_circuit {program m f} :
+    DepthDerivesStmt program m f
+      (.ifThenElse (.bool false) (.throwValue (.string "unreachable")) .returnVoid)
+      ⟨m, f, .returned .undefined⟩ 1 :=
+  .ifFalse (.bool false) rfl .returnVoid
+
+theorem kadmos_generated_guard_short_circuit_adequate {program m f} :
+    execStmt 2 program m f
+      (.ifThenElse (.bool false) (.throwValue (.string "unreachable")) .returnVoid) =
+      .ok ⟨m, f, .returned .undefined⟩ :=
+  execStmt_adequate kadmos_generated_guard_short_circuit (by decide)
+
+-- The discarded arm can lack an evaluator derivation entirely.
+theorem kadmos_generated_if_true_unreachable {program m f} :
+    DepthDerivesStmt program m f
+      (.ifThenElse (.bool true) .returnVoid (.whileDo (.bool true) .empty))
+      ⟨m, f, .returned .undefined⟩ 1 :=
+  .ifTrue (.bool true) rfl .returnVoid
+
+theorem kadmos_generated_if_condition_raises {program m f} :
+    DepthDerivesStmt program m f
+      (.ifThenElse badSub (.whileDo (.bool true) .empty) (.whileDo (.bool true) .empty))
+      ⟨m, f, .raised numericError⟩ 2 :=
+  .ifRaised (.binary (by decide) (.string "x") (.bool false) rfl)
+
+theorem kadmos_generated_if_runs {program m f} :
+    StmtRuns program m f
+      (.ifThenElse (.bool false) (.throwValue (.string "unreachable")) .returnVoid)
+      ⟨m, f, .returned .undefined⟩ :=
+  stmt_path_runs kadmos_generated_guard_short_circuit
+
+theorem kadmos_generated_local_read_sound {program m f name out k}
+    (h : evalExpr k program m f (.local name) = .ok out) :
+    ∃ rank, DepthDerivesExpr program m f (.local name) out rank ∧ rank < k :=
+  evalScalar_sound (.localRead name) h
+
+-- Captured locals read the current shared cell, and local shadowing wins.
+theorem kadmos_generated_capture_reads_current_cell :
+    localValue { TargetMachine.empty with cells := [(0, .number .pyInt 7)] }
+      ⟨"nested", [], [], [("position", 0)], none, .normal⟩ "position" =
+      .ok (.number .pyInt 7) := by decide +kernel
+
+theorem kadmos_generated_local_shadows_capture :
+    localValue { TargetMachine.empty with
+      cells := [(0, .number .pyInt 1), (1, .number .pyInt 7)] }
+      ⟨"nested", [], [("position", 0)], [("position", 1)], none, .normal⟩ "position" =
+      .ok (.number .pyInt 1) := by decide +kernel
+
+theorem kadmos_generated_dangling_local_does_not_fallback :
+    localValue { TargetMachine.empty with cells := [(1, .number .pyInt 7)] }
+      ⟨"nested", [], [("position", 0)], [("position", 1)], none, .normal⟩ "position" =
+      .error (.danglingCell 0) := by decide +kernel
+
+-- Different derivation ranks must not select different executable outcomes.
+theorem kadmos_generated_expr_paths_deterministic {program m f expr out₁ out₂ r₁ r₂}
+    (h₁ : DepthDerivesExpr program m f expr out₁ r₁)
+    (h₂ : DepthDerivesExpr program m f expr out₂ r₂) : out₁ = out₂ :=
+  h₁.deterministic h₂
+
+theorem kadmos_generated_stmt_paths_deterministic {program m f stmt out₁ out₂ r₁ r₂}
+    (h₁ : DepthDerivesStmt program m f stmt out₁ r₁)
+    (h₂ : DepthDerivesStmt program m f stmt out₂ r₂) : out₁ = out₂ :=
+  h₁.deterministic h₂

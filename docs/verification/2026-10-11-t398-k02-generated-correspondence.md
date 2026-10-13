@@ -480,3 +480,47 @@ Preliminary combined/unpartitioned constructor runs were interrupted with child 
 A post-verification pinned Lean interface probe exits 1: `balanceRepCheck` exists, but `targetConstruct_sound`, `step_guard_reject`, `step_accept` and `step_bounds_reject` are still unknown identifiers. This is an unmet universal deliverable, separately recorded from the passing closed proof roots.
 
 Final independent physical read-only Codex review (gpt-6.1-sol, high effort) accepts this partial slice with no Critical or Important findings. It verified the whole-AST equality binding, original-executor boundary rewriting, saved-control/rank rules, strict verdict reads, exact registrations/resource options and the 8,341-entry dependency listing. Two documentation findings are corrected: total test counts distinguish clean smoke tests from hostile mutations, and representation checking is post-construction and pre-step. The reviewer did not independently run the receipt, native runtimes, Linux CI or provenance regeneration; those limits remain explicit. This review is not universal-task acceptance or merge authorization.
+
+
+## 2026-10-12 universal-prerequisite continuation from 70c4969
+
+This continuation is **partial Task 2B/3 progress; the requested universal constructor, branch simulation and source correspondence mission is incomplete**. A final pinned Lean interface probe still exits 1 for `targetConstruct_sound`, `step_guard_reject`, `step_accept`, `step_bounds_reject` and `k02_balance_one_call`. `lake build kadmosGeneratedK02CorrespondenceTest` exits 1 because that target is absent. These are unmet deliverables, not negative-test acceptance gates. No placeholder correspondence module or passing target is introduced.
+
+The unfueled relation and ranked expression derivations now cover actual local/global/checker-field reads. Lexical lookup uses the existing receiver/local/capture/global-cell operation; soundness includes successful outer evaluator results and does not hide dangling-cell errors. Kernel regressions check current captured-cell reads, local shadowing and failure without capture fallback when a local cell is dangling. Conditional statement rules evaluate the condition and only the selected arm, or propagate its raised source value without entering either arm. Their rank is `1 + max conditionRank selectedArmRank`; the unselected arm needs no derivation or fuel bound. Reverse adequacy and unfueled trace projection are extended to those paths. An adequate common depth proves deterministic outcomes for any two supported expression or statement derivations, even if their ranks differ. None of these rules assumes a generated helper or executable result.
+
+`allocateSeed_balance` proves physical input allocation for every safe canonical balance, both languages and every starting machine. Its bounded-balance regression derives the host absolute-value check symbolically. This is seed allocation only: actual module initialization, class fields and constructor/reset calls still need derivations and separate rank obligations. Existing `localValue`, `cloneValue` and `allocateSeed` bodies are unchanged; only their visibility and documentation change. No host primitive or generated-helper macro is added.
+
+`replaceObject_allocObject` proves that replacing a fresh allocation preserves all older objects. `HeapWF.object_fresh` derives the needed absence of the next object address from the structural invariant. `cloneValue_balance` proves the existing host clone succeeds at every budget `k + 2` for a canonical one-key numeric context, uniformly in balance and language; its conclusion preserves the complete prior machine apart from prepending the copied object and incrementing the object counter. The actual fixed host budget 2048 therefore suffices for this shape. A separate kernel regression proves host depth one exhausts before copying the numeric child. This obligation is independent of entrypoint depth and trace count. It does not cover history/savepoints, frozen containers, nested objects, cycles, JSON initialization, generated rollback, or post-mutation HeapWF preservation.
+
+The signed interval-to-absolute-value and accept/bounds-reject subtraction lemmas are symbolic, not enumerated. They discharge the safe intermediate obligation under the respective positive-amount branch hypotheses; no subtraction obligation is imposed on guard rejection. These arithmetic lemmas do not execute sanitizer/tokenizer/evaluator helper bodies or prove target branch outcomes.
+
+Still open: full-source `ProgramDerives`/`SourceParses` soundness and uniqueness; `CanonicalGlobals`; declaration/property/call/closure/collection/helper coverage and statement soundness; execution-derived mutation HeapWF preservation; canonical JSON and remaining clone host budgets; uniform module/fields/constructor and step-call ranks; `targetConstruct_sound`; all three universal target branch lemmas; and `k02_balance_one_call`. The source target executor remains independent of the reference interpreter, generic Core/Distributed/legacy semantics are unchanged, and no behaviorally connected legacy claim is made. T-398 remains IN_PROGRESS; draft PR #5 remains unmergeable.
+
+Independent review used an actual read-only Codex CLI process against a frozen base-70c4969 diff. It exited 0 with **no Critical, Important or Minor findings** for this prerequisite slice and explicitly **did not accept the full mission**. It verified read/control/rank behavior, unchanged primitive bodies, clone freshness/frame and shape limitations. The reviewer ran no Lean/Lake, native TS/Python, hosted Linux CI or provenance regeneration, and did not independently authenticate upstream/base provenance. The local verification below is the implementation agent's evidence. No deferred minors, review fixes, push or merge occurred.
+
+All twenty serial commands below exited 0. The strict Generated audit reports **8,398 theorems / 11,429 declarations**, observed axioms and whitelist **`[propext, Quot.sound]`** (+57 theorems / +88 declarations from 70c4969). The refreshed [portable dependency listing](2026-10-12-t398-generated-axioms.txt) has exactly 8,398 theorem entries. Foundation audit: 52 theorems with observed `[propext, Quot.sound]`; its historical whitelist is unchanged. World audit: 9,585 theorems / 13,169 declarations with its separately reported historical `[propext, Quot.sound, Classical.choice]` observations/policy. Inventory is unchanged at 20 product modules, 37 test/audit modules, 63 certified-closure modules, 28 test targets and 32 World inventory modules. Eight artifact and thirteen inventory/policy tests pass. Lean remains `leanprover/lean4:v4.16.0`; fixture literal SHA-256 remains `3006d2ece39affff067b4116fe16a3aeb61cff4fd9ba0dac2fba43fd574382c3`.
+
+| Command | Exit |
+| --- | ---: |
+| `lake build kadmosGeneratedK02ClosedProgramsTest` | 0 |
+| `lake build HarmoniaTests.KadmosGeneratedK02ConstructorProofTS` | 0 |
+| `lake build HarmoniaTests.KadmosGeneratedK02ConstructorProofPython` | 0 |
+| `lake build kadmosGeneratedK02ConstructorProofTest` | 0 |
+| `lake build HarmoniaTests.KadmosGeneratedK02BalanceStepProofTS` | 0 |
+| `lake build HarmoniaTests.KadmosGeneratedK02BalanceStepProofPython` | 0 |
+| `lake build kadmosGeneratedK02BalanceStepProofTest` | 0 |
+| `lake build kadmosGeneratedK02SimulationTest` | 0 |
+| `lake build kadmosGeneratedK02SemanticsTest` | 0 |
+| `lake build kadmosGeneratedK02BalanceTSStepTest` | 0 |
+| `lake build` | 0 |
+| `lake build foundationsTest foundationsAudit foundationsAuditRejection` | 0 |
+| `lake build kadmosGeneratedK02BalanceTSParseTest kadmosGeneratedK02BalancePythonParseTest kadmosGeneratedK02BalanceTSCertificateTest kadmosGeneratedK02BalancePythonCertificateTest` | 0 |
+| `lake build kadmosGeneratedK02Audit` | 0 |
+| `lake build kadmosGeneratedK02AuditRejection` | 0 |
+| `lake build kadmosWorldTest kadmosWorldAudit kadmosWorldAuditRejection` | 0 |
+| `python3 scripts/check_kadmos_generated_k02_artifacts.py` | 0 |
+| `python3 scripts/test_kadmos_generated_k02_artifacts.py` | 0 |
+| `python3 scripts/check_kadmos_generated_k02_audit.py` | 0 |
+| `python3 scripts/test_kadmos_generated_k02_audit.py` | 0 |
+
+Observed RED-to-GREEN cycles covered missing read/conditional semantic rules, seed allocation/clone proofs, read soundness/freshness and ranked-path determinism. Intermediate elaboration failures included a reserved constructor case label, private result-wrapper definitional equality, allocation-reference simplification, Boolean-versus-propositional map tests, unavailable loop names and adjacent declaration comments; they were corrected before the final receipt. One short RED `lake env lean` probe accidentally overlapped an earlier product rebuild; all final twenty commands ran serially. The unchanged Bridge.Certificate line 185 unnecessarySimpa suggestion was replayed. The missing universal-interface and correspondence-target failures remain open after these passing checks.

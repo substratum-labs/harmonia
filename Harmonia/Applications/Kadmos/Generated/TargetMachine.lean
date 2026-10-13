@@ -264,6 +264,24 @@ def allocObject (m : TargetMachine) (o : HeapObject) : TargetMachine × ObjRef :
   let ref := m.nextObject
   ({ m with objects := (ref, o) :: m.objects, nextObject := ref + 1 }, ref)
 
+@[simp] theorem allocObject_ref (m : TargetMachine) (o : HeapObject) :
+    (allocObject m o).2 = m.nextObject := rfl
+
+/-- Replacing a fresh allocation cannot rewrite an older object. -/
+theorem replaceObject_allocObject {m blank value}
+    (hf : ∀ e ∈ m.objects, e.1 ≠ m.nextObject) :
+    replaceObject (allocObject m blank).1 m.nextObject value =
+      .ok (allocObject m value).1 := by
+  have hm : m.objects.map (fun entry =>
+      (entry.1, if entry.1 = m.nextObject then value else entry.2)) = m.objects := by
+    calc
+      _ = m.objects.map id := List.map_congr_left (by
+        intro entry hEntry
+        simp [hf entry hEntry])
+      _ = _ := List.map_id _
+  simp [replaceObject, allocObject, objectAt, hm,
+    Bind.bind, Pure.pure, Except.bind, Except.pure]
+
 -- JS and Python use different container truth rules. This function has no
 -- reference-model dependency, and malformed object references fail explicitly.
 def sourceTruthy (lang : TargetLang) (m : TargetMachine)
