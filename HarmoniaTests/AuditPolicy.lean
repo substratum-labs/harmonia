@@ -60,6 +60,7 @@ def kadmosWorldSourceModules : Array Name := #[
   `Harmonia.Applications.Kadmos.Bridge.Certificate,
   `Harmonia.Applications.Kadmos.Bridge.Fixtures,
   `Harmonia.Applications.Kadmos.Generated.BalanceModel,
+  `Harmonia.Applications.Kadmos.Generated.BalancePrograms,
   `Harmonia.Applications.Kadmos.Generated.BalanceSimulation,
   `Harmonia.Applications.Kadmos.Generated.Fixtures,
   `Harmonia.Applications.Kadmos.Generated.SourceGrammar,
@@ -179,6 +180,7 @@ namespace HarmoniaAudit
 
 def kadmosGeneratedK02SourceModules : Array Name := #[
   `Harmonia.Applications.Kadmos.Generated.BalanceModel,
+  `Harmonia.Applications.Kadmos.Generated.BalancePrograms,
   `Harmonia.Applications.Kadmos.Generated.BalanceSimulation,
   `Harmonia.Applications.Kadmos.Generated.Fixtures,
   `Harmonia.Applications.Kadmos.Generated.SourceGrammar,

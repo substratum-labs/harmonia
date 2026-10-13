@@ -1,8 +1,91 @@
+import Harmonia.Applications.Kadmos.Generated.BalancePrograms
 import Harmonia.Applications.Kadmos.Generated.TargetSimulation
 import Harmonia.Applications.Kadmos.Generated.TargetObservation
 import Harmonia.Applications.Kadmos.Generated.TargetCertificate
 
 namespace Harmonia.Applications.Kadmos.Generated
+
+/-- Fixed seed-independent preparation of the actual admitted BALANCE AST.
+    The fallback is excluded by `balancePreparation_success`. -/
+def balancePreparation (lang : TargetLang) : TargetMachine × TargetFrame :=
+  (targetPrepareConstructor 100 (balanceProgram lang)).toOption.getD
+    (TargetMachine.empty, ⟨"module", [], [], [], none, .normal⟩)
+
+set_option maxRecDepth 65536 in
+set_option maxHeartbeats 10000000 in
+theorem balancePreparation_total (lang : TargetLang) :
+    (targetPrepareConstructor 100 (balanceProgram lang)).toOption.isSome = true := by
+  cases lang with
+  | ts =>
+    rw [balanceProgram_of_parse BalancePrograms.balanceTsProgram_source]
+    decide +kernel
+  | python =>
+    rw [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]
+    decide +kernel
+
+/-- Closed kernel preparation is lifted to an exact executable equality;
+    there is no symbolic input in the computation certified above. -/
+theorem balancePreparation_success (lang : TargetLang) :
+    targetPrepareConstructor 100 (balanceProgram lang) = .ok (balancePreparation lang) := by
+  have h := balancePreparation_total lang
+  unfold balancePreparation
+  cases he : targetPrepareConstructor 100 (balanceProgram lang) with
+  | error e => simp [he, Except.toOption] at h
+  | ok prepared => rfl
+
+set_option maxRecDepth 65536 in
+set_option maxHeartbeats 10000000 in
+/-- The executed fixed prefix has live unique heap addresses and captures.
+    This is the physical heap check, not a canonical-globals assumption. -/
+theorem balancePreparation_heapWF (lang : TargetLang) :
+    HeapWF lang (balancePreparation lang).1 := by
+  cases lang with
+  | ts =>
+    unfold balancePreparation
+    rw [balanceProgram_of_parse BalancePrograms.balanceTsProgram_source]
+    decide +kernel
+  | python =>
+    unfold balancePreparation
+    rw [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]
+    decide +kernel
+
+set_option maxRecDepth 65536 in
+set_option maxHeartbeats 10000000 in
+/-- The retained module frame refers to the preparation's live cells. -/
+theorem balancePreparation_frameWF (lang : TargetLang) :
+    FrameWF (balancePreparation lang).1 (balancePreparation lang).2 := by
+  unfold FrameWF
+  cases lang with
+  | ts =>
+    unfold balancePreparation
+    rw [balanceProgram_of_parse BalancePrograms.balanceTsProgram_source]
+    decide +kernel
+  | python =>
+    unfold balancePreparation
+    rw [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]
+    decide +kernel
+
+set_option maxRecDepth 65536 in
+set_option maxHeartbeats 10000000 in
+theorem balanceProgram_lang (lang : TargetLang) : (balanceProgram lang).lang = lang := by
+  cases lang with
+  | ts =>
+    rw [balanceProgram_of_parse BalancePrograms.balanceTsProgram_source]
+    rfl
+  | python =>
+    rw [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]
+    rfl
+
+/-- The canonical constructor begins at the certified fixed preparation.
+    Allocation and actual constructor/helper execution remain on the RHS. -/
+theorem targetConstruct_balance_prepared (lang : TargetLang) (b : Int) :
+    targetConstruct (balanceProgram lang) (canonicalBalanceSeed lang b) =
+      targetConstructFromPrepared 100 (balanceProgram lang)
+        (balancePreparation lang).1 (balancePreparation lang).2
+        (canonicalBalanceSeed lang b) := by
+  apply targetConstructWithFuel_of_prepared
+  · simp only [canonicalBalanceSeed, balanceProgram_lang]
+  · exact balancePreparation_success lang
 
 /-- Convert the source safe-signed interval to the host's absolute-value
     check. This is symbolic in the amount and uses no enumeration. -/
@@ -53,6 +136,20 @@ def emptyBalanceHistory (lang : TargetLang) (m : TargetMachine) : HeapObject :=
   ⟨(if lang == .ts then .jsArray else .pythonList),
     (if lang == .ts then some m.objectPrototype else none),
     [], [], [], false, false⟩
+
+/-- Every bounded balance reaches the actual constructor call with a
+    canonical allocated seed, after the fixed module/class prefix. -/
+theorem targetConstruct_balance_call (lang : TargetLang) {b : Int}
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S) :
+    targetConstruct (balanceProgram lang) (canonicalBalanceSeed lang b) =
+      targetConstructorCall 100 (balanceProgram lang)
+        (allocObject (balancePreparation lang).1
+          (balanceHeapObject lang (balancePreparation lang).1 b)).1
+        (balancePreparation lang).2
+        (.object (balancePreparation lang).1.nextObject) := by
+  rw [targetConstruct_balance_prepared]
+  apply targetConstructFromPrepared_of_seed
+  exact allocateSeed_balance (balance_natAbs hb)
 
 set_option maxRecDepth 4096 in
 /-- One-key numeric context cloning needs host budget two, uniformly in b.

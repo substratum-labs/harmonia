@@ -1930,6 +1930,80 @@ private def installTSMethods (program : TargetProgram) (m : TargetMachine)
   let (updated, methods) := installTSMethodsGo m moduleFrame program.functions
   { updated with classMethods := methods }
 
+/-- The seed-independent module, method installation, and class-field phase.
+    The frame is retained because actual constructor closures use module locals. -/
+def targetPrepareConstructor (fuel : Nat) (program : TargetProgram) :
+    Except TargetError (TargetMachine × TargetFrame) := do
+  let moduleFrame : TargetFrame := ⟨"module", [], [], [], none, .normal⟩
+  let moduleResult ← execStmt fuel program (initialHostMachine program.lang)
+    moduleFrame program.moduleInit
+  if moduleResult.control != .normal then throw .wrongControl
+  let machine ←
+    if program.lang == .ts then do
+      let withMethods := installTSMethods program moduleResult.machine moduleResult.frame
+      let fieldsFrame : TargetFrame :=
+        ⟨"WorldChecker.fields", [], [], moduleResult.frame.locals,
+          some withMethods.checkerRef, .normal⟩
+      let fields ← execStmt fuel program withMethods fieldsFrame program.classFields
+      if fields.control != .normal then throw .wrongControl
+      pure fields.machine
+    else .ok moduleResult.machine
+  return (machine, moduleResult.frame)
+
+/-- Execute the actual constructor after preparation and external seed allocation.
+    This does not replace any generated helper with a host primitive. -/
+def targetConstructFromPrepared (fuel : Nat) (program : TargetProgram)
+    (machine : TargetMachine) (moduleFrame : TargetFrame) (seed : TargetSeed) :
+    Except TargetError TargetMachine := do
+  let (withSeed, seedValue) ← allocateSeed machine seed
+  let methodName := if program.lang == .ts then "constructor" else "__init__"
+  let receiverName := if program.lang == .ts then "this" else "self"
+  let callFrame : TargetFrame :=
+    ⟨"construct", [], [], moduleFrame.locals,
+      some withSeed.checkerRef, .normal⟩
+  -- The seed is a heap reference supplied as an explicit argument.
+  let (withArgument, address) := allocCell withSeed seedValue true
+  let argumentFrame := { callFrame with locals := [("initialContext", address)] }
+  let actualCall : TargetExpr :=
+    .call (.property (.local receiverName) methodName)
+      (.sequence (.local "initialContext") .empty)
+  let result ← evalExpr fuel program withArgument argumentFrame actualCall
+  match result.result with
+  | .ok _ => return result.machine
+  | .error e => throw (.sourceException e)
+
+
+/-- Invoke the parsed constructor with a physically allocated seed value. -/
+def targetConstructorCall (fuel : Nat) (program : TargetProgram)
+    (withSeed : TargetMachine) (moduleFrame : TargetFrame) (seedValue : TargetValue) :
+    Except TargetError TargetMachine := do
+  let methodName := if program.lang == .ts then "constructor" else "__init__"
+  let receiverName := if program.lang == .ts then "this" else "self"
+  let callFrame : TargetFrame :=
+    ⟨"construct", [], [], moduleFrame.locals,
+      some withSeed.checkerRef, .normal⟩
+  -- The seed is a heap reference supplied as an explicit argument.
+  let (withArgument, address) := allocCell withSeed seedValue true
+  let argumentFrame := { callFrame with locals := [("initialContext", address)] }
+  let actualCall : TargetExpr :=
+    .call (.property (.local receiverName) methodName)
+      (.sequence (.local "initialContext") .empty)
+  let result ← evalExpr fuel program withArgument argumentFrame actualCall
+  match result.result with
+  | .ok _ => return result.machine
+  | .error e => throw (.sourceException e)
+
+
+/-- A physical allocation equality isolates the actual generated call. -/
+theorem targetConstructFromPrepared_of_seed {fuel program machine moduleFrame seed withSeed seedValue}
+    (hs : allocateSeed machine seed = .ok (withSeed, seedValue)) :
+    targetConstructFromPrepared fuel program machine moduleFrame seed =
+      targetConstructorCall fuel program withSeed moduleFrame seedValue := by
+  simp only [targetConstructFromPrepared, hs, Bind.bind, Except.bind,
+    targetConstructorCall]
+
+
+
 def targetConstructWithFuel (fuel : Nat) (program : TargetProgram) (seed : TargetSeed) :
     Except TargetError TargetMachine := do
   if seed.lang != program.lang then throw .invalidTag
@@ -1963,6 +2037,51 @@ def targetConstructWithFuel (fuel : Nat) (program : TargetProgram) (seed : Targe
   match result.result with
   | .ok _ => return result.machine
   | .error e => throw (.sourceException e)
+
+
+/-- A preparation equality isolates the fixed prefix without unfolding the
+    interpreter at a symbolic seed. The original entrypoint remains unchanged. -/
+theorem targetConstructWithFuel_of_prepared {fuel program seed machine moduleFrame}
+    (hl : seed.lang = program.lang)
+    (hp : targetPrepareConstructor fuel program = .ok (machine, moduleFrame)) :
+    targetConstructWithFuel fuel program seed =
+      targetConstructFromPrepared fuel program machine moduleFrame seed := by
+  unfold targetPrepareConstructor at hp
+  unfold targetConstructWithFuel targetConstructFromPrepared
+  simp only [hl, bne_self_eq_false, Bool.false_eq_true, ↓reduceIte]
+  cases hm : execStmt fuel program (initialHostMachine program.lang)
+      ⟨"module", [], [], [], none, .normal⟩ program.moduleInit with
+  | error e => simp [hm, Bind.bind, Except.bind] at hp
+  | ok result =>
+    simp only [hm, Bind.bind, Except.bind] at hp ⊢
+    cases hc : (result.control != .normal) with
+    | true => simp [hc, Pure.pure, Except.pure, Bind.bind, Except.bind] at hp
+    | false =>
+      simp only [hc, Bool.false_eq_true, ↓reduceIte, Pure.pure, Except.pure,
+        Bind.bind, Except.bind] at hp ⊢
+      cases ht : (program.lang == .ts) with
+      | true =>
+        simp only [ht, ↓reduceIte] at hp ⊢
+        cases hf : execStmt fuel program
+            (installTSMethods program result.machine result.frame)
+            ⟨"WorldChecker.fields", [], [], result.frame.locals,
+              some (installTSMethods program result.machine result.frame).checkerRef, .normal⟩
+            program.classFields with
+        | error e => simp [hf, Bind.bind, Except.bind] at hp
+        | ok fields =>
+          simp only [hf, Bind.bind, Except.bind] at hp ⊢
+          cases hfc : (fields.control != .normal) with
+          | true => simp [hfc, Pure.pure, Except.pure, Bind.bind, Except.bind] at hp
+          | false =>
+            simp only [hfc, Bool.false_eq_true, ↓reduceIte, Pure.pure, Except.pure,
+              Bind.bind, Except.bind, Except.ok.injEq, Prod.mk.injEq] at hp ⊢
+            obtain ⟨rfl, rfl⟩ := hp
+            rfl
+      | false =>
+        simp only [ht, Bool.false_eq_true, ↓reduceIte, Pure.pure, Except.pure,
+          Bind.bind, Except.bind, Except.ok.injEq, Prod.mk.injEq] at hp ⊢
+        obtain ⟨rfl, rfl⟩ := hp
+        rfl
 
 def targetConstruct (program : TargetProgram) (seed : TargetSeed) :
     Except TargetError TargetMachine :=

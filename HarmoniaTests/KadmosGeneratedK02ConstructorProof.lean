@@ -57,3 +57,26 @@ theorem kadmos_generated_balanceProgram_python :
 
 #print axioms kadmos_generated_balanceProgram_ts
 #print axioms kadmos_generated_balanceProgram_python
+
+-- Seed-independent closed execution, followed by symbolic allocation.
+-- These phase facts do not claim the remaining constructor call is total.
+#print axioms targetConstructWithFuel_of_prepared
+#print axioms targetConstructFromPrepared_of_seed
+#print axioms balancePreparation_total
+#print axioms balancePreparation_success
+#print axioms balanceProgram_lang
+#print axioms targetConstruct_balance_prepared
+#print axioms targetConstruct_balance_call
+
+example (lang : TargetLang) {b : Int}
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S) :
+    targetConstruct (balanceProgram lang) (canonicalBalanceSeed lang b) =
+      targetConstructorCall 100 (balanceProgram lang)
+        (allocObject (balancePreparation lang).1
+          (balanceHeapObject lang (balancePreparation lang).1 b)).1
+        (balancePreparation lang).2
+        (.object (balancePreparation lang).1.nextObject) :=
+  targetConstruct_balance_call lang hb
+
+#print axioms balancePreparation_heapWF
+#print axioms balancePreparation_frameWF
