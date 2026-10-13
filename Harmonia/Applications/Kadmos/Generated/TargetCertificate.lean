@@ -149,4 +149,58 @@ theorem checkGenerated_accept_if (lang : TargetLang) (source : String)
     simp [checkGeneratedSource, hSource, hParser, hWorld, hDefaults rfl]
   · simp [checkGeneratedSource, hSource, hParser, hWorld, hTS]
 
+/-- The actual pinned first-call sources, selected by target language. -/
+def balanceSource : TargetLang → String
+  | .ts => balanceTsSource
+  | .python => balancePySource
+
+/-- Canonical AST obtained from the actual pinned source decoder. The error
+    arm is unreachable whenever a BALANCE certificate has been accepted;
+    `balanceProgram_of_parse` also binds this definition to closed AST facts.
+    This definition provides no execution or source-grammar theorem. -/
+def balanceProgram (lang : TargetLang) : TargetProgram :=
+  (parseGenerated lang (balanceSource lang)).toOption.getD
+    ⟨lang, .empty, .empty, [], .undefined, .undefined⟩
+
+theorem balanceProgram_of_parse {lang program}
+    (h : parseGenerated lang (balanceSource lang) = .ok program) :
+    balanceProgram lang = program := by
+  simp only [balanceProgram, h, Except.toOption, Option.getD]
+
+/-- Extract exact source ownership and decoder output from admission. This
+    is a certificate inversion lemma, not declarative parser soundness. -/
+theorem checkGenerated_source {lang source expected raw candidate program}
+    (hPinned : pinnedSource lang raw.name = some expected)
+    (hc : checkGenerated lang source raw candidate = .ok program) :
+    source = expected ∧ parseGenerated lang expected = .ok program := by
+  unfold checkGenerated at hc
+  cases hb : checkBridge raw candidate with
+  | error error => simp [hb] at hc
+  | ok checked =>
+      simp only [hb, checkGeneratedSource, hPinned] at hc
+      by_cases hs : source = expected
+      · subst source
+        simp only [bne_self_eq_false, Bool.false_eq_true, ↓reduceIte] at hc
+        cases hp : parseGenerated lang expected with
+        | error error => simp [hp] at hc
+        | ok actual =>
+            simp only [hp] at hc
+            split at hc
+            · cases hc
+            · split at hc
+              · cases hc
+              · have he : actual = program := Except.ok.inj hc
+                exact ⟨rfl, congrArg Except.ok he⟩
+      · simp [hs] at hc
+
+/-- Every accepted BALANCE certificate names precisely the canonical program
+    and pinned source; no target execution result is assumed. -/
+theorem checkGenerated_balanceProgram {lang source program}
+    (hc : checkGenerated lang source balanceRaw balanceCandidate = .ok program) :
+    source = balanceSource lang ∧ program = balanceProgram lang := by
+  have hp : pinnedSource lang balanceRaw.name = some (balanceSource lang) := by
+    cases lang <;> rfl
+  obtain ⟨hs, hparse⟩ := checkGenerated_source hp hc
+  exact ⟨hs, (balanceProgram_of_parse hparse).symm⟩
+
 end Harmonia.Applications.Kadmos.Generated

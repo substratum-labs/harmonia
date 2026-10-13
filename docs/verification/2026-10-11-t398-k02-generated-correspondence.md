@@ -625,3 +625,35 @@ Separate universal acceptance probes retain their failures:
 | `lake build kadmosGeneratedK02CorrespondenceTest` | Exit 1: unknown target |
 
 Universal constructor composition, the three branch lemmas, checked whole-source admission and one-call correspondence have not been proved. Existing constructor/step roots still establish boundary facts. No correspondence stub or weakened theorem was added, no task-complete ledger line, push or merge; retain the incomplete plan workspace for resumption.
+
+
+## Canonical BALANCE program and admission binding — 2026-10-12
+
+Resumed from clean `d26ee6e61180862d17fb6bf83f236efa4c853d60` in the specified isolated `feat/t396-generated-correspondence` worktree. **Stage 3c and Tasks 2B, 3 and 4 remain incomplete.** This change defines the requested canonical program and proves certificate inversion; it does not prove universal constructor totality, branch simulation or one-call correspondence.
+
+`TargetCertificate.lean` now defines `balanceSource` from the two actual pinned fixtures and `balanceProgram` from their parser output. Both unconditional closed kernel equalities in ConstructorProof bind it to the existing actual-source TS/Python ASTs. The fallback empty AST is excluded by those equalities for both pinned sources and by admission inversion for accepted certificates. `checkGenerated_source` extracts exact pinned-source equality and parser `.ok` from admission; `checkGenerated_balanceProgram` then proves that an arbitrary accepted BALANCE source/program pair equals the canonical source/program. These lemmas assume no target execution result, ideal generated helper or heap representation. They establish byte/decoder ownership, **not** independent source-language grammar soundness.
+
+Observed RED→GREEN: ConstructorProofTest first exited 1 for missing `balanceProgram`/`balanceProgram_of_parse`, then exited 0 after implementation. Both canonical AST equalities and the generic admission/balance-binding lemmas print `[propext]`. The Generated strict audit observes only `[propext, Quot.sound]`. `BalanceSimulation` imports the application certificate definitions; the target executor and generic relation retain their independent import boundaries. No interpreter body, Core/Distributed/legacy semantics, fixture literal, toolchain pin or audit policy changed.
+
+Actual independent read-only Codex CLI review used **gpt-6.1-sol/high**, session `01a1338d-f270-7821-9e3c-c35bc4c0d79c`, and exited 0. It reviewed a frozen `git archive d26ee6e` snapshot plus the four-file patch and accepted the canonical binding slice. **It rejected whole-mission completion**, reporting two Important unresolved requirements: the five universal constructor/branch/correspondence proofs, and checked whole-program source syntax. No Critical or Minor patch correctness findings were reported. All four reviewed source postimages match the final source byte-for-byte. The reviewer checked the diff, plan/spec, source, manifest, import/audit configuration and read-only artifact checker; it did not run Lean/Lake, axiom audits, native runtime or hosted CI, and did not independently authenticate archive ancestry. Owner serial commands supply local kernel evidence. The Important mission gaps remain requirements, not deferred minors or accepted deviations.
+
+Final strict Generated audit: **8,582 theorems / 11,781 declarations**, observed/whitelist **`[propext, Quot.sound]`** (+9/+13 from the baseline). The refreshed portable axiom listing has exactly 8,582 unique entries; wrapped audit output was normalized and every dependency checked against the strict whitelist. Foundation audit: 52 theorems, observed `[propext, Quot.sound]`, historical policy unchanged. World compatibility: 9,667 theorems / 13,408 declarations, historical observed/whitelist `[propext, Quot.sound, Classical.choice]` reported separately. Inventory unchanged: 20 product modules, 37 test/audit modules, 63 certified closure modules, 28 test targets, 32 World inventory modules. Inventory tests: 13 passed. All ten artifact checks passed; fixture literal SHA-256 remains `3006d2ece39affff067b4116fe16a3aeb61cff4fd9ba0dac2fba43fd574382c3`. Lean remains `leanprover/lean4:v4.16.0`. The existing Bridge.Certificate unnecessarySimpa warning remains. Native-runtime and hosted-Linux checks were not rerun or inferred.
+
+The twelve owner commands ran serially; eleven exited 0 and the absent correspondence target exited 1. The long strict-audit command rebuilt existing source-certificate proofs; its Lake workers ran concurrently within that single Lake process. No independent Lake process overlapped it.
+
+| Command | Exit |
+| --- | ---: |
+| `lake build` | 0 |
+| `lake build kadmosGeneratedK02ConstructorProofTest` | 0 |
+| `lake build kadmosGeneratedK02BalanceStepProofTest` | 0 |
+| `lake build kadmosGeneratedK02CertificateTest` | 0 |
+| `lake build kadmosGeneratedK02CorrespondenceTest` | 1 |
+| `lake build foundationsTest foundationsAudit foundationsAuditRejection` | 0 |
+| `lake build kadmosGeneratedK02Audit` | 0 |
+| `lake build kadmosGeneratedK02AuditRejection` | 0 |
+| `lake build kadmosWorldTest kadmosWorldAudit kadmosWorldAuditRejection` | 0 |
+| `python3 scripts/check_kadmos_generated_k02_audit.py` | 0 |
+| `python3 scripts/test_kadmos_generated_k02_audit.py` | 0 |
+| `python3 scripts/check_kadmos_generated_k02_artifacts.py` | 0 |
+
+A separate pinned Lean interface probe exited 1: `balanceProgram` and `checkGenerated_balanceProgram` are present, while `targetConstruct_sound`, `step_guard_reject`, `step_accept`, `step_bounds_reject`, `k02_balance_one_call`, `CanonicalGlobals`, `ProgramDerives` and `parseGenerated_sound` remain unknown. Constructor/step proof roots still contain boundary facts, not universal execution proofs. The correspondence module/test target was not replaced with a placeholder. Source-derived module/class/helper execution, collection/default/loop coverage, HeapWF preservation, uniform entrypoint ranks and whole-source admission remain open. No task-complete ledger line, full-mission acceptance, push or merge; retain the plan workspace for resumption.

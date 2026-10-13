@@ -43,3 +43,17 @@ theorem kadmos_generated_clone_balance_depth_one {lang m b ref}
 #print axioms cloneValue_balance
 #print axioms HeapWF.object_fresh
 #print axioms signed_natAbs
+
+-- Canonical production programs must be exactly the actual-source ASTs.
+theorem kadmos_generated_balanceProgram_ts :
+    balanceProgram .ts = HarmoniaTests.KadmosGeneratedK02ClosedPrograms.balanceTsProgram := by
+  exact balanceProgram_of_parse
+    HarmoniaTests.KadmosGeneratedK02ClosedPrograms.balanceTsProgram_source
+
+theorem kadmos_generated_balanceProgram_python :
+    balanceProgram .python = HarmoniaTests.KadmosGeneratedK02ClosedPrograms.balancePyProgram := by
+  exact balanceProgram_of_parse
+    HarmoniaTests.KadmosGeneratedK02ClosedPrograms.balancePyProgram_source
+
+#print axioms kadmos_generated_balanceProgram_ts
+#print axioms kadmos_generated_balanceProgram_python

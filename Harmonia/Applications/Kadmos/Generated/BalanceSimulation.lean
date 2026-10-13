@@ -1,5 +1,6 @@
 import Harmonia.Applications.Kadmos.Generated.TargetSimulation
 import Harmonia.Applications.Kadmos.Generated.TargetObservation
+import Harmonia.Applications.Kadmos.Generated.TargetCertificate
 
 namespace Harmonia.Applications.Kadmos.Generated
 
