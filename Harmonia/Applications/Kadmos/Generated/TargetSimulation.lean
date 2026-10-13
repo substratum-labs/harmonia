@@ -21,6 +21,9 @@ inductive ResumeFrame where
   | stmtSequence (rest : TargetStmt)
   | stmtReturn | stmtThrow
   | stmtAssignField (name : String)
+  | stmtLetLocal (name : String) (mutable : Bool)
+  | stmtAssignLocal (name : String) (globals : List (String × CellRef))
+  | stmtDoExpr
   | stmtProtect (catchType binder : Option String) (handler cleanup : TargetStmt)
   | stmtHandledFinally (cleanup : TargetStmt)
   | stmtFinally (saved : ControlResult)
@@ -79,6 +82,44 @@ inductive SmallStep (program : TargetProgram) : TargetConfig → TargetConfig �
       SmallStep program ⟨m, f, .value right, .binaryRight op left :: c⟩
         ⟨m, f, exprResultFocus result, c⟩
 
+  | stmtLetLocalEnter {m f c name mutable expr} :
+      SmallStep program ⟨m, f, .exec (.letLocal name mutable expr), c⟩
+        ⟨m, f, .eval expr, .stmtLetLocal name mutable :: c⟩
+  | stmtLetLocalFinish {m f c name mutable value} :
+      SmallStep program ⟨m, f, .value value, .stmtLetLocal name mutable :: c⟩
+        ⟨(allocCell m value mutable).1,
+          { f with locals := (name, m.nextCell) :: f.locals }, .exit .normal, c⟩
+  | stmtLetLocalRaised {m f c name mutable value} :
+      SmallStep program ⟨m, f, .exit (.raised value), .stmtLetLocal name mutable :: c⟩
+        ⟨m, f, .exit (.raised value), c⟩
+  | stmtAssignLocalEnter {m f c name expr} :
+      SmallStep program ⟨m, f, .exec (.assign (.local name) expr), c⟩
+        ⟨m, f, .eval expr, .stmtAssignLocal name m.globals :: c⟩
+  | stmtAssignLocalFinish {m final f c name globals ref value}
+      (hAddress : (f.locals.lookup name).orElse (fun _ =>
+        (f.captures.lookup name).orElse (fun _ => globals.lookup name)) = some ref)
+      (hWrite : writeCell m ref value = .ok final) :
+      SmallStep program ⟨m, f, .value value, .stmtAssignLocal name globals :: c⟩
+        ⟨final, f, .exit .normal, c⟩
+  | stmtAssignPythonLocal {m f c name globals value}
+      (hLang : program.lang = .python)
+      (hAddress : (f.locals.lookup name).orElse (fun _ =>
+        (f.captures.lookup name).orElse (fun _ => globals.lookup name)) = none) :
+      SmallStep program ⟨m, f, .value value, .stmtAssignLocal name globals :: c⟩
+        ⟨(allocCell m value true).1,
+          { f with locals := (name, m.nextCell) :: f.locals }, .exit .normal, c⟩
+  | stmtAssignLocalRaised {m f c name globals value} :
+      SmallStep program ⟨m, f, .exit (.raised value), .stmtAssignLocal name globals :: c⟩
+        ⟨m, f, .exit (.raised value), c⟩
+  | stmtDoExprEnter {m f c expr} :
+      SmallStep program ⟨m, f, .exec (.doExpr expr), c⟩
+        ⟨m, f, .eval expr, .stmtDoExpr :: c⟩
+  | stmtDoExprFinish {m f c value} :
+      SmallStep program ⟨m, f, .value value, .stmtDoExpr :: c⟩
+        ⟨m, f, .exit .normal, c⟩
+  | stmtDoExprRaised {m f c value} :
+      SmallStep program ⟨m, f, .exit (.raised value), .stmtDoExpr :: c⟩
+        ⟨m, f, .exit (.raised value), c⟩
   | stmtIfEnter {m f c cond yes no} :
       SmallStep program ⟨m, f, .exec (.ifThenElse cond yes no), c⟩
         ⟨m, f, .eval cond, .stmtIf yes no :: c⟩
@@ -95,6 +136,10 @@ inductive SmallStep (program : TargetProgram) : TargetConfig → TargetConfig �
         ⟨m, f, .exit (.raised value), c⟩
   | stmtEmpty {m f c} :
       SmallStep program ⟨m, f, .exec .empty, c⟩ ⟨m, f, .exit .normal, c⟩
+  | stmtNonlocalNames {m f c names}
+      (h : names.all (fun name => (f.captures.lookup name).isSome) = true) :
+      SmallStep program ⟨m, f, .exec (.nonlocalNames names), c⟩
+        ⟨m, f, .exit .normal, c⟩
   | stmtSequence {m f c first rest} :
       SmallStep program ⟨m, f, .exec (.sequence first rest), c⟩
         ⟨m, f, .exec first, .stmtSequence rest :: c⟩
@@ -458,6 +503,40 @@ theorem DepthDerivesExpr.machine_eq {program m f expr out rank}
     first/rest, body/cleanup and expression siblings share predecessor fuel. -/
 inductive DepthDerivesStmt (program : TargetProgram) :
     TargetMachine → TargetFrame → TargetStmt → StmtOutcome → Nat → Prop where
+  | letLocal {m f name mutable expr final value rank}
+      (hExpr : DepthDerivesExpr program m f expr ⟨final, .ok value⟩ rank) :
+      DepthDerivesStmt program m f (.letLocal name mutable expr)
+        ⟨(allocCell final value mutable).1,
+          { f with locals := (name, final.nextCell) :: f.locals }, .normal⟩ (1 + rank)
+  | letLocalRaised {m f name mutable expr final value rank}
+      (hExpr : DepthDerivesExpr program m f expr ⟨final, .error value⟩ rank) :
+      DepthDerivesStmt program m f (.letLocal name mutable expr)
+        ⟨final, f, .raised value⟩ (1 + rank)
+  | assignLocal {m f name expr middle final value ref rank}
+      (hExpr : DepthDerivesExpr program m f expr ⟨middle, .ok value⟩ rank)
+      (hAddress : (f.locals.lookup name).orElse (fun _ =>
+        (f.captures.lookup name).orElse (fun _ => m.globals.lookup name)) = some ref)
+      (hWrite : writeCell middle ref value = .ok final) :
+      DepthDerivesStmt program m f (.assign (.local name) expr)
+        ⟨final, f, .normal⟩ (1 + rank)
+  | assignPythonLocal {m f name expr final value rank}
+      (hLang : program.lang = .python)
+      (hExpr : DepthDerivesExpr program m f expr ⟨final, .ok value⟩ rank)
+      (hAddress : (f.locals.lookup name).orElse (fun _ =>
+        (f.captures.lookup name).orElse (fun _ => m.globals.lookup name)) = none) :
+      DepthDerivesStmt program m f (.assign (.local name) expr)
+        ⟨(allocCell final value true).1,
+          { f with locals := (name, final.nextCell) :: f.locals }, .normal⟩ (1 + rank)
+  | assignLocalRaised {m f name expr final value rank}
+      (hExpr : DepthDerivesExpr program m f expr ⟨final, .error value⟩ rank) :
+      DepthDerivesStmt program m f (.assign (.local name) expr)
+        ⟨final, f, .raised value⟩ (1 + rank)
+  | doExpr {m f expr final value rank}
+      (hExpr : DepthDerivesExpr program m f expr ⟨final, .ok value⟩ rank) :
+      DepthDerivesStmt program m f (.doExpr expr) ⟨final, f, .normal⟩ (1 + rank)
+  | doExprRaised {m f expr final value rank}
+      (hExpr : DepthDerivesExpr program m f expr ⟨final, .error value⟩ rank) :
+      DepthDerivesStmt program m f (.doExpr expr) ⟨final, f, .raised value⟩ (1 + rank)
   | ifTrue {m f cond yes no middle value out rCond rBranch}
       (hCond : DepthDerivesExpr program m f cond ⟨middle, .ok value⟩ rCond)
       (hTruth : sourceTruthy program.lang middle value = .ok true)
@@ -475,6 +554,9 @@ inductive DepthDerivesStmt (program : TargetProgram) :
       DepthDerivesStmt program m f (.ifThenElse cond yes no)
         ⟨final, f, .raised value⟩ (1 + rank)
   | empty {m f} : DepthDerivesStmt program m f .empty ⟨m, f, .normal⟩ 0
+  | nonlocalNames {m f names}
+      (h : names.all (fun name => (f.captures.lookup name).isSome) = true) :
+      DepthDerivesStmt program m f (.nonlocalNames names) ⟨m, f, .normal⟩ 0
   | returnVoid {m f} :
       DepthDerivesStmt program m f .returnVoid ⟨m, f, .returned .undefined⟩ 0
   | breakTarget {m f} (label : String) :
@@ -558,6 +640,27 @@ theorem stmt_path_runs_cont {program machine frame stmt outcome rank}
     Runs program ⟨machine, frame, .exec stmt, continuation⟩
       ⟨outcome.machine, outcome.frame, .exit outcome.control, continuation⟩ := by
   induction h generalizing continuation with
+  | letLocal he =>
+      exact ((Runs.single .stmtLetLocalEnter).trans (expr_path_runs_cont he _)).trans
+        (.single .stmtLetLocalFinish)
+  | letLocalRaised he =>
+      exact ((Runs.single .stmtLetLocalEnter).trans (expr_path_runs_cont he _)).trans
+        (.single .stmtLetLocalRaised)
+  | assignLocal he ha hw =>
+      exact ((Runs.single .stmtAssignLocalEnter).trans (expr_path_runs_cont he _)).trans
+        (.single (.stmtAssignLocalFinish ha hw))
+  | assignPythonLocal hl he ha =>
+      exact ((Runs.single .stmtAssignLocalEnter).trans (expr_path_runs_cont he _)).trans
+        (.single (.stmtAssignPythonLocal hl ha))
+  | assignLocalRaised he =>
+      exact ((Runs.single .stmtAssignLocalEnter).trans (expr_path_runs_cont he _)).trans
+        (.single .stmtAssignLocalRaised)
+  | doExpr he =>
+      exact ((Runs.single .stmtDoExprEnter).trans (expr_path_runs_cont he _)).trans
+        (.single .stmtDoExprFinish)
+  | doExprRaised he =>
+      exact ((Runs.single .stmtDoExprEnter).trans (expr_path_runs_cont he _)).trans
+        (.single .stmtDoExprRaised)
   | ifTrue hc ht hb ih =>
       exact (((Runs.single .stmtIfEnter).trans (expr_path_runs_cont hc _)).trans
         (.single (.stmtIfTrue ht))).trans (ih _)
@@ -568,6 +671,7 @@ theorem stmt_path_runs_cont {program machine frame stmt outcome rank}
       exact ((Runs.single .stmtIfEnter).trans (expr_path_runs_cont hc _)).trans
         (.single .stmtIfRaised)
   | empty => exact .single .stmtEmpty
+  | nonlocalNames h => exact .single (.stmtNonlocalNames h)
   | returnVoid => exact .single .stmtReturnVoid
   | breakTarget label => exact .single .stmtBreak
   | continueTarget label => exact .single .stmtContinue
@@ -620,10 +724,48 @@ theorem stmt_path_runs {program machine frame stmt outcome rank}
 
 /-- Reverse adequacy for the supported statement paths, including a mutating
     finalizer. No executable success is a premise of a semantic derivation. -/
+private theorem nonlocalNames_exec {program m f names k}
+    (h : names.all (fun name => (f.captures.lookup name).isSome) = true) :
+    execStmt (k + 1) program m f (.nonlocalNames names) = .ok ⟨m, f, .normal⟩ := by
+  induction names with
+  | nil => simp [execStmt, Bind.bind, Pure.pure, Except.bind, Except.pure]
+  | cons name rest ih =>
+      simp only [List.all_cons, Bool.and_eq_true] at h
+      have hn : (f.captures.lookup name).isNone = false := by
+        cases hh : f.captures.lookup name <;> simp_all
+      have ht := ih h.2
+      simp only [execStmt] at ht ⊢
+      simpa [List.forIn_cons, hn, Bind.bind, Pure.pure, Except.bind, Except.pure] using ht
+
 theorem execStmt_adequate {program machine frame stmt outcome rank k}
     (h : DepthDerivesStmt program machine frame stmt outcome rank)
     (hr : rank < k) : execStmt k program machine frame stmt = .ok outcome := by
   induction h generalizing k with
+  | @letLocal m f name mutable expr final value r he
+  | @letLocalRaised m f name mutable expr final value r he
+  | @assignLocalRaised m f name expr final value r he
+  | @doExpr m f expr final value r he
+  | @doExprRaised m f expr final value r he =>
+      cases k with
+      | zero => exact False.elim (by omega)
+      | succ k =>
+          have hk : r < k := by omega
+          simp [execStmt, evalExpr_adequate he hk, allocCell,
+            Bind.bind, Pure.pure, Except.bind, Except.pure]
+  | @assignLocal m f name expr middle final value ref r he ha hw =>
+      cases k with
+      | zero => exact False.elim (by omega)
+      | succ k =>
+          have hk : r < k := by omega
+          simp [execStmt, evalExpr_adequate he hk, ha, hw,
+            Bind.bind, Pure.pure, Except.bind, Except.pure]
+  | @assignPythonLocal m f name expr final value r hl he ha =>
+      cases k with
+      | zero => exact False.elim (by omega)
+      | succ k =>
+          have hk : r < k := by omega
+          simp [execStmt, evalExpr_adequate he hk, hl, ha, allocCell,
+            Bind.bind, Pure.pure, Except.bind, Except.pure]
   | @ifTrue m f cond yes no middle value out rc rb hc ht hb ih
   | @ifFalse m f cond yes no middle value out rc rb hc ht hb ih =>
       cases k with
@@ -644,6 +786,10 @@ theorem execStmt_adequate {program machine frame stmt outcome rank k}
       cases k with
       | zero => exact False.elim (by omega)
       | succ k => simp only [execStmt]
+  | nonlocalNames h =>
+      cases k with
+      | zero => exact False.elim (by omega)
+      | succ k => exact nonlocalNames_exec h
   | rethrow h =>
       cases k with
       | zero => exact False.elim (by omega)
@@ -731,6 +877,98 @@ theorem DepthDerivesStmt.deterministic {program m f stmt out₁ out₂ r₁ r₂
   have hk₁ : r₁ < max r₁ r₂ + 1 := Nat.lt_succ_of_le (Nat.le_max_left _ _)
   have hk₂ : r₂ < max r₁ r₂ + 1 := Nat.lt_succ_of_le (Nat.le_max_right _ _)
   exact Except.ok.inj ((execStmt_adequate h₁ hk₁).symm.trans (execStmt_adequate h₂ hk₂))
+
+/-- Explicit coverage for lexical statement soundness. Scalar children may
+    read captured cells and raise; generated calls are still outside this slice. -/
+inductive LexicalStmtSyntax : TargetStmt → Prop where
+  | letLocal {name mutable expr} (h : ScalarSyntax expr) :
+      LexicalStmtSyntax (.letLocal name mutable expr)
+  | assignLocal {name expr} (h : ScalarSyntax expr) :
+      LexicalStmtSyntax (.assign (.local name) expr)
+  | doExpr {expr} (h : ScalarSyntax expr) : LexicalStmtSyntax (.doExpr expr)
+
+/-- Every successful executable lexical statement has an unfueled derivation
+    with rank below the executable depth. Outer target errors (unbound TS name,
+    immutable cell, etc.) are never reclassified as successful source outcomes. -/
+theorem execLexical_sound {program m f stmt out k}
+    (hs : LexicalStmtSyntax stmt) (he : execStmt k program m f stmt = .ok out) :
+    ∃ rank, DepthDerivesStmt program m f stmt out rank ∧ rank < k := by
+  cases k with
+  | zero => simp [execStmt] at he
+  | succ k =>
+      cases hs with
+      | @letLocal name mutable expr hs =>
+          cases hv : evalExpr k program m f expr with
+          | error e => simp [execStmt, hv, Bind.bind, Except.bind] at he
+          | ok result =>
+              obtain ⟨r, hd, hr⟩ := evalScalar_sound hs hv
+              cases result with
+              | mk final result =>
+                cases result with
+                | error value =>
+                    simp only [execStmt, hv, Bind.bind, Pure.pure,
+                      Except.bind, Except.pure, Except.ok.injEq] at he
+                    cases he
+                    exact ⟨1 + r, .letLocalRaised hd, by omega⟩
+                | ok value =>
+                    simp only [execStmt, hv, Bind.bind, Pure.pure,
+                      Except.bind, Except.pure, Except.ok.injEq] at he
+                    cases he
+                    exact ⟨1 + r, .letLocal hd, by omega⟩
+      | @doExpr expr hs =>
+          cases hv : evalExpr k program m f expr with
+          | error e => simp [execStmt, hv, Bind.bind, Except.bind] at he
+          | ok result =>
+              obtain ⟨r, hd, hr⟩ := evalScalar_sound hs hv
+              cases result with
+              | mk final result =>
+                cases result with
+                | error value =>
+                    simp only [execStmt, hv, Bind.bind, Pure.pure,
+                      Except.bind, Except.pure, Except.ok.injEq] at he
+                    cases he
+                    exact ⟨1 + r, .doExprRaised hd, by omega⟩
+                | ok value =>
+                    simp only [execStmt, hv, Bind.bind, Pure.pure,
+                      Except.bind, Except.pure, Except.ok.injEq] at he
+                    cases he
+                    exact ⟨1 + r, .doExpr hd, by omega⟩
+      | @assignLocal name expr hs =>
+          cases hv : evalExpr k program m f expr with
+          | error e => simp [execStmt, hv, Bind.bind, Except.bind] at he
+          | ok result =>
+              obtain ⟨r, hd, hr⟩ := evalScalar_sound hs hv
+              cases result with
+              | mk middle result =>
+                cases result with
+                | error value =>
+                    simp only [execStmt, hv, Bind.bind, Pure.pure,
+                      Except.bind, Except.pure, Except.ok.injEq] at he
+                    cases he
+                    exact ⟨1 + r, .assignLocalRaised hd, by omega⟩
+                | ok value =>
+                    cases ha : (f.locals.lookup name).orElse (fun _ =>
+                      (f.captures.lookup name).orElse (fun _ => m.globals.lookup name)) with
+                    | some ref =>
+                        cases hw : writeCell middle ref value with
+                        | error e =>
+                            simp [execStmt, hv, ha, hw, Bind.bind,
+                              Pure.pure, Except.bind, Except.pure] at he
+                        | ok final =>
+                            simp only [execStmt, hv, ha, hw, Bind.bind, Pure.pure,
+                              Except.bind, Except.pure, Except.ok.injEq] at he
+                            cases he
+                            exact ⟨1 + r, .assignLocal hd ha hw, by omega⟩
+                    | none =>
+                        cases hl : program.lang with
+                        | ts =>
+                            simp [execStmt, hv, ha, hl, Bind.bind,
+                              Pure.pure, Except.bind, Except.pure] at he
+                        | python =>
+                            simp [execStmt, hv, ha, hl,
+                              Bind.bind, Pure.pure, Except.bind, Except.pure] at he
+                            cases he
+                            exact ⟨1 + r, .assignPythonLocal hl hd ha, by omega⟩
 
 /-- Finite address/descriptor checks. Values stored in the heap do not
     recursively traverse objects: liveness checks references, including cycles. -/

@@ -2,6 +2,139 @@ import Harmonia.Applications.Kadmos.Generated.BalanceSimulation
 
 open Harmonia.Applications.Kadmos.Generated
 
+-- Constructor/module bindings need physical cell allocation and lexical writes.
+theorem kadmos_generated_let_local_depth {program m f name mutable n} :
+    DepthDerivesStmt program m f (.letLocal name mutable (.integer n))
+      ⟨(allocCell m (integerValue program.lang n) mutable).1,
+        { f with locals := (name, m.nextCell) :: f.locals }, .normal⟩ 1 :=
+  .letLocal (.integer n)
+
+theorem kadmos_generated_assign_existing_depth {program m f name n ref final}
+    (ha : (f.locals.lookup name).orElse (fun _ =>
+      (f.captures.lookup name).orElse (fun _ => m.globals.lookup name)) = some ref)
+    (hw : writeCell m ref (integerValue program.lang n) = .ok final) :
+    DepthDerivesStmt program m f (.assign (.local name) (.integer n))
+      ⟨final, f, .normal⟩ 1 :=
+  .assignLocal (.integer n) ha hw
+
+theorem kadmos_generated_assign_python_fresh_depth {program m f name n}
+    (hl : program.lang = .python)
+    (ha : (f.locals.lookup name).orElse (fun _ =>
+      (f.captures.lookup name).orElse (fun _ => m.globals.lookup name)) = none) :
+    DepthDerivesStmt program m f (.assign (.local name) (.integer n))
+      ⟨(allocCell m (integerValue program.lang n) true).1,
+        { f with locals := (name, m.nextCell) :: f.locals }, .normal⟩ 1 :=
+  .assignPythonLocal hl (.integer n) ha
+
+theorem kadmos_generated_expression_statement_depth {program m f n} :
+    DepthDerivesStmt program m f (.doExpr (.integer n)) ⟨m, f, .normal⟩ 1 :=
+  .doExpr (.integer n)
+
+theorem kadmos_generated_lexical_sound {program m f name n out k}
+    (he : execStmt k program m f (.assign (.local name) (.integer n)) = .ok out) :
+    ∃ rank, DepthDerivesStmt program m f (.assign (.local name) (.integer n)) out rank ∧
+      rank < k :=
+  execLexical_sound (.assignLocal (.integer n)) he
+
+theorem kadmos_generated_nonlocal_depth {program m f name}
+    (hc : (f.captures.lookup name).isSome = true) :
+    DepthDerivesStmt program m f (.nonlocalNames [name]) ⟨m, f, .normal⟩ 0 :=
+  .nonlocalNames (by simpa using hc)
+
+#print axioms execLexical_sound
+
+theorem kadmos_generated_let_local_adequate {program m f name mutable n} :
+    execStmt 2 program m f (.letLocal name mutable (.integer n)) =
+      .ok ⟨(allocCell m (integerValue program.lang n) mutable).1,
+        { f with locals := (name, m.nextCell) :: f.locals }, .normal⟩ :=
+  execStmt_adequate kadmos_generated_let_local_depth (by decide)
+
+theorem kadmos_generated_let_local_runs {program m f name mutable n} :
+    StmtRuns program m f (.letLocal name mutable (.integer n))
+      ⟨(allocCell m (integerValue program.lang n) mutable).1,
+        { f with locals := (name, m.nextCell) :: f.locals }, .normal⟩ :=
+  stmt_path_runs kadmos_generated_let_local_depth
+
+theorem kadmos_generated_assign_existing_adequate {program m f name n ref final}
+    (ha : (f.locals.lookup name).orElse (fun _ =>
+      (f.captures.lookup name).orElse (fun _ => m.globals.lookup name)) = some ref)
+    (hw : writeCell m ref (integerValue program.lang n) = .ok final) :
+    execStmt 2 program m f (.assign (.local name) (.integer n)) = .ok ⟨final, f, .normal⟩ :=
+  execStmt_adequate (kadmos_generated_assign_existing_depth ha hw) (by decide)
+
+theorem kadmos_generated_assign_python_fresh_runs {program m f name n}
+    (hl : program.lang = .python)
+    (ha : (f.locals.lookup name).orElse (fun _ =>
+      (f.captures.lookup name).orElse (fun _ => m.globals.lookup name)) = none) :
+    StmtRuns program m f (.assign (.local name) (.integer n))
+      ⟨(allocCell m (integerValue program.lang n) true).1,
+        { f with locals := (name, m.nextCell) :: f.locals }, .normal⟩ :=
+  stmt_path_runs (kadmos_generated_assign_python_fresh_depth hl ha)
+
+theorem kadmos_generated_nonlocal_adequate {program m f name}
+    (hc : (f.captures.lookup name).isSome = true) :
+    execStmt 1 program m f (.nonlocalNames [name]) = .ok ⟨m, f, .normal⟩ :=
+  execStmt_adequate (kadmos_generated_nonlocal_depth hc) (by decide)
+
+theorem kadmos_generated_let_local_insufficient_depth {program m f name mutable n} :
+    execStmt 1 program m f (.letLocal name mutable (.integer n)) = .error .exhaustedFuel := by
+  simp [execStmt, evalExpr, Bind.bind, Pure.pure, Except.bind, Except.pure]
+
+-- A declaration shadows the captured cursor by allocating a fresh cell;
+-- assigning the captured cursor instead keeps the original address.
+private def cursorFrame : TargetFrame := ⟨"parse", [], [], [("position", 0)], none, .normal⟩
+private def cursorMachine (lang : TargetLang) : TargetMachine :=
+  (allocCell TargetMachine.empty (integerValue lang 0) true).1
+
+theorem kadmos_generated_cursor_write {program n} :
+    ∃ out, execStmt 2 program (cursorMachine program.lang) cursorFrame
+      (.assign (.local "position") (.integer n)) = .ok out ∧
+      readCell out.machine 0 = .ok (integerValue program.lang n) ∧
+      out.frame = cursorFrame ∧ out.machine.nextCell = 1 := by
+  have hv := evalExpr_adequate (DepthDerivesExpr.integer
+    (program := program) (m := cursorMachine program.lang) (f := cursorFrame) n)
+    (by decide : 0 < 1)
+  simp only [execStmt, hv, Bind.bind, Pure.pure, Except.bind, Except.pure]
+  simp [cursorMachine, cursorFrame, allocCell, writeCell, readCell, List.lookup,
+    integerValue, TargetMachine.empty, Option.orElse, Bind.bind, Pure.pure, Except.bind, Except.pure]
+
+theorem kadmos_generated_cursor_shadow {program n} :
+    ∃ out, execStmt 2 program (cursorMachine program.lang) cursorFrame
+      (.letLocal "position" true (.integer n)) = .ok out ∧
+      out.frame.locals.lookup "position" = some 1 ∧
+      out.frame.captures.lookup "position" = some 0 ∧
+      readCell out.machine 0 = .ok (integerValue program.lang 0) ∧
+      readCell out.machine 1 = .ok (integerValue program.lang n) := by
+  rw [kadmos_generated_let_local_adequate]
+  simp [cursorMachine, cursorFrame, allocCell, readCell, List.lookup,
+    integerValue, TargetMachine.empty, Option.orElse, Bind.bind, Pure.pure, Except.bind, Except.pure]
+
+theorem kadmos_generated_ts_unknown_assignment {program n}
+    (hl : program.lang = .ts) :
+    execStmt 2 program TargetMachine.empty cursorFrame
+      (.assign (.local "missing") (.integer n)) = .error (.unboundLocal "missing") := by
+  have hv := evalExpr_adequate (DepthDerivesExpr.integer
+    (program := program) (m := TargetMachine.empty) (f := cursorFrame) n)
+    (by decide : 0 < 1)
+  simp only [execStmt, hv, Bind.bind, Pure.pure, Except.bind, Except.pure]
+  simp [hl, cursorFrame, TargetMachine.empty, List.lookup, Option.orElse,
+    Bind.bind, Pure.pure, Except.bind, Except.pure]
+
+theorem kadmos_generated_immutable_assignment {program n} :
+    execStmt 2 program (allocCell TargetMachine.empty .null false).1 cursorFrame
+      (.assign (.local "position") (.integer n)) = .error (.immutableCell 0) := by
+  have hv := evalExpr_adequate (DepthDerivesExpr.integer
+    (program := program) (m := (allocCell TargetMachine.empty .null false).1)
+    (f := cursorFrame) n) (by decide : 0 < 1)
+  simp only [execStmt, hv, Bind.bind, Pure.pure, Except.bind, Except.pure]
+  simp [cursorFrame, allocCell, writeCell, TargetMachine.empty, List.lookup, Option.orElse,
+    Bind.bind, Pure.pure, Except.bind, Except.pure]
+
+theorem kadmos_generated_nonlocal_missing {program} :
+    execStmt 1 program TargetMachine.empty cursorFrame (.nonlocalNames ["missing"]) =
+      .error (.unboundLocal "missing") := by
+  simp [execStmt, cursorFrame, Bind.bind, Pure.pure, Except.bind, Except.pure]
+
 -- A binary tree has depth rank one even though its trace has five steps.
 theorem kadmos_generated_simulation_binary_depth {program machine frame} :
     DepthDerivesExpr program machine frame
@@ -52,6 +185,26 @@ theorem kadmos_generated_simulation_sound {program machine frame} :
 
 private def numericError : TargetValue := .exception "TypeError" "expected numeric operands"
 private def badSub : TargetExpr := .binary .sub (.string "x") (.bool false)
+
+theorem kadmos_generated_lexical_raised_paths {program m f name mutable} :
+    DepthDerivesStmt program m f (.letLocal name mutable badSub)
+      ⟨m, f, .raised numericError⟩ 2 ∧
+    DepthDerivesStmt program m f (.assign (.local name) badSub)
+      ⟨m, f, .raised numericError⟩ 2 ∧
+    DepthDerivesStmt program m f (.doExpr badSub)
+      ⟨m, f, .raised numericError⟩ 2 := by
+  have he : DepthDerivesExpr program m f badSub ⟨m, .error numericError⟩ 1 :=
+    .binary (by decide) (.string "x") (.bool false) rfl
+  exact ⟨.letLocalRaised he, .assignLocalRaised he, .doExprRaised he⟩
+
+theorem kadmos_generated_lexical_raised_adequate {program m f name mutable} :
+    execStmt 3 program m f (.letLocal name mutable badSub) = .ok ⟨m, f, .raised numericError⟩ ∧
+    execStmt 3 program m f (.assign (.local name) badSub) = .ok ⟨m, f, .raised numericError⟩ ∧
+    execStmt 3 program m f (.doExpr badSub) = .ok ⟨m, f, .raised numericError⟩ := by
+  obtain ⟨hl, ha, hd⟩ := kadmos_generated_lexical_raised_paths (program := program)
+    (m := m) (f := f) (name := name) (mutable := mutable)
+  exact ⟨execStmt_adequate hl (by decide), execStmt_adequate ha (by decide),
+    execStmt_adequate hd (by decide)⟩
 
 theorem kadmos_generated_simulation_raised_left {program machine frame} :
     DepthDerivesExpr program machine frame

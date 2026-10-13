@@ -524,3 +524,49 @@ All twenty serial commands below exited 0. The strict Generated audit reports **
 | `python3 scripts/test_kadmos_generated_k02_audit.py` | 0 |
 
 Observed RED-to-GREEN cycles covered missing read/conditional semantic rules, seed allocation/clone proofs, read soundness/freshness and ranked-path determinism. Intermediate elaboration failures included a reserved constructor case label, private result-wrapper definitional equality, allocation-reference simplification, Boolean-versus-propositional map tests, unavailable loop names and adjacent declaration comments; they were corrected before the final receipt. One short RED `lake env lean` probe accidentally overlapped an earlier product rebuild; all final twenty commands ran serially. The unchanged Bridge.Certificate line 185 unnecessarySimpa suggestion was replayed. The missing universal-interface and correspondence-target failures remain open after these passing checks.
+
+
+## 2026-10-12 lexical statement continuation from `61f03df` — universal mission incomplete
+
+**T-398 remains IN_PROGRESS. Tasks 2B, 3 and 4 are not complete.** This continuation implements constructor/helper prerequisites in the generic relation; it does not prove `targetConstruct_sound`, `step_guard_reject`, `step_accept`, `step_bounds_reject` or `k02_balance_one_call`. A final actual pinned Lean interface probe exited 1 with all five names unknown, together with `CanonicalGlobals`, `ProgramDerives` and `parseGenerated_sound`. `lake build kadmosGeneratedK02CorrespondenceTest` exited 1 with unknown target. No placeholder correspondence module/target, semantic success assumption or task-completion line was introduced. Full-source admission, module/class/function/call and collection/helper derivations, preservation and uniform entrypoint ranks remain open.
+
+`TargetSimulation` now derives actual `letLocal`, existing lexical assignment, Python fresh-local assignment, `doExpr` and positive `nonlocalNames` execution. A declaration allocates at the RHS outcome machine's next cell; existing assignment keeps the resolved cell address. Local/capture/global precedence is explicit, and assignment continuations snapshot **original-machine globals**, matching `execStmt`, while writes affect the RHS outcome machine. Source-raised RHS outcomes propagate without allocation or assignment. Unbound TS assignments and immutable/dangling writes remain outer target errors. `nonlocalNames` checks captured names without allocation; it has rank 0 because the executor performs no recursive evaluator call.
+
+All these ranked derivations project to unfueled traces preserving arbitrary outer continuations, and reverse adequacy establishes actual executor results for strict depth bounds. New `execLexical_sound` covers only declaration, local assignment and expression statements with **ScalarSyntax** children; it does not cover generated calls or arbitrary statement syntax. Positive nonlocal adequacy is separate. No generated helper is introduced as a primitive and `TargetSemantics` is unchanged. Heap preservation and canonical globals are not inferred from these statement proofs.
+
+Observed RED→GREEN cycles: SimulationTest initially failed on four missing lexical derivation constructors; then on missing `execLexical_sound`, then on missing `nonlocalNames`. New symbolic tests check actual allocation, captured cursor writes and declaration shadowing, missing TS bindings, immutable cells, missing nonlocal captures, insufficient depth and all three RHS source-error paths. Private evaluator result wrappers, List.lookup and Option.orElse required explicit proof rewrites during elaboration; those proof failures were corrected before the final receipt. Retained catch/finally, trace-versus-depth, closed constructor and one-step boundary tests pass. The boundary tests still establish six/twelve finite checks, not universal entrypoint execution.
+
+Actual independent read-only Codex CLI review exited 0, model gpt-6.1-sol, session `01a13354-f939-7bc1-8994-de89a75db677`, against a frozen `git archive 61f03df145838d7aaa743b03add21ddb2ca010c8` snapshot plus the two-file diff. It reported **no Critical, Important or Minor correctness findings for this prerequisite slice**, explicitly declining full-mission acceptance. Both reviewed source postimages match the final source byte-for-byte. The reviewer verified diff preimage/postimage consistency but did not independently authenticate upstream/base association, run Lean/Lake, native runtimes, a fresh axiom audit or hosted Linux CI. Owner serial CLI results below supply current local kernel/inventory evidence; prior native-runtime and Linux limits remain unchanged. No deferred review findings or merge/push.
+
+All nineteen serial prerequisite/compatibility commands below exited 0. Strict Generated audit: **8,446 theorems / 11,522 declarations**, observed axioms and whitelist **[propext, Quot.sound]** (+48/+93 from `61f03df`). The portable dependency listing contains exactly 8,446 unique theorem entries. Foundation audit: 52 theorems, observed [propext, Quot.sound], historical policy unchanged. World compatibility: 9,597 theorems / 13,219 declarations, historical [propext, Quot.sound, Classical.choice] observations/policy reported separately. Artifact tests: 8 total (7 mutations + 1 smoke). Inventory/policy tests: 13 total (12 mutations + 1 smoke). Inventory unchanged: 20 product modules, 37 test/audit modules, 63 certified closure modules, 28 test targets, 32 World inventory modules. Lean remains `leanprover/lean4:v4.16.0`; unchanged fixture literal SHA-256 `3006d2ece39affff067b4116fe16a3aeb61cff4fd9ba0dac2fba43fd574382c3`. No new imports, proof-resource options, compiler/runtime changes or legacy protocol edits. The existing Bridge.Certificate unnecessarySimpa warning remains.
+
+| Command | Exit |
+| --- | ---: |
+| `lake build HarmoniaTests.KadmosGeneratedK02ConstructorProofTS` | 0 |
+| `lake build HarmoniaTests.KadmosGeneratedK02ConstructorProofPython` | 0 |
+| `lake build kadmosGeneratedK02ConstructorProofTest` | 0 |
+| `lake build HarmoniaTests.KadmosGeneratedK02BalanceStepProofTS` | 0 |
+| `lake build HarmoniaTests.KadmosGeneratedK02BalanceStepProofPython` | 0 |
+| `lake build kadmosGeneratedK02BalanceStepProofTest` | 0 |
+| `lake build kadmosGeneratedK02SimulationTest` | 0 |
+| `lake build kadmosGeneratedK02SemanticsTest` | 0 |
+| `lake build kadmosGeneratedK02BalanceTSStepTest` | 0 |
+| `lake build` | 0 |
+| `lake build foundationsTest foundationsAudit foundationsAuditRejection` | 0 |
+| `lake build kadmosGeneratedK02BalanceTSParseTest kadmosGeneratedK02BalancePythonParseTest kadmosGeneratedK02BalanceTSCertificateTest kadmosGeneratedK02BalancePythonCertificateTest` | 0 |
+| `lake build kadmosGeneratedK02Audit` | 0 |
+| `lake build kadmosGeneratedK02AuditRejection` | 0 |
+| `lake build kadmosWorldTest kadmosWorldAudit kadmosWorldAuditRejection` | 0 |
+| `python3 scripts/check_kadmos_generated_k02_artifacts.py` | 0 |
+| `python3 scripts/test_kadmos_generated_k02_artifacts.py` | 0 |
+| `python3 scripts/check_kadmos_generated_k02_audit.py` | 0 |
+| `python3 scripts/test_kadmos_generated_k02_audit.py` | 0 |
+
+The passing constructor/step targets above retain their boundary assertions. Separate required open-gate checks:
+
+| Gate | Observed result |
+| --- | --- |
+| Pinned Lean interface probe | Exit1; all five requested universal names and three prerequisite names unknown |
+| `lake build kadmosGeneratedK02CorrespondenceTest` | Exit1; unknown target |
+
+This commit is a verified prerequisite checkpoint, **not completion of the requested universal constructor/branch/correspondence mission**. The plan workspace is retained for resumption.
