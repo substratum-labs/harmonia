@@ -657,3 +657,81 @@ The twelve owner commands ran serially; eleven exited 0 and the absent correspon
 | `python3 scripts/check_kadmos_generated_k02_artifacts.py` | 0 |
 
 A separate pinned Lean interface probe exited 1: `balanceProgram` and `checkGenerated_balanceProgram` are present, while `targetConstruct_sound`, `step_guard_reject`, `step_accept`, `step_bounds_reject`, `k02_balance_one_call`, `CanonicalGlobals`, `ProgramDerives` and `parseGenerated_sound` remain unknown. Constructor/step proof roots still contain boundary facts, not universal execution proofs. The correspondence module/test target was not replaced with a placeholder. Source-derived module/class/helper execution, collection/default/loop coverage, HeapWF preservation, uniform entrypoint ranks and whole-source admission remain open. No task-complete ledger line, full-mission acceptance, push or merge; retain the plan workspace for resumption.
+
+## Final-closure attempt from 7d01221 — 2026-10-12
+
+**Stage 3c remains incomplete.** This attempt added no production theorem, changed no executor or trust policy, and did not create an empty correspondence module/target. Tasks 2B, 3 and 4 are still open. The following commands were run as serial actual subprocesses against the unchanged Lean source at `7d012216b4c49679efa5c7182354d8188f810a49`. Existing constructor/step targets prove finite boundary facts, not the requested universal statements.
+
+| Command | Exit |
+| --- | --- |
+| `lake build` | 0 |
+| `lake build kadmosGeneratedK02ConstructorProofTest` | 0 |
+| `lake build kadmosGeneratedK02BalanceStepProofTest` | 0 |
+| `lake build kadmosGeneratedK02CorrespondenceTest` | 1 |
+| `lake build kadmosGeneratedK02Audit` | 0 |
+| `python3 scripts/check_kadmos_generated_k02_audit.py` | 0 |
+| `python3 scripts/test_kadmos_generated_k02_audit.py` | 0 |
+| `python3 scripts/check_kadmos_generated_k02_artifacts.py` | 0 |
+| `lake build foundationsTest foundationsAudit foundationsAuditRejection` | 0 |
+| `lake build kadmosGeneratedK02SimulationTest kadmosGeneratedK02SemanticsTest` | 0 |
+| `lake build kadmosGeneratedK02AuditRejection` | 0 |
+| `lake env lean <universal-interface probe>` | 1 |
+
+The correspondence build reports an unknown target. The interface probe reports all five requested declarations unknown: `targetConstruct_sound`, `step_guard_reject`, `step_accept`, `step_bounds_reject`, and `k02_balance_one_call`. These two exit-1 results are failed acceptance gates, not successful negative tests. The ten other commands exit 0. Strict Generated audit remains **8,582 theorems / 11,781 declarations**, observed and allowed axioms **`[propext, Quot.sound]`**. The fresh 8,582-entry dependency output exactly matches the tracked [portable listing](2026-10-12-t398-generated-axioms.txt); no axiom entry changed. Foundation audit remains 52 theorems. Inventory mutation suite passes 13 tests; artifact checker passes ten checks. The existing Bridge.Certificate unnecessarySimpa warning remains. Native-runtime and hosted-Linux evidence was not rerun or inferred.
+
+Two private symbolic-constructor reduction approaches were interrupted (exit 130) after large term expansion and memory pressure. An earlier exploratory version failed elaboration. No interrupted or failed probe is a proof or evidence of mathematical impossibility. No exploratory `Lean` metaprogram import entered production or certified test roots.
+
+### Kernel-checked representation counterexample
+
+A separate actual Lean subprocess exits 0 on the following diagnostic. It proves that `BalanceRep` alone does not imply a usable canonical `step` method, even when execution selects the actual source-bound `balanceProgram .ts`. Its heap shape is valid, but method lookup and the actual step wrapper fail with `unboundLocal "step"`. This refutes only a branch theorem for arbitrary machines from `BalanceRep` alone; it does **not** refute the requested constructor-origin one-call theorem. Branch composition needs constructor provenance or a program-indexed invariant binding stored methods, default values, captures and globals.
+
+```lean
+import HarmoniaTests.KadmosGeneratedK02ConstructorProof
+open Harmonia.Applications.Kadmos.Generated
+set_option maxRecDepth 4096
+set_option maxHeartbeats 1000000
+
+def bareBalanceMachine : TargetMachine :=
+  { TargetMachine.empty with
+    objects := [(4, balanceHeapObject .ts TargetMachine.empty 100),
+      (3, emptyBalanceHistory .ts TargetMachine.empty),
+      (2, balanceHeapObject .ts TargetMachine.empty 100)] ++ TargetMachine.empty.objects
+    nextObject := 5
+    checker := ⟨"Ready", 2, 3, none, some 4, false, []⟩ }
+
+theorem bareBalanceRep : BalanceRep .ts 100 bareBalanceMachine := by
+  apply balanceRepCheck_sound
+  decide +kernel
+
+theorem bareBalanceHasNoStep :
+    readPropertyValue .ts bareBalanceMachine (.object bareBalanceMachine.checkerRef) "step" =
+      .error (.unboundLocal "step") := by
+  rfl
+
+#print axioms bareBalanceRep
+#print axioms bareBalanceHasNoStep
+
+theorem bareBalanceStepFails :
+    targetStep HarmoniaTests.KadmosGeneratedK02ClosedPrograms.balanceTsProgram
+      bareBalanceMachine (canonicalDebitRequest .ts 0) =
+      .error (.unboundLocal "step") := by
+  decide +kernel
+
+#print axioms bareBalanceStepFails
+
+theorem bareCanonicalBalanceStepFails :
+    targetStep (balanceProgram .ts) bareBalanceMachine (canonicalDebitRequest .ts 0) =
+      .error (.unboundLocal "step") := by
+  rw [kadmos_generated_balanceProgram_ts]
+  exact bareBalanceStepFails
+
+#print axioms bareCanonicalBalanceStepFails
+```
+
+Observed axiom output: `bareBalanceRep` uses `[propext]`; `bareBalanceHasNoStep` has no axioms; `bareBalanceStepFails` and `bareCanonicalBalanceStepFails` use `[propext, Quot.sound]`. This diagnostic is recorded here rather than added to the certified theorem inventory; it supplies no universal constructor or branch proof.
+
+### Independent physical review
+
+Actual read-only `codex exec` ran **gpt-6.1-sol/high**, session `01a133a9-048e-72c2-aa87-01e5b81c179e`, exit 0. It inspected the clean base, plan/spec, grammar/admission, executable and relational semantics, observations/reference cases, emitted BALANCE sources, test roots and audit registration. Its verdict is **REVISE; final closure not accepted**. Findings: the five universal deliverables and target remain absent; whole-source `ProgramDerives`/`SourceParses`/validation/soundness/uniqueness remain absent; ranked execution still lacks reached imports, definitions/defaults, collections, loops and helper paths; `BalanceRep`/`HeapWF` do not certify closure bodies or module bindings. The reviewer independently identified the same provenance issue by inspecting method-body replacement, without using the later owner kernel diagnostic. No counterexample to the intended canonical one-call theorem was established.
+
+The reviewer ran no Lean/Lake, runtime, audit or hosted tests and made no edits. Owner commands above supply the local kernel/audit evidence. Missing mission requirements remain open requirements, not deferred minor findings or accepted deviations. This documentation receipt is not an implementation-completion commit. The plan workspace is retained because the plan is unfinished.
