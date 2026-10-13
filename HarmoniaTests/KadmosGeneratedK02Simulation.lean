@@ -441,3 +441,304 @@ theorem kadmos_generated_stmt_paths_deterministic {program m f stmt out₁ out�
     (h₁ : DepthDerivesStmt program m f stmt out₁ r₁)
     (h₂ : DepthDerivesStmt program m f stmt out₂ r₂) : out₁ = out₂ :=
   h₁.deterministic h₂
+
+-- Property evaluation owns a receiver edge, including receiver-bound methods.
+theorem kadmos_generated_property_depth {program m f name key receiver out}
+    (hl : localValue m f name = .ok receiver)
+    (hp : readPropertyValue program.lang m receiver key = .ok out) :
+    DepthDerivesExpr program m f (.property (.local name) key) out 1 :=
+  .property (.localRead hl) hp
+
+theorem kadmos_generated_property_adequate {program m f name key receiver out}
+    (hl : localValue m f name = .ok receiver)
+    (hp : readPropertyValue program.lang m receiver key = .ok out) :
+    evalExpr 2 program m f (.property (.local name) key) = .ok out :=
+  evalExpr_adequate (kadmos_generated_property_depth hl hp) (by decide)
+
+-- One-field dict/object syntax has two executor edges before its value.
+theorem kadmos_generated_object_one_depth {program m f key n final}
+    (hw : writeOwn (allocObject m (literalObject program.lang m)).1 m.nextObject
+      key (integerValue program.lang n) = .ok final) :
+    DepthDerivesExpr program m f (.object (.objectEntry key (.integer n) .empty))
+      ⟨final, .ok (.object m.nextObject)⟩ 2 := .objectOne (.integer n) hw
+
+-- Empty and cons argument spines are separate fuel-matching entries.
+theorem kadmos_generated_args_empty_depth {program m f} :
+    DepthDerivesArgs program m f .empty ⟨m, .ok []⟩ 0 := .empty
+
+theorem kadmos_generated_args_one_depth {program m f n} :
+    DepthDerivesArgs program m f (.sequence (.integer n) .empty)
+      ⟨m, .ok [integerValue program.lang n]⟩ 1 := .cons (.integer n) .empty
+
+-- A user closure call executes its stored low-level return body.
+theorem kadmos_generated_call_empty_depth {program m f expr ref closure}
+    (he : DepthDerivesExpr program m f expr ⟨m, .ok (.closure ref)⟩ 0)
+    (hc : closureAt m ref = .ok closure)
+    (hp : closure.params = []) (hb : closure.body = .returnValue (.bool true)) :
+    DepthDerivesExpr program m f (.call expr .empty) ⟨m, .ok (.bool true)⟩ 2 := by
+  have hparams : DepthBindsProvided program m (closureFrame closure) closure.params
+      closure.pythonDefaults [] m (closureFrame closure) 0 := by
+    rw [hp]; exact .empty
+  have hbody : DepthDerivesStmt program m (closureFrame closure) closure.body
+      ⟨m, closureFrame closure, .returned (.bool true)⟩ 1 := by
+    rw [hb]; exact .returnValue (.bool true)
+  exact .callClosure he .empty hc hparams hbody rfl
+
+theorem kadmos_generated_fields_two_depth {program m f ref x y middle final}
+    (hx : writeOwn m ref "x" (integerValue program.lang x) = .ok middle)
+    (hy : writeOwn middle ref "y" (integerValue program.lang y) = .ok final) :
+    DepthDerivesFields program m f ref
+      (.objectEntry "x" (.integer x) (.objectEntry "y" (.integer y) .empty))
+      ⟨final, .ok (.object ref)⟩ 2 :=
+  .entry (.integer x) hx (.entry (.integer y) hy .empty)
+
+theorem kadmos_generated_builtin_call_depth {program m f expr}
+    (hl : program.lang = .ts)
+    (he : DepthDerivesExpr program m f expr ⟨m, .ok (.builtin .jsIsSafeInteger)⟩ 0) :
+    DepthDerivesExpr program m f (.call expr (.sequence (.integer 0) .empty))
+      ⟨m, .ok (.bool true)⟩ 2 := by
+  apply DepthDerivesExpr.callBuiltin he (.cons (.integer 0) .empty)
+    ⟨by decide, by decide, by decide⟩
+  rw [hl]
+  rfl
+
+-- Reading a method really allocates a new closure bound to this checker.
+theorem kadmos_generated_method_property {lang m key ref closure error}
+    (hf : readCheckerField m key = .error error)
+    (hm : m.classMethods.lookup key = some ref)
+    (hc : closureAt m ref = .ok closure) :
+    readPropertyValue lang m (.object m.checkerRef) key =
+      .ok ⟨(allocClosure m { closure with receiver := some m.checkerRef }).1,
+        .ok (.closure m.nextClosure)⟩ := by
+  simp [readPropertyValue, hf, hm, hc, allocClosure,
+    Bind.bind, Pure.pure, Except.bind, Except.pure]
+  rfl
+
+theorem kadmos_generated_this_property_depth {program m f key out}
+    (hf : f.receiver = some m.checkerRef)
+    (hp : readPropertyValue program.lang m (.object m.checkerRef) key = .ok out) :
+    DepthDerivesExpr program m f (.property (.local "this") key) out 1 :=
+  .property (.localRead (by simp [localValue, hf])) hp
+
+theorem kadmos_generated_self_property_depth {program m f key out}
+    (hf : f.receiver = some m.checkerRef)
+    (hp : readPropertyValue program.lang m (.object m.checkerRef) key = .ok out) :
+    DepthDerivesExpr program m f (.property (.local "self") key) out 1 :=
+  .property (.localRead (by simp [localValue, hf])) hp
+
+-- One supplied parameter is stored at a fresh cell even when it has a default.
+theorem kadmos_generated_bind_one {program m f param defaults n} :
+    DepthBindsProvided program m f [param] defaults [integerValue program.lang n]
+      (allocCell m (integerValue program.lang n) true).1
+      { f with locals := (param.name, m.nextCell) :: f.locals } 1 := by
+  exact .cons (by cases hl : program.lang <;> simp [integerValue, hl]) .empty
+
+theorem kadmos_generated_bind_one_adequate {program m f param defaults n} :
+    bindCallParams 2 program m f [param] defaults [integerValue program.lang n] =
+      .ok ⟨(allocCell m (integerValue program.lang n) true).1,
+        { f with locals := (param.name, m.nextCell) :: f.locals }, .ok ()⟩ :=
+  bindProvided_adequate kadmos_generated_bind_one (by decide)
+
+-- TS undefined must take default selection, so it is outside provided-only rules.
+theorem kadmos_generated_bind_undefined_excluded {program m f param defaults final ff r}
+    (hl : program.lang = .ts) :
+    ¬ DepthBindsProvided program m f [param] defaults [.undefined] final ff r := by
+  intro h
+  cases h with
+  | cons hn ht => simp [hl] at hn
+
+-- A returned body needs depth two, in addition to the outer call edge.
+theorem kadmos_generated_call_empty_adequate {program m f expr ref closure}
+    (he : DepthDerivesExpr program m f expr ⟨m, .ok (.closure ref)⟩ 0)
+    (hc : closureAt m ref = .ok closure)
+    (hp : closure.params = []) (hb : closure.body = .returnValue (.bool true)) :
+    evalExpr 3 program m f (.call expr .empty) = .ok ⟨m, .ok (.bool true)⟩ :=
+  evalExpr_adequate (kadmos_generated_call_empty_depth he hc hp hb) (by decide)
+
+theorem kadmos_generated_call_empty_runs {program m f expr ref closure}
+    (he : DepthDerivesExpr program m f expr ⟨m, .ok (.closure ref)⟩ 0)
+    (hc : closureAt m ref = .ok closure)
+    (hp : closure.params = []) (hb : closure.body = .returnValue (.bool true)) :
+    ExprRuns program m f (.call expr .empty) ⟨m, .ok (.bool true)⟩ :=
+  expr_path_runs (kadmos_generated_call_empty_depth he hc hp hb)
+
+#print axioms evalFields_adequate
+#print axioms evalArgs_adequate
+#print axioms bindProvided_adequate
+#print axioms args_path_runs_cont
+#print axioms fields_path_runs_cont
+
+theorem kadmos_generated_property_sound {program m f receiver key out k}
+    (hs : ScalarSyntax receiver)
+    (he : evalExpr k program m f (.property receiver key) = .ok out) :
+    ∃ rank, DepthDerivesExpr program m f (.property receiver key) out rank ∧ rank < k :=
+  evalProperty_sound hs he
+
+-- Callee, argument, binding and body share predecessor depth, rather than sum it.
+theorem kadmos_generated_call_echo_depth {program m bound f expr ref closure n}
+    (he : DepthDerivesExpr program m f expr ⟨bound, .ok (.closure ref)⟩ 1)
+    (hc : closureAt bound ref = .ok closure)
+    (hp : closure.params = [⟨"seed", none⟩])
+    (hb : closure.body = .returnValue (.local "seed")) :
+    DepthDerivesExpr program m f (.call expr (.sequence (.integer n) .empty))
+      ⟨(allocCell bound (integerValue program.lang n) true).1,
+        .ok (integerValue program.lang n)⟩ 2 := by
+  let final := (allocCell bound (integerValue program.lang n) true).1
+  let ff := { closureFrame closure with locals := [("seed", bound.nextCell)] }
+  have hparams : DepthBindsProvided program bound (closureFrame closure) closure.params
+      closure.pythonDefaults [integerValue program.lang n] final ff 1 := by
+    rw [hp]; exact kadmos_generated_bind_one
+  have hread : localValue final ff "seed" = .ok (integerValue program.lang n) := by
+    simp [final, ff, closureFrame, allocCell, localValue, readCell, List.lookup]
+  have hbody : DepthDerivesStmt program final ff closure.body
+      ⟨final, ff, .returned (integerValue program.lang n)⟩ 1 := by
+    rw [hb]; exact .returnValue (.localRead hread)
+  exact .callClosure he (.cons (.integer n) .empty) hc hparams hbody rfl
+
+theorem kadmos_generated_call_echo_adequate {program m bound f expr ref closure n}
+    (he : DepthDerivesExpr program m f expr ⟨bound, .ok (.closure ref)⟩ 1)
+    (hc : closureAt bound ref = .ok closure)
+    (hp : closure.params = [⟨"seed", none⟩])
+    (hb : closure.body = .returnValue (.local "seed")) :
+    evalExpr 3 program m f (.call expr (.sequence (.integer n) .empty)) =
+      .ok ⟨(allocCell bound (integerValue program.lang n) true).1,
+        .ok (integerValue program.lang n)⟩ :=
+  evalExpr_adequate (kadmos_generated_call_echo_depth he hc hp hb) (by decide)
+
+-- A raised argument never enters the closure or binds its parameters.
+theorem kadmos_generated_call_argument_raises {program m f expr ref}
+    (he : DepthDerivesExpr program m f expr ⟨m, .ok (.closure ref)⟩ 0) :
+    DepthDerivesExpr program m f (.call expr (.sequence badSub .empty))
+      ⟨m, .error numericError⟩ 3 :=
+  .callArgsRaised he (.headRaised (.binary (by decide) (.string "x") (.bool false) rfl))
+
+-- A source exception thrown by the body is transported to the caller frame.
+theorem kadmos_generated_call_body_raises {program m f expr ref closure}
+    (he : DepthDerivesExpr program m f expr ⟨m, .ok (.closure ref)⟩ 0)
+    (hc : closureAt m ref = .ok closure)
+    (hp : closure.params = []) (hb : closure.body = .throwValue (.string "body")) :
+    DepthDerivesExpr program m f (.call expr .empty)
+      ⟨m, .error (.string "body")⟩ 2 := by
+  have hparams : DepthBindsProvided program m (closureFrame closure) closure.params
+      closure.pythonDefaults [] m (closureFrame closure) 0 := by
+    rw [hp]; exact .empty
+  have hbody : DepthDerivesStmt program m (closureFrame closure) closure.body
+      ⟨m, closureFrame closure, .raised (.string "body")⟩ 1 := by
+    rw [hb]; exact .throwValue (.string "body")
+  exact .callClosure he .empty hc hparams hbody rfl
+
+#print axioms evalProperty_sound
+#print axioms evalScalar_machine_eq
+
+-- Calling the bound method uses the allocated receiver-bearing closure.
+theorem kadmos_generated_method_call_depth {program m f name ref closure error}
+    (hf : f.receiver = some m.checkerRef)
+    (hr : readCheckerField m name = .error error)
+    (hm : m.classMethods.lookup name = some ref)
+    (hc : closureAt m ref = .ok closure)
+    (hp : closure.params = []) (hb : closure.body = .returnValue (.bool true)) :
+    DepthDerivesExpr program m f (.call (.property (.local "this") name) .empty)
+      ⟨(allocClosure m { closure with receiver := some m.checkerRef }).1,
+        .ok (.bool true)⟩ 2 := by
+  let method := { closure with receiver := some m.checkerRef }
+  let bound := (allocClosure m method).1
+  have he : DepthDerivesExpr program m f (.property (.local "this") name)
+      ⟨bound, .ok (.closure m.nextClosure)⟩ 1 :=
+    kadmos_generated_this_property_depth hf (kadmos_generated_method_property hr hm hc)
+  have hlookup : closureAt bound m.nextClosure = .ok method := by
+    simp [bound, closureAt, allocClosure, List.lookup]
+  have hparams : DepthBindsProvided program bound (closureFrame method) method.params
+      method.pythonDefaults [] bound (closureFrame method) 0 := by
+    change DepthBindsProvided program bound (closureFrame method) closure.params
+      closure.pythonDefaults [] bound (closureFrame method) 0
+    rw [hp]; exact .empty
+  have hbody : DepthDerivesStmt program bound (closureFrame method) method.body
+      ⟨bound, closureFrame method, .returned (.bool true)⟩ 1 := by
+    change DepthDerivesStmt program bound (closureFrame method) closure.body _ 1
+    rw [hb]; exact .returnValue (.bool true)
+  exact .callClosure he .empty hlookup hparams hbody rfl
+
+-- The relation's direct-host transition must not bypass generator/callback code.
+theorem kadmos_generated_next_not_direct_host : ¬ DirectHostDispatch .next none := by
+  simp [DirectHostDispatch]
+
+theorem kadmos_generated_map_not_direct_host {receiver} :
+    ¬ DirectHostDispatch .arrayMap (some receiver) := by simp [DirectHostDispatch]
+
+theorem kadmos_generated_call_empty_insufficient_depth {program m f expr ref closure}
+    (he : DepthDerivesExpr program m f expr ⟨m, .ok (.closure ref)⟩ 0)
+    (hc : closureAt m ref = .ok closure)
+    (hp : closure.params = []) (hb : closure.body = .returnValue (.bool true)) :
+    evalExpr 2 program m f (.call expr .empty) = .error .exhaustedFuel := by
+  simp [evalExpr, evalExpr_adequate he (by decide : 0 < 1), evalArgValues,
+    callClosure, hc, hp, hb, bindCallParams, execStmt,
+    Bind.bind, Pure.pure, Except.bind, Except.pure]
+
+theorem kadmos_generated_property_method_allocates {lang m key ref closure error}
+    (hf : readCheckerField m key = .error error)
+    (hm : m.classMethods.lookup key = some ref)
+    (hc : closureAt m ref = .ok closure) :
+    ∃ out, readPropertyValue lang m (.object m.checkerRef) key = .ok out ∧
+      out.machine.nextClosure = m.nextClosure + 1 ∧ out.machine ≠ m := by
+  refine ⟨_, kadmos_generated_method_property hf hm hc, rfl, ?_⟩
+  intro he
+  have hn := congrArg TargetMachine.nextClosure he
+  change m.nextClosure + 1 = m.nextClosure at hn
+  exact (Nat.ne_of_lt (Nat.lt_succ_self m.nextClosure)) hn.symm
+
+-- Statement trace/adequacy includes a call child and restores the caller frame.
+theorem kadmos_generated_statement_call_depth {program m f expr ref closure}
+    (he : DepthDerivesExpr program m f expr ⟨m, .ok (.closure ref)⟩ 0)
+    (hc : closureAt m ref = .ok closure)
+    (hp : closure.params = []) (hb : closure.body = .returnValue (.bool true)) :
+    DepthDerivesStmt program m f (.doExpr (.call expr .empty)) ⟨m, f, .normal⟩ 3 :=
+  .doExpr (kadmos_generated_call_empty_depth he hc hp hb)
+
+theorem kadmos_generated_statement_call_runs {program m f expr ref closure}
+    (he : DepthDerivesExpr program m f expr ⟨m, .ok (.closure ref)⟩ 0)
+    (hc : closureAt m ref = .ok closure)
+    (hp : closure.params = []) (hb : closure.body = .returnValue (.bool true)) :
+    StmtRuns program m f (.doExpr (.call expr .empty)) ⟨m, f, .normal⟩ :=
+  stmt_path_runs (kadmos_generated_statement_call_depth he hc hp hb)
+
+-- Review regression: a valid primitive call must be derived, with no host-success premise.
+theorem kadmos_generated_builtin_dispatch_valid {program m f expr}
+    (hl : program.lang = .ts)
+    (he : DepthDerivesExpr program m f expr ⟨m, .ok (.builtin .jsIsSafeInteger)⟩ 0) :
+    DepthDerivesExpr program m f (.call expr (.sequence (.integer 0) .empty))
+      ⟨m, .ok (.bool true)⟩ 2 :=
+  kadmos_generated_builtin_call_depth hl he
+
+private def safeHostMachine : TargetMachine :=
+  { (allocCell TargetMachine.empty (.builtin .jsIsSafeInteger) true).1 with
+    globals := [("isSafe", 0)] }
+
+private def safeHostFrame : TargetFrame := ⟨"host", [], [], [], none, .normal⟩
+
+-- A concrete satisfiable callee binding, with no assumed hostCall success.
+private theorem safeHostCallee {program} :
+    DepthDerivesExpr program safeHostMachine safeHostFrame (.global "isSafe")
+      ⟨safeHostMachine, .ok (.builtin .jsIsSafeInteger)⟩ 0 := by
+  apply DepthDerivesExpr.global
+  simp [safeHostMachine, safeHostFrame, localValue, allocCell, readCell,
+    TargetMachine.empty, List.lookup]
+
+theorem kadmos_generated_builtin_valid_adequate {program}
+    (hl : program.lang = .ts) :
+    evalExpr 3 program safeHostMachine safeHostFrame
+      (.call (.global "isSafe") (.sequence (.integer 0) .empty)) =
+      .ok ⟨safeHostMachine, .ok (.bool true)⟩ :=
+  evalExpr_adequate (kadmos_generated_builtin_call_depth hl safeHostCallee) (by decide)
+
+theorem kadmos_generated_builtin_valid_runs {program}
+    (hl : program.lang = .ts) :
+    ExprRuns program safeHostMachine safeHostFrame
+      (.call (.global "isSafe") (.sequence (.integer 0) .empty))
+      ⟨safeHostMachine, .ok (.bool true)⟩ :=
+  expr_path_runs (kadmos_generated_builtin_call_depth hl safeHostCallee)
+
+theorem kadmos_generated_builtin_invalid_arity {lang m} :
+    hostCall lang m .jsIsSafeInteger none [] =
+      .error (.unsupportedHostPrimitive .jsIsSafeInteger) := by rfl
+
+#print axioms kadmos_generated_property_method_allocates

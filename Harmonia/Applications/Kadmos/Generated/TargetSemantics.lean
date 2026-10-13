@@ -246,7 +246,7 @@ def localValue (m : TargetMachine) (frame : TargetFrame) (name : String) :
           | some ref => readCell m ref
           | none => .error (.unboundLocal name)
 
-private def readPropertyValue (lang : TargetLang) (m : TargetMachine)
+def readPropertyValue (lang : TargetLang) (m : TargetMachine)
     (receiver : TargetValue) (key : String) : Except TargetError ExprOutcome := do
   match receiver with
   | .object ref =>
@@ -470,7 +470,7 @@ private def jsonObjectFields (fuel : Nat) (lang : TargetLang)
 
 end
 
-private def hostCall (lang : TargetLang) (m : TargetMachine) (id : BuiltinId)
+def hostCall (lang : TargetLang) (m : TargetMachine) (id : BuiltinId)
     (receiver : Option TargetValue) (args : List TargetValue) :
     Except TargetError ExprOutcome := do
   match id, receiver, args with
@@ -1199,7 +1199,7 @@ def evalExpr (fuel : Nat) (program : TargetProgram) (m : TargetMachine)
     | .nonNull value => evalExpr fuel program m frame value
     | expr => .error (.unsupportedNode (reprStr expr))
 
-private def evalObjectFields (fuel : Nat) (program : TargetProgram)
+def evalObjectFields (fuel : Nat) (program : TargetProgram)
     (m : TargetMachine) (frame : TargetFrame) (destination : ObjRef)
     (fields : TargetExpr) : Except TargetError ExprOutcome :=
   match fuel with
@@ -1260,7 +1260,7 @@ private def evalArrayElems (fuel : Nat) (program : TargetProgram)
         | .ok _ => return exception outcome.machine "TypeError" "array spread source"
     | _ => .error .unsupportedExpression
 
-private def evalArgValues (fuel : Nat) (program : TargetProgram)
+def evalArgValues (fuel : Nat) (program : TargetProgram)
     (m : TargetMachine) (frame : TargetFrame) (args : TargetExpr) :
     Except TargetError ArgsOutcome :=
   match fuel with
@@ -1704,7 +1704,7 @@ private def evalDefaults (fuel : Nat) (program : TargetProgram)
             | .error e => return ⟨tail.machine, .error e⟩
             | .ok values => return ⟨tail.machine, .ok (value :: values)⟩
 
-private def bindCallParams (fuel : Nat) (program : TargetProgram)
+def bindCallParams (fuel : Nat) (program : TargetProgram)
     (m : TargetMachine) (frame : TargetFrame) (params : List ParamSpec)
     (defaults : List (Option TargetValue)) (args : List TargetValue) :
     Except TargetError BindOutcome :=
@@ -1740,7 +1740,7 @@ private def bindCallParams (fuel : Nat) (program : TargetProgram)
             bindCallParams fuel program withCell nextFrame rest (defaults.drop 1)
               (if provided.isSome then args.drop 1 else args)
 
-private def callClosure (fuel : Nat) (program : TargetProgram)
+def callClosure (fuel : Nat) (program : TargetProgram)
     (m : TargetMachine) (ref : ClosureRef) (args : List TargetValue) :
     Except TargetError ExprOutcome := do
   let closure ← closureAt m ref

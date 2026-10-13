@@ -2,12 +2,18 @@ import Harmonia.Applications.Kadmos.Generated.TargetSemantics
 
 namespace Harmonia.Applications.Kadmos.Generated
 
-/-- Unfueled execution configurations. The current rule slice covers scalar
-    leaves, ordered binary evaluation and elementary statement/control paths;
-    calls and collection/helper execution remain to add. -/
+/-- Unfueled execution configurations for scalar/property expressions, ordered
+    object fields and arguments, supplied-parameter closure/host calls, and
+    lexical/control statements. Remaining collection/default paths are separate. -/
 inductive TargetFocus where
   | eval (expr : TargetExpr)
   | exec (stmt : TargetStmt)
+  | objectFields (destination : ObjRef) (fields : TargetExpr)
+  | arguments (args : TargetExpr)
+  | argumentValues (values : List TargetValue)
+  | invoke (ref : ClosureRef) (args : List TargetValue)
+  | bindParams (params : List ParamSpec) (defaults : List (Option TargetValue))
+      (args : List TargetValue) (body : TargetStmt)
   | value (value : TargetValue)
   | exit (control : ControlResult)
   deriving Repr
@@ -15,6 +21,14 @@ inductive TargetFocus where
 /-- Continuations own ordered children and pending statement actions. A
     finalizer saves the outcome control before a caught frame is cleared. -/
 inductive ResumeFrame where
+  | objectValue (destination : ObjRef) (key : String) (rest : TargetExpr)
+  | property (key : String)
+  | callCallee (args : TargetExpr)
+  | callArguments (ref : ClosureRef)
+  | hostArguments (id : BuiltinId) (receiver : Option TargetValue)
+  | argumentHead (rest : TargetExpr)
+  | argumentTail (value : TargetValue)
+  | callReturn (caller : TargetFrame)
   | binaryLeft (op : BinaryOp) (right : TargetExpr)
   | binaryRight (op : BinaryOp) (left : TargetValue)
   | stmtIf (yes no : TargetStmt)
@@ -43,6 +57,66 @@ def exprResultFocus : Except TargetValue TargetValue → TargetFocus
 def integerValue (lang : TargetLang) (n : Int) : TargetValue :=
   .number (if lang == .ts then .jsNumber else .pyInt) n
 
+/-- Fresh ordinary object/dict literal, before its source fields execute. -/
+def literalObject (lang : TargetLang) (m : TargetMachine) : HeapObject :=
+  ⟨(if lang == .ts then .jsOrdinary else .pythonDict),
+    (if lang == .ts then some m.objectPrototype else none), [], [], [], false, false⟩
+
+/-- Closure calls start with captured cell addresses and an empty local scope. -/
+def closureFrame (closure : TargetClosure) : TargetFrame :=
+  ⟨closure.qualifiedName, [], [], closure.captures, closure.receiver, .normal⟩
+
+/-- Translate only the executed body's control; this does not execute code. -/
+def closureResult (lang : TargetLang) (out : StmtOutcome) : Except TargetError ExprOutcome :=
+  match out.control with
+  | .returned value => .ok ⟨out.machine, .ok value⟩
+  | .normal => .ok ⟨out.machine, .ok (if lang == .ts then .undefined else .null)⟩
+  | .raised value => .ok ⟨out.machine, .error value⟩
+  | _ => .error .wrongControl
+
+/-- Explicitly provided arguments, with TS undefined-default selection excluded.
+    Defaults remain recorded and advance in lockstep; no default is assumed. -/
+inductive DepthBindsProvided (program : TargetProgram) : TargetMachine → TargetFrame →
+    List ParamSpec → List (Option TargetValue) → List TargetValue →
+    TargetMachine → TargetFrame → Nat → Prop where
+  | empty {m f defaults} : DepthBindsProvided program m f [] defaults [] m f 0
+  | cons {m f param params defaults value values final ff rank}
+      (hn : (program.lang == .ts && (some value == some TargetValue.undefined)) = false)
+      (ht : DepthBindsProvided program (allocCell m value true).1
+        { f with locals := (param.name, m.nextCell) :: f.locals }
+        params (defaults.drop 1) values final ff rank) :
+      DepthBindsProvided program m f (param :: params) defaults (value :: values)
+        final ff (1 + rank)
+
+theorem bindProvided_adequate {program m f params defaults args final ff rank k}
+    (h : DepthBindsProvided program m f params defaults args final ff rank)
+    (hk : rank < k) :
+    bindCallParams k program m f params defaults args = .ok ⟨final, ff, .ok ()⟩ := by
+  induction h generalizing k with
+  | empty =>
+      cases k with
+      | zero => exfalso; omega
+      | succ k => simp [bindCallParams]
+  | @cons m f param params defaults value values final ff rank hn ht ih =>
+      cases k with
+      | zero => exfalso; omega
+      | succ k =>
+          have hr : rank < k := by omega
+          have ht : program.lang = .ts → value ≠ .undefined := by simpa using hn
+          have hnot : ¬program.lang = .ts ∨ ¬value = .undefined := by
+            by_cases hl : program.lang = .ts
+            · exact .inr (ht hl)
+            · exact .inl hl
+          simpa [bindCallParams, hnot, allocCell, Bind.bind, Pure.pure, Except.bind,
+            Except.pure] using ih hr
+
+/-- These call targets dispatch through the basic host primitive rather than
+    the iterable/generator or callback executor. -/
+def DirectHostDispatch (id : BuiltinId) (receiver : Option TargetValue) : Prop :=
+  match receiver with
+  | none => id ≠ .next ∧ id ≠ .tuple ∧ id ≠ .list
+  | some _ => id ≠ .arrayFind ∧ id ≠ .arraySome ∧ id ≠ .arrayMap
+
 /-- No evaluator or depth budget occurs in a transition premise. The binary
     primitive is the existing basic operation, never a generated helper body.
     Python list addition has allocation semantics and is outside this slice. -/
@@ -64,6 +138,98 @@ inductive SmallStep (program : TargetProgram) : TargetConfig → TargetConfig �
       SmallStep program ⟨m, f, .eval (.global name), c⟩ ⟨m, f, .value value, c⟩
   | checkerField {m f c name value} (h : readCheckerField m name = .ok value) :
       SmallStep program ⟨m, f, .eval (.checkerField name), c⟩ ⟨m, f, .value value, c⟩
+  | callEnter {m f c callee args} :
+      SmallStep program ⟨m, f, .eval (.call callee args), c⟩
+        ⟨m, f, .eval callee, .callCallee args :: c⟩
+  | callCalleeRaised {m f c args value} :
+      SmallStep program ⟨m, f, .exit (.raised value), .callCallee args :: c⟩
+        ⟨m, f, .exit (.raised value), c⟩
+  | callClosureArgs {m f c ref args} :
+      SmallStep program ⟨m, f, .value (.closure ref), .callCallee args :: c⟩
+        ⟨m, f, .arguments args, .callArguments ref :: c⟩
+  | callBuiltinArgs {m f c id args} :
+      SmallStep program ⟨m, f, .value (.builtin id), .callCallee args :: c⟩
+        ⟨m, f, .arguments args, .hostArguments id none :: c⟩
+  | callBoundBuiltinArgs {m f c id receiver args} :
+      SmallStep program ⟨m, f, .value (.boundBuiltin id receiver), .callCallee args :: c⟩
+        ⟨m, f, .arguments args, .hostArguments id (some receiver) :: c⟩
+  | hostArgsRaised {m f c id receiver value} :
+      SmallStep program ⟨m, f, .exit (.raised value), .hostArguments id receiver :: c⟩
+        ⟨m, f, .exit (.raised value), c⟩
+  | hostArgsFinish {m f c id receiver values out}
+      (hi : DirectHostDispatch id receiver)
+      (hh : hostCall program.lang m id receiver values = .ok out) :
+      SmallStep program ⟨m, f, .argumentValues values, .hostArguments id receiver :: c⟩
+        ⟨out.machine, f, exprResultFocus out.result, c⟩
+  | argsEmpty {m f c} :
+      SmallStep program ⟨m, f, .arguments .empty, c⟩ ⟨m, f, .argumentValues [], c⟩
+  | argsCons {m f c first rest} :
+      SmallStep program ⟨m, f, .arguments (.sequence first rest), c⟩
+        ⟨m, f, .eval first, .argumentHead rest :: c⟩
+  | argsHead {m f c value rest} :
+      SmallStep program ⟨m, f, .value value, .argumentHead rest :: c⟩
+        ⟨m, f, .arguments rest, .argumentTail value :: c⟩
+  | argsTail {m f c value values} :
+      SmallStep program ⟨m, f, .argumentValues values, .argumentTail value :: c⟩
+        ⟨m, f, .argumentValues (value :: values), c⟩
+  | argsHeadRaised {m f c rest value} :
+      SmallStep program ⟨m, f, .exit (.raised value), .argumentHead rest :: c⟩
+        ⟨m, f, .exit (.raised value), c⟩
+  | argsTailRaised {m f c head value} :
+      SmallStep program ⟨m, f, .exit (.raised value), .argumentTail head :: c⟩
+        ⟨m, f, .exit (.raised value), c⟩
+  | callArgsRaised {m f c ref value} :
+      SmallStep program ⟨m, f, .exit (.raised value), .callArguments ref :: c⟩
+        ⟨m, f, .exit (.raised value), c⟩
+  | callInvoke {m f c ref values} :
+      SmallStep program ⟨m, f, .argumentValues values, .callArguments ref :: c⟩
+        ⟨m, f, .invoke ref values, c⟩
+  | closureEnter {m f c ref args closure}
+      (hc : closureAt m ref = .ok closure) :
+      SmallStep program ⟨m, f, .invoke ref args, c⟩
+        ⟨m, closureFrame closure,
+          .bindParams closure.params closure.pythonDefaults args closure.body,
+          .callReturn f :: c⟩
+  | paramsEmpty {m f c defaults body} :
+      SmallStep program ⟨m, f, .bindParams [] defaults [] body, c⟩
+        ⟨m, f, .exec body, c⟩
+  | paramsCons {m f c param params defaults value values body}
+      (hn : (program.lang == .ts && (some value == some TargetValue.undefined)) = false) :
+      SmallStep program ⟨m, f, .bindParams (param :: params) defaults (value :: values) body, c⟩
+        ⟨(allocCell m value true).1,
+          { f with locals := (param.name, m.nextCell) :: f.locals },
+          .bindParams params (defaults.drop 1) values body, c⟩
+  | closureReturn {m f caller c control out}
+      (hc : closureResult program.lang ⟨m, f, control⟩ = .ok out) :
+      SmallStep program ⟨m, f, .exit control, .callReturn caller :: c⟩
+        ⟨out.machine, caller, exprResultFocus out.result, c⟩
+  | objectEnter {m f c fields} :
+      SmallStep program ⟨m, f, .eval (.object fields), c⟩
+        ⟨(allocObject m (literalObject program.lang m)).1, f,
+          .objectFields m.nextObject fields, c⟩
+  | objectEmpty {m f c ref} :
+      SmallStep program ⟨m, f, .objectFields ref .empty, c⟩
+        ⟨m, f, .value (.object ref), c⟩
+  | objectEntry {m f c ref key value rest} :
+      SmallStep program ⟨m, f, .objectFields ref (.objectEntry key value rest), c⟩
+        ⟨m, f, .eval value, .objectValue ref key rest :: c⟩
+  | objectWrite {m final f c ref key value rest}
+      (hw : writeOwn m ref key value = .ok final) :
+      SmallStep program ⟨m, f, .value value, .objectValue ref key rest :: c⟩
+        ⟨final, f, .objectFields ref rest, c⟩
+  | objectRaised {m f c ref key rest value} :
+      SmallStep program ⟨m, f, .exit (.raised value), .objectValue ref key rest :: c⟩
+        ⟨m, f, .exit (.raised value), c⟩
+  | propertyEnter {m f c receiver key} :
+      SmallStep program ⟨m, f, .eval (.property receiver key), c⟩
+        ⟨m, f, .eval receiver, .property key :: c⟩
+  | propertyRaised {m f c key value} :
+      SmallStep program ⟨m, f, .exit (.raised value), .property key :: c⟩
+        ⟨m, f, .exit (.raised value), c⟩
+  | propertyFinish {m f c key receiver out}
+      (hp : readPropertyValue program.lang m receiver key = .ok out) :
+      SmallStep program ⟨m, f, .value receiver, .property key :: c⟩
+        ⟨out.machine, f, exprResultFocus out.result, c⟩
   | binaryEnter {m f c op left right} :
       SmallStep program ⟨m, f, .eval (.binary op left right), c⟩
         ⟨m, f, .eval left, .binaryLeft op right :: c⟩
@@ -259,9 +425,23 @@ def ExprRuns (program : TargetProgram) (machine : TargetMachine)
   Runs program ⟨machine, frame, .eval expr, []⟩
     ⟨outcome.machine, frame, exprResultFocus outcome.result, []⟩
 
+theorem provided_path_runs {program m f params defaults args final ff rank}
+    (h : DepthBindsProvided program m f params defaults args final ff rank)
+    (body : TargetStmt) (c : List ResumeFrame) :
+    Runs program ⟨m, f, .bindParams params defaults args body, c⟩
+      ⟨final, ff, .exec body, c⟩ := by
+  induction h with
+  | empty => exact .single .paramsEmpty
+  | cons hn ht ih => exact (Runs.single (.paramsCons hn)).trans ih
+
+def argsResultFocus : Except TargetValue (List TargetValue) → TargetFocus
+  | .ok values => .argumentValues values
+  | .error value => .exit (.raised value)
+
+mutual
 /-- Semantic derivations, independent of evaluator success. Sibling children
     share the predecessor depth: their maximum, not their sum, determines rank.
-    This initial slice intentionally does not assert coverage of all syntax. -/
+    This relation does not assert coverage of all syntax. -/
 inductive DepthDerivesExpr (program : TargetProgram) :
     TargetMachine → TargetFrame → TargetExpr → ExprOutcome → Nat → Prop where
   | undefined {m f} : DepthDerivesExpr program m f .undefined ⟨m, .ok .undefined⟩ 0
@@ -276,6 +456,68 @@ inductive DepthDerivesExpr (program : TargetProgram) :
       DepthDerivesExpr program m f (.global name) ⟨m, .ok value⟩ 0
   | checkerField {m f name value} (h : readCheckerField m name = .ok value) :
       DepthDerivesExpr program m f (.checkerField name) ⟨m, .ok value⟩ 0
+  | callCalleeRaised {m f callee args final value rank}
+      (he : DepthDerivesExpr program m f callee ⟨final, .error value⟩ rank) :
+      DepthDerivesExpr program m f (.call callee args) ⟨final, .error value⟩ (1 + rank)
+  | callArgsRaised {m f callee args middle final ref value re ra}
+      (he : DepthDerivesExpr program m f callee ⟨middle, .ok (.closure ref)⟩ re)
+      (ha : DepthDerivesArgs program middle f args ⟨final, .error value⟩ ra) :
+      DepthDerivesExpr program m f (.call callee args) ⟨final, .error value⟩ (1 + max re ra)
+  | callBuiltin {m f callee args middle final id values out re ra}
+      (he : DepthDerivesExpr program m f callee ⟨middle, .ok (.builtin id)⟩ re)
+      (ha : DepthDerivesArgs program middle f args ⟨final, .ok values⟩ ra)
+      (hi : id ≠ .next ∧ id ≠ .tuple ∧ id ≠ .list)
+      (hh : hostCall program.lang final id none values = .ok out) :
+      DepthDerivesExpr program m f (.call callee args) out (1 + max re ra)
+  | callBoundBuiltin {m f callee args middle final id receiver values out re ra}
+      (he : DepthDerivesExpr program m f callee ⟨middle, .ok (.boundBuiltin id receiver)⟩ re)
+      (ha : DepthDerivesArgs program middle f args ⟨final, .ok values⟩ ra)
+      (hi : id ≠ .arrayFind ∧ id ≠ .arraySome ∧ id ≠ .arrayMap)
+      (hh : hostCall program.lang final id (some receiver) values = .ok out) :
+      DepthDerivesExpr program m f (.call callee args) out (1 + max re ra)
+  | callBuiltinArgsRaised {m f callee args middle final id value re ra}
+      (he : DepthDerivesExpr program m f callee ⟨middle, .ok (.builtin id)⟩ re)
+      (ha : DepthDerivesArgs program middle f args ⟨final, .error value⟩ ra) :
+      DepthDerivesExpr program m f (.call callee args) ⟨final, .error value⟩ (1 + max re ra)
+  | callBoundArgsRaised {m f callee args middle final id receiver value re ra}
+      (he : DepthDerivesExpr program m f callee ⟨middle, .ok (.boundBuiltin id receiver)⟩ re)
+      (ha : DepthDerivesArgs program middle f args ⟨final, .error value⟩ ra) :
+      DepthDerivesExpr program m f (.call callee args) ⟨final, .error value⟩ (1 + max re ra)
+  | callClosure {m f callee args middle bound final ff ref values closure executed out re ra rp rb}
+      (he : DepthDerivesExpr program m f callee ⟨middle, .ok (.closure ref)⟩ re)
+      (ha : DepthDerivesArgs program middle f args ⟨bound, .ok values⟩ ra)
+      (hc : closureAt bound ref = .ok closure)
+      (hp : DepthBindsProvided program bound (closureFrame closure) closure.params
+        closure.pythonDefaults values final ff rp)
+      (hb : DepthDerivesStmt program final ff closure.body executed rb)
+      (ho : closureResult program.lang executed = .ok out) :
+      DepthDerivesExpr program m f (.call callee args) out
+        (1 + max re (max ra (max rp rb)))
+  | objectFields {m f fields out rank}
+      (hf : DepthDerivesFields program (allocObject m (literalObject program.lang m)).1
+        f m.nextObject fields out rank) :
+      DepthDerivesExpr program m f (.object fields) out (1 + rank)
+  | objectEmpty {m f} :
+      DepthDerivesExpr program m f (.object .empty)
+        ⟨(allocObject m (literalObject program.lang m)).1, .ok (.object m.nextObject)⟩ 1
+  | objectOne {m f key expr middle final value rank}
+      (he : DepthDerivesExpr program (allocObject m (literalObject program.lang m)).1
+        f expr ⟨middle, .ok value⟩ rank)
+      (hw : writeOwn middle m.nextObject key value = .ok final) :
+      DepthDerivesExpr program m f (.object (.objectEntry key expr .empty))
+        ⟨final, .ok (.object m.nextObject)⟩ (2 + rank)
+  | objectOneRaised {m f key expr final value rank}
+      (he : DepthDerivesExpr program (allocObject m (literalObject program.lang m)).1
+        f expr ⟨final, .error value⟩ rank) :
+      DepthDerivesExpr program m f (.object (.objectEntry key expr .empty))
+        ⟨final, .error value⟩ (2 + rank)
+  | propertyRaised {m f receiver key final value rank}
+      (he : DepthDerivesExpr program m f receiver ⟨final, .error value⟩ rank) :
+      DepthDerivesExpr program m f (.property receiver key) ⟨final, .error value⟩ (1 + rank)
+  | property {m f receiver key middle value out rank}
+      (he : DepthDerivesExpr program m f receiver ⟨middle, .ok value⟩ rank)
+      (hp : readPropertyValue program.lang middle value key = .ok out) :
+      DepthDerivesExpr program m f (.property receiver key) out (1 + rank)
   | binaryLeftRaised {m f left right op final value rank}
       (hLeft : DepthDerivesExpr program m f left ⟨final, .error value⟩ rank) :
       DepthDerivesExpr program m f (.binary op left right) ⟨final, .error value⟩ (1 + rank)
@@ -292,212 +534,34 @@ inductive DepthDerivesExpr (program : TargetProgram) :
       DepthDerivesExpr program m f (.binary op left right) ⟨final, result⟩
         (1 + max leftRank rightRank)
 
-theorem expr_path_runs_cont {program machine frame expr outcome rank}
-    (h : DepthDerivesExpr program machine frame expr outcome rank)
-    (continuation : List ResumeFrame) :
-    Runs program ⟨machine, frame, .eval expr, continuation⟩
-      ⟨outcome.machine, frame, exprResultFocus outcome.result, continuation⟩ := by
-  induction h generalizing continuation with
-  | undefined => exact Runs.single .undefined
-  | null => exact Runs.single .null
-  | bool b => exact Runs.single (.bool b)
-  | integer n => exact Runs.single (.integer n)
-  | string s => exact Runs.single (.string s)
-  | localRead h => exact .single (.localRead h)
-  | global h => exact .single (.global h)
-  | checkerField h => exact .single (.checkerField h)
-  | binaryLeftRaised _ ih =>
-      exact ((Runs.single .binaryEnter).trans (ih _)).tail .binaryLeftRaised
-  | binaryRightRaised _ _ ihLeft ihRight =>
-      exact (((Runs.single .binaryEnter).trans (ihLeft _)).tail
-        .binaryNext |>.trans (ihRight _)).tail .binaryRightRaised
-  | binary hOp _ _ hApply ihLeft ihRight =>
-      exact (((Runs.single .binaryEnter).trans (ihLeft _)).tail
-        .binaryNext |>.trans (ihRight _)).tail (.binaryFinish hOp hApply)
+inductive DepthDerivesFields (program : TargetProgram) :
+    TargetMachine → TargetFrame → ObjRef → TargetExpr → ExprOutcome → Nat → Prop where
+  | empty {m f ref} : DepthDerivesFields program m f ref .empty ⟨m, .ok (.object ref)⟩ 0
+  | raised {m f ref key expr rest final value rank}
+      (he : DepthDerivesExpr program m f expr ⟨final, .error value⟩ rank) :
+      DepthDerivesFields program m f ref (.objectEntry key expr rest)
+        ⟨final, .error value⟩ (1 + rank)
+  | entry {m f ref key expr rest middle updated value out re rf}
+      (he : DepthDerivesExpr program m f expr ⟨middle, .ok value⟩ re)
+      (hw : writeOwn middle ref key value = .ok updated)
+      (hf : DepthDerivesFields program updated f ref rest out rf) :
+      DepthDerivesFields program m f ref (.objectEntry key expr rest) out (1 + max re rf)
 
-theorem expr_path_runs {program machine frame expr outcome rank}
-    (h : DepthDerivesExpr program machine frame expr outcome rank) :
-    ExprRuns program machine frame expr outcome := expr_path_runs_cont h []
-
-theorem evalExpr_adequate {program machine frame expr outcome rank k}
-    (h : DepthDerivesExpr program machine frame expr outcome rank)
-    (hr : rank < k) : evalExpr k program machine frame expr = .ok outcome := by
-  induction h generalizing k with
-  | undefined => cases k with
-      | zero => exfalso; omega
-      | succ k => simp only [evalExpr]; rfl
-  | null => cases k with
-      | zero => exfalso; omega
-      | succ k => simp only [evalExpr]; rfl
-  | bool b => cases k with
-      | zero => exfalso; omega
-      | succ k => simp only [evalExpr]; rfl
-  | integer n => cases k with
-      | zero => exfalso; omega
-      | succ k => simp only [evalExpr]; rfl
-  | string s => cases k with
-      | zero => exfalso; omega
-      | succ k => simp only [evalExpr]; rfl
-  | localRead h | global h | checkerField h =>
-      cases k with
-      | zero => exact False.elim (by omega)
-      | succ k =>
-          simp [evalExpr, h, Bind.bind, Pure.pure, Except.bind, Except.pure]
-          rfl
-  | @binaryLeftRaised m f left right op final value rank hLeft ih =>
-      cases k with
-      | zero => exfalso; omega
-      | succ k =>
-          have hl : rank < k := by omega
-          simp [Bind.bind, Pure.pure, Functor.map, Except.bind, Except.pure, Except.map, evalExpr, ih hl]
-  | @binaryRightRaised m f left right op middle final lv value leftRank rightRank hLeft hRight ihLeft ihRight =>
-      cases k with
-      | zero => exfalso; omega
-      | succ k =>
-          have hl : leftRank < k := by omega
-          have hr' : rightRank < k := by omega
-          simp [Bind.bind, Pure.pure, Functor.map, Except.bind, Except.pure, Except.map, evalExpr, ihLeft hl, ihRight hr']
-  | @binary m f left right op middle final lv rv result leftRank rightRank hOp hLeft hRight hApply ihLeft ihRight =>
-      cases k with
-      | zero => exfalso; omega
-      | succ k =>
-          have hl : leftRank < k := by omega
-          have hr' : rightRank < k := by omega
-          simp [Bind.bind, Pure.pure, Functor.map, Except.bind, Except.pure, Except.map, evalExpr, ihLeft hl, ihRight hr', hOp, hApply]
-
-/-- Adequacy forces any two supported paths of the same expression to have
-    the same result, even if their derivation ranks differ. -/
-theorem DepthDerivesExpr.deterministic {program m f expr out₁ out₂ r₁ r₂}
-    (h₁ : DepthDerivesExpr program m f expr out₁ r₁)
-    (h₂ : DepthDerivesExpr program m f expr out₂ r₂) : out₁ = out₂ := by
-  have hk₁ : r₁ < max r₁ r₂ + 1 := Nat.lt_succ_of_le (Nat.le_max_left _ _)
-  have hk₂ : r₂ < max r₁ r₂ + 1 := Nat.lt_succ_of_le (Nat.le_max_right _ _)
-  exact Except.ok.inj ((evalExpr_adequate h₁ hk₁).symm.trans (evalExpr_adequate h₂ hk₂))
-
-/-- Syntax coverage of this read-only proof slice; `.add` needs a separate
-    Python list-concatenation rule before entering the common binary case. -/
-inductive ScalarSyntax : TargetExpr → Prop where
-  | undefined : ScalarSyntax .undefined
-  | null : ScalarSyntax .null
-  | bool (b : Bool) : ScalarSyntax (.bool b)
-  | integer (n : Int) : ScalarSyntax (.integer n)
-  | string (s : String) : ScalarSyntax (.string s)
-  | localRead (name : String) : ScalarSyntax (.local name)
-  | global (name : String) : ScalarSyntax (.global name)
-  | checkerField (name : String) : ScalarSyntax (.checkerField name)
-  | binary {op left right} (hOp : op ≠ .add)
-      (hLeft : ScalarSyntax left) (hRight : ScalarSyntax right) :
-      ScalarSyntax (.binary op left right)
-
-/-- Evaluator soundness for the explicitly covered syntax, including raised
-    source outcomes on either ordered child. No success premise occurs in the
-    semantic derivation constructors themselves. -/
-theorem evalScalar_sound {program machine frame expr outcome k}
-    (hs : ScalarSyntax expr)
-    (h : evalExpr k program machine frame expr = .ok outcome) :
-    ∃ rank, DepthDerivesExpr program machine frame expr outcome rank ∧ rank < k := by
-  induction hs generalizing k machine outcome with
-  | undefined =>
-      cases k with
-      | zero => simp [evalExpr] at h
-      | succ k => simp only [evalExpr] at h; cases h; exact ⟨0, .undefined, by omega⟩
-  | null =>
-      cases k with
-      | zero => simp [evalExpr] at h
-      | succ k => simp only [evalExpr] at h; cases h; exact ⟨0, .null, by omega⟩
-  | bool b =>
-      cases k with
-      | zero => simp [evalExpr] at h
-      | succ k => simp only [evalExpr] at h; cases h; exact ⟨0, .bool b, by omega⟩
-  | integer n =>
-      cases k with
-      | zero => simp [evalExpr] at h
-      | succ k => simp only [evalExpr] at h; cases h; exact ⟨0, .integer n, by omega⟩
-  | string s =>
-      cases k with
-      | zero => simp [evalExpr] at h
-      | succ k => simp only [evalExpr] at h; cases h; exact ⟨0, .string s, by omega⟩
-  | localRead name =>
-      cases k with
-      | zero => simp [evalExpr] at h
-      | succ k =>
-          cases hv : localValue machine frame name with
-          | error e =>
-              simp [evalExpr, hv, Bind.bind, Pure.pure, Except.bind, Except.pure] at h
-          | ok value =>
-              simp only [evalExpr, hv, Bind.bind, Pure.pure, Except.bind, Except.pure] at h
-              cases h
-              exact ⟨0, .localRead hv, by omega⟩
-  | global name =>
-      cases k with
-      | zero => simp [evalExpr] at h
-      | succ k =>
-          cases hv : localValue machine frame name with
-          | error e =>
-              simp [evalExpr, hv, Bind.bind, Pure.pure, Except.bind, Except.pure] at h
-          | ok value =>
-              simp only [evalExpr, hv, Bind.bind, Pure.pure, Except.bind, Except.pure] at h
-              cases h
-              exact ⟨0, .global hv, by omega⟩
-  | checkerField name =>
-      cases k with
-      | zero => simp [evalExpr] at h
-      | succ k =>
-          cases hv : readCheckerField machine name with
-          | error e =>
-              simp [evalExpr, hv, Bind.bind, Pure.pure, Except.bind, Except.pure] at h
-          | ok value =>
-              simp only [evalExpr, hv, Bind.bind, Pure.pure, Except.bind, Except.pure] at h
-              cases h
-              exact ⟨0, .checkerField hv, by omega⟩
-  | @binary op left right hOp _ _ ihLeft ihRight =>
-      cases k with
-      | zero => simp [evalExpr] at h
-      | succ k =>
-          cases hLeft : evalExpr k program machine frame left with
-          | error err => simp [Bind.bind, Pure.pure, Functor.map, Except.bind, Except.pure, Except.map, evalExpr, hLeft] at h
-          | ok lhs =>
-              rcases lhs with ⟨middle, lhs⟩
-              obtain ⟨leftRank, leftPath, leftBound⟩ := ihLeft hLeft
-              cases lhs with
-              | error value =>
-                  have heq : outcome = ⟨middle, .error value⟩ := by
-                    simpa [Bind.bind, Pure.pure, Functor.map, Except.bind, Except.pure, Except.map, evalExpr, hLeft] using h.symm
-                  subst outcome
-                  exact ⟨1 + leftRank, .binaryLeftRaised leftPath, by omega⟩
-              | ok lv =>
-                  cases hRight : evalExpr k program middle frame right with
-                  | error err => simp [Bind.bind, Pure.pure, Functor.map, Except.bind, Except.pure, Except.map, evalExpr, hLeft, hRight] at h
-                  | ok rhs =>
-                      rcases rhs with ⟨final, rhs⟩
-                      obtain ⟨rightRank, rightPath, rightBound⟩ := ihRight hRight
-                      cases rhs with
-                      | error value =>
-                          have heq : outcome = ⟨final, .error value⟩ := by
-                            simpa [Bind.bind, Pure.pure, Functor.map, Except.bind, Except.pure, Except.map, evalExpr, hLeft, hRight] using h.symm
-                          subst outcome
-                          exact ⟨1 + max leftRank rightRank,
-                            .binaryRightRaised leftPath rightPath, by omega⟩
-                      | ok rv =>
-                          cases hApply : binaryValue program.lang final op lv rv with
-                          | error err => simp [Bind.bind, Pure.pure, Functor.map, Except.bind, Except.pure, Except.map, evalExpr, hLeft, hRight, hOp, hApply] at h
-                          | ok result =>
-                              have heq : outcome = ⟨final, result⟩ := by
-                                simpa [Bind.bind, Pure.pure, Functor.map, Except.bind, Except.pure, Except.map, evalExpr, hLeft, hRight, hOp, hApply] using h.symm
-                              subst outcome
-                              exact ⟨1 + max leftRank rightRank,
-                                .binary hOp leftPath rightPath hApply, by omega⟩
-
-/-- Expression derivations in the scalar slice still preserve the machine.
-    General Runs now include statement writes and cannot claim this property. -/
-theorem DepthDerivesExpr.machine_eq {program m f expr out rank}
-    (h : DepthDerivesExpr program m f expr out rank) : out.machine = m := by
-  induction h with
-  | undefined | null | bool | integer | string | localRead | global | checkerField => rfl
-  | binaryLeftRaised _ ih => exact ih
-  | binaryRightRaised _ _ ihLeft ihRight => exact ihRight.trans ihLeft
-  | binary _ _ _ _ ihLeft ihRight => exact ihRight.trans ihLeft
-
+inductive DepthDerivesArgs (program : TargetProgram) :
+    TargetMachine → TargetFrame → TargetExpr → ArgsOutcome → Nat → Prop where
+  | empty {m f} : DepthDerivesArgs program m f .empty ⟨m, .ok []⟩ 0
+  | headRaised {m f first rest final value rank}
+      (he : DepthDerivesExpr program m f first ⟨final, .error value⟩ rank) :
+      DepthDerivesArgs program m f (.sequence first rest) ⟨final, .error value⟩ (1 + rank)
+  | tailRaised {m f first rest middle final value error re ra}
+      (he : DepthDerivesExpr program m f first ⟨middle, .ok value⟩ re)
+      (ha : DepthDerivesArgs program middle f rest ⟨final, .error error⟩ ra) :
+      DepthDerivesArgs program m f (.sequence first rest) ⟨final, .error error⟩ (1 + max re ra)
+  | cons {m f first rest middle final value values re ra}
+      (he : DepthDerivesExpr program m f first ⟨middle, .ok value⟩ re)
+      (ha : DepthDerivesArgs program middle f rest ⟨final, .ok values⟩ ra) :
+      DepthDerivesArgs program m f (.sequence first rest) ⟨final, .ok (value :: values)⟩
+        (1 + max re ra)
 
 /-- Ranked statement derivations. Each recursive sequence tail is a depth edge;
     first/rest, body/cleanup and expression siblings share predecessor fuel. -/
@@ -629,17 +693,110 @@ inductive DepthDerivesStmt (program : TargetProgram) :
       DepthDerivesStmt program m f (.tryCatchFinally body catchType binder handler cleanup)
         final (1 + max rb (max rh rc))
 
+end
+
 def StmtRuns (program : TargetProgram) (machine : TargetMachine) (frame : TargetFrame)
     (stmt : TargetStmt) (outcome : StmtOutcome) : Prop :=
   Runs program ⟨machine, frame, .exec stmt, []⟩
     ⟨outcome.machine, outcome.frame, .exit outcome.control, []⟩
+
+mutual
+theorem expr_path_runs_cont {program machine frame expr outcome rank}
+    (h : DepthDerivesExpr program machine frame expr outcome rank)
+    (continuation : List ResumeFrame) :
+    Runs program ⟨machine, frame, .eval expr, continuation⟩
+      ⟨outcome.machine, frame, exprResultFocus outcome.result, continuation⟩ := by
+  cases h with
+  | undefined => exact Runs.single .undefined
+  | null => exact Runs.single .null
+  | bool b => exact Runs.single (.bool b)
+  | integer n => exact Runs.single (.integer n)
+  | string s => exact Runs.single (.string s)
+  | localRead h => exact .single (.localRead h)
+  | global h => exact .single (.global h)
+  | checkerField h => exact .single (.checkerField h)
+  | callCalleeRaised he =>
+      exact ((Runs.single .callEnter).trans (expr_path_runs_cont he _)).tail .callCalleeRaised
+  | callArgsRaised he ha =>
+      exact ((((Runs.single .callEnter).trans (expr_path_runs_cont he _)).tail
+        .callClosureArgs).trans (args_path_runs_cont ha _)).tail .callArgsRaised
+  | callBuiltin he ha hi hh =>
+      exact ((((Runs.single .callEnter).trans (expr_path_runs_cont he _)).tail
+        .callBuiltinArgs).trans (args_path_runs_cont ha _)).tail (.hostArgsFinish hi hh)
+  | callBoundBuiltin he ha hi hh =>
+      exact ((((Runs.single .callEnter).trans (expr_path_runs_cont he _)).tail
+        .callBoundBuiltinArgs).trans (args_path_runs_cont ha _)).tail (.hostArgsFinish hi hh)
+  | callBuiltinArgsRaised he ha =>
+      exact ((((Runs.single .callEnter).trans (expr_path_runs_cont he _)).tail
+        .callBuiltinArgs).trans (args_path_runs_cont ha _)).tail .hostArgsRaised
+  | callBoundArgsRaised he ha =>
+      exact ((((Runs.single .callEnter).trans (expr_path_runs_cont he _)).tail
+        .callBoundBuiltinArgs).trans (args_path_runs_cont ha _)).tail .hostArgsRaised
+  | callClosure he ha hc hp hb ho =>
+      exact ((((((((Runs.single .callEnter).trans (expr_path_runs_cont he _)).tail
+        .callClosureArgs).trans (args_path_runs_cont ha _)).tail .callInvoke).tail
+          (.closureEnter hc)).trans (provided_path_runs hp _ _)).trans
+            (stmt_path_runs_cont hb _)).tail (.closureReturn ho)
+  | objectFields hf =>
+      exact (Runs.single .objectEnter).trans (fields_path_runs_cont hf _)
+  | objectEmpty => exact (Runs.single .objectEnter).tail .objectEmpty
+  | objectOne he hw =>
+      exact ((((Runs.single .objectEnter).tail .objectEntry).trans ((expr_path_runs_cont he) _)).tail
+        (.objectWrite hw)).tail .objectEmpty
+  | objectOneRaised he =>
+      exact (((Runs.single .objectEnter).tail .objectEntry).trans ((expr_path_runs_cont he) _)).tail .objectRaised
+  | propertyRaised he =>
+      exact ((Runs.single .propertyEnter).trans ((expr_path_runs_cont he) _)).tail .propertyRaised
+  | property he hp =>
+      exact ((Runs.single .propertyEnter).trans ((expr_path_runs_cont he) _)).tail (.propertyFinish hp)
+  | binaryLeftRaised hLeft =>
+      exact ((Runs.single .binaryEnter).trans ((expr_path_runs_cont hLeft) _)).tail .binaryLeftRaised
+  | binaryRightRaised hLeft hRight =>
+      exact (((Runs.single .binaryEnter).trans ((expr_path_runs_cont hLeft) _)).tail
+        .binaryNext |>.trans ((expr_path_runs_cont hRight) _)).tail .binaryRightRaised
+  | binary hOp hLeft hRight hApply =>
+      exact (((Runs.single .binaryEnter).trans ((expr_path_runs_cont hLeft) _)).tail
+        .binaryNext |>.trans ((expr_path_runs_cont hRight) _)).tail (.binaryFinish hOp hApply)
+termination_by rank
+decreasing_by all_goals omega
+
+theorem fields_path_runs_cont {program m f ref fields out rank}
+    (h : DepthDerivesFields program m f ref fields out rank) (c : List ResumeFrame) :
+    Runs program ⟨m, f, .objectFields ref fields, c⟩
+      ⟨out.machine, f, exprResultFocus out.result, c⟩ := by
+  cases h with
+  | empty => exact .single .objectEmpty
+  | raised he =>
+      exact ((Runs.single .objectEntry).trans (expr_path_runs_cont he _)).tail .objectRaised
+  | entry he hw hf =>
+      exact (((Runs.single .objectEntry).trans (expr_path_runs_cont he _)).tail
+        (.objectWrite hw)).trans (fields_path_runs_cont hf _)
+termination_by rank
+decreasing_by all_goals omega
+
+theorem args_path_runs_cont {program m f args out rank}
+    (h : DepthDerivesArgs program m f args out rank) (c : List ResumeFrame) :
+    Runs program ⟨m, f, .arguments args, c⟩
+      ⟨out.machine, f, argsResultFocus out.result, c⟩ := by
+  cases h with
+  | empty => exact .single .argsEmpty
+  | headRaised he =>
+      exact ((Runs.single .argsCons).trans (expr_path_runs_cont he _)).tail .argsHeadRaised
+  | tailRaised he ha =>
+      exact ((((Runs.single .argsCons).trans (expr_path_runs_cont he _)).tail
+        .argsHead).trans (args_path_runs_cont ha _)).tail .argsTailRaised
+  | cons he ha =>
+      exact ((((Runs.single .argsCons).trans (expr_path_runs_cont he _)).tail
+        .argsHead).trans (args_path_runs_cont ha _)).tail .argsTail
+termination_by rank
+decreasing_by all_goals omega
 
 theorem stmt_path_runs_cont {program machine frame stmt outcome rank}
     (h : DepthDerivesStmt program machine frame stmt outcome rank)
     (continuation : List ResumeFrame) :
     Runs program ⟨machine, frame, .exec stmt, continuation⟩
       ⟨outcome.machine, outcome.frame, .exit outcome.control, continuation⟩ := by
-  induction h generalizing continuation with
+  cases h with
   | letLocal he =>
       exact ((Runs.single .stmtLetLocalEnter).trans (expr_path_runs_cont he _)).trans
         (.single .stmtLetLocalFinish)
@@ -661,12 +818,12 @@ theorem stmt_path_runs_cont {program machine frame stmt outcome rank}
   | doExprRaised he =>
       exact ((Runs.single .stmtDoExprEnter).trans (expr_path_runs_cont he _)).trans
         (.single .stmtDoExprRaised)
-  | ifTrue hc ht hb ih =>
+  | ifTrue hc ht hb =>
       exact (((Runs.single .stmtIfEnter).trans (expr_path_runs_cont hc _)).trans
-        (.single (.stmtIfTrue ht))).trans (ih _)
-  | ifFalse hc ht hb ih =>
+        (.single (.stmtIfTrue ht))).trans ((stmt_path_runs_cont hb) _)
+  | ifFalse hc ht hb =>
       exact (((Runs.single .stmtIfEnter).trans (expr_path_runs_cont hc _)).trans
-        (.single (.stmtIfFalse ht))).trans (ih _)
+        (.single (.stmtIfFalse ht))).trans ((stmt_path_runs_cont hb) _)
   | ifRaised hc =>
       exact ((Runs.single .stmtIfEnter).trans (expr_path_runs_cont hc _)).trans
         (.single .stmtIfRaised)
@@ -676,11 +833,11 @@ theorem stmt_path_runs_cont {program machine frame stmt outcome rank}
   | breakTarget label => exact .single .stmtBreak
   | continueTarget label => exact .single .stmtContinue
   | rethrow h => exact .single (.stmtRethrow h)
-  | sequenceNormal hFirst hRest ihFirst ihRest =>
-      exact ((Runs.single .stmtSequence).trans (ihFirst _)).trans
-        ((Runs.single .stmtSequenceNext).trans (ihRest _))
-  | sequenceExit hFirst hExit ih =>
-      exact ((Runs.single .stmtSequence).trans (ih _)).trans
+  | sequenceNormal hFirst hRest =>
+      exact ((Runs.single .stmtSequence).trans ((stmt_path_runs_cont hFirst) _)).trans
+        ((Runs.single .stmtSequenceNext).trans ((stmt_path_runs_cont hRest) _))
+  | sequenceExit hFirst hExit =>
+      exact ((Runs.single .stmtSequence).trans ((stmt_path_runs_cont hFirst) _)).trans
         (.single (.stmtSequenceExit hExit))
   | returnValue hExpr =>
       exact ((Runs.single .stmtReturnEnter).trans (expr_path_runs_cont hExpr _)).trans
@@ -700,30 +857,31 @@ theorem stmt_path_runs_cont {program machine frame stmt outcome rank}
   | assignFieldRaised hExpr =>
       exact ((Runs.single .stmtAssignFieldEnter).trans (expr_path_runs_cont hExpr _)).trans
         (.single .stmtAssignFieldRaised)
-  | finallyNormal hBody hUncaught hCleanup ihBody ihCleanup =>
-      exact ((((Runs.single .stmtProtectEnter).trans (ihBody _)).trans
-        (.single (.stmtProtectUncaught hUncaught))).trans (ihCleanup _)).trans
+  | finallyNormal hBody hUncaught hCleanup =>
+      exact ((((Runs.single .stmtProtectEnter).trans ((stmt_path_runs_cont hBody) _)).trans
+        (.single (.stmtProtectUncaught hUncaught))).trans ((stmt_path_runs_cont hCleanup) _)).trans
           (.single .stmtFinallyNormal)
-  | finallyOverride hBody hUncaught hCleanup hExit ihBody ihCleanup =>
-      exact ((((Runs.single .stmtProtectEnter).trans (ihBody _)).trans
-        (.single (.stmtProtectUncaught hUncaught))).trans (ihCleanup _)).trans
+  | finallyOverride hBody hUncaught hCleanup hExit =>
+      exact ((((Runs.single .stmtProtectEnter).trans ((stmt_path_runs_cont hBody) _)).trans
+        (.single (.stmtProtectUncaught hUncaught))).trans ((stmt_path_runs_cont hCleanup) _)).trans
           (.single (.stmtFinallyOverride hExit))
 
-  | caughtFinallyNormal hb hc hh hcl ihb ihh ihcl =>
-      exact ((((((Runs.single .stmtProtectEnter).trans (ihb _)).trans
-        (.single (.stmtProtectCaught hc))).trans (ihh _)).trans
-          (.single .stmtHandlerExit)).trans (ihcl _)).trans (.single .stmtFinallyNormal)
-  | caughtFinallyOverride hb hc hh hcl he ihb ihh ihcl =>
-      exact ((((((Runs.single .stmtProtectEnter).trans (ihb _)).trans
-        (.single (.stmtProtectCaught hc))).trans (ihh _)).trans
-          (.single .stmtHandlerExit)).trans (ihcl _)).trans (.single (.stmtFinallyOverride he))
+  | caughtFinallyNormal hb hc hh hcl =>
+      exact ((((((Runs.single .stmtProtectEnter).trans ((stmt_path_runs_cont hb) _)).trans
+        (.single (.stmtProtectCaught hc))).trans ((stmt_path_runs_cont hh) _)).trans
+          (.single .stmtHandlerExit)).trans ((stmt_path_runs_cont hcl) _)).trans (.single .stmtFinallyNormal)
+  | caughtFinallyOverride hb hc hh hcl he =>
+      exact ((((((Runs.single .stmtProtectEnter).trans ((stmt_path_runs_cont hb) _)).trans
+        (.single (.stmtProtectCaught hc))).trans ((stmt_path_runs_cont hh) _)).trans
+          (.single .stmtHandlerExit)).trans ((stmt_path_runs_cont hcl) _)).trans (.single (.stmtFinallyOverride he))
+termination_by rank
+decreasing_by all_goals omega
+end
 
-theorem stmt_path_runs {program machine frame stmt outcome rank}
-    (h : DepthDerivesStmt program machine frame stmt outcome rank) :
-    StmtRuns program machine frame stmt outcome := stmt_path_runs_cont h []
+theorem expr_path_runs {program machine frame expr outcome rank}
+    (h : DepthDerivesExpr program machine frame expr outcome rank) :
+    ExprRuns program machine frame expr outcome := expr_path_runs_cont h []
 
-/-- Reverse adequacy for the supported statement paths, including a mutating
-    finalizer. No executable success is a premise of a semantic derivation. -/
 private theorem nonlocalNames_exec {program m f names k}
     (h : names.all (fun name => (f.captures.lookup name).isSome) = true) :
     execStmt (k + 1) program m f (.nonlocalNames names) = .ok ⟨m, f, .normal⟩ := by
@@ -737,10 +895,223 @@ private theorem nonlocalNames_exec {program m f names k}
       simp only [execStmt] at ht ⊢
       simpa [List.forIn_cons, hn, Bind.bind, Pure.pure, Except.bind, Except.pure] using ht
 
+set_option maxHeartbeats 1000000 in
+mutual
+theorem evalExpr_adequate {program machine frame expr outcome rank k}
+    (h : DepthDerivesExpr program machine frame expr outcome rank)
+    (hr : rank < k) : evalExpr k program machine frame expr = .ok outcome := by
+  cases h with
+  | undefined => cases k with
+      | zero => exfalso; omega
+      | succ k => simp only [evalExpr]; rfl
+  | null => cases k with
+      | zero => exfalso; omega
+      | succ k => simp only [evalExpr]; rfl
+  | bool b => cases k with
+      | zero => exfalso; omega
+      | succ k => simp only [evalExpr]; rfl
+  | integer n => cases k with
+      | zero => exfalso; omega
+      | succ k => simp only [evalExpr]; rfl
+  | string s => cases k with
+      | zero => exfalso; omega
+      | succ k => simp only [evalExpr]; rfl
+  | localRead h | global h | checkerField h =>
+      cases k with
+      | zero => exact False.elim (by omega)
+      | succ k =>
+          simp [evalExpr, h, Bind.bind, Pure.pure, Except.bind, Except.pure]
+          rfl
+  | @callCalleeRaised m f callee args final value rank he =>
+      cases k with
+      | zero => exfalso; omega
+      | succ k =>
+          have hk : rank < k := by omega
+          simp [evalExpr, evalExpr_adequate he hk, Bind.bind, Pure.pure, Except.bind, Except.pure]
+  | @callArgsRaised m f callee args middle final ref value re ra he ha =>
+      cases k with
+      | zero => exfalso; omega
+      | succ k =>
+          have hke : re < k := by omega
+          have hka : ra < k := by omega
+          simp [evalExpr, evalExpr_adequate he hke, evalArgs_adequate ha hka,
+            Bind.bind, Pure.pure, Except.bind, Except.pure]
+  | @callBuiltin m f callee args middle final id values out re ra he ha hi hh
+  | @callBoundBuiltin m f callee args middle final id receiver values out re ra he ha hi hh =>
+      cases k with
+      | zero => exfalso; omega
+      | succ k =>
+          have hre : re < k := by omega
+          have hra : ra < k := by omega
+          simpa [evalExpr, evalExpr_adequate he hre, evalArgs_adequate ha hra,
+            hi.1, hi.2.1, hi.2.2, Bind.bind, Pure.pure, Except.bind, Except.pure] using hh
+  | @callBuiltinArgsRaised m f callee args middle final id value re ra he ha
+  | @callBoundArgsRaised m f callee args middle final id receiver value re ra he ha =>
+      cases k with
+      | zero => exfalso; omega
+      | succ k =>
+          have hre : re < k := by omega
+          have hra : ra < k := by omega
+          simp [evalExpr, evalExpr_adequate he hre, evalArgs_adequate ha hra,
+            Bind.bind, Pure.pure, Except.bind, Except.pure]
+  | @callClosure m f callee args middle bound final ff ref values closure executed out re ra rp rb he ha hc hp hb ho =>
+      cases k with
+      | zero => exfalso; omega
+      | succ k =>
+          have hke : re < k := by omega
+          have hka : ra < k := by omega
+          have hkp : rp < k := by omega
+          have hkb : rb < k := by omega
+          simp only [evalExpr, evalExpr_adequate he hke, evalArgs_adequate ha hka,
+            Bind.bind, Pure.pure, Except.bind, Except.pure]
+          simp only [callClosure, hc, Bind.bind, Except.bind]
+          change (do
+            let bindings ← bindCallParams k program bound (closureFrame closure)
+              closure.params closure.pythonDefaults values
+            match bindings.result with
+            | .error e => pure ⟨bindings.machine, .error e⟩
+            | .ok _ => do
+              let result ← execStmt k program bindings.machine bindings.frame closure.body
+              closureResult program.lang result : Except TargetError ExprOutcome) = _
+          simpa only [bindProvided_adequate hp hkp, execStmt_adequate hb hkb,
+            Bind.bind, Pure.pure, Except.bind, Except.pure] using ho
+  | @objectFields m f fields out rank hf =>
+      cases k with
+      | zero => exfalso; omega
+      | succ k =>
+          have hk : rank < k := by omega
+          simp only [evalExpr]
+          exact evalFields_adequate hf hk
+  | objectEmpty =>
+      cases k with
+      | zero => exfalso; omega
+      | succ k =>
+          cases k with
+          | zero => exfalso; omega
+          | succ k => simp only [evalExpr, evalObjectFields]; rfl
+  | @objectOne m f key expr middle final value rank he hw =>
+      cases k with
+      | zero => exfalso; omega
+      | succ k =>
+          cases k with
+          | zero => exfalso; omega
+          | succ k =>
+              have hk : rank < k := by omega
+              simp only [evalExpr]
+              change evalObjectFields (k + 1) program
+                (allocObject machine (literalObject program.lang machine)).1 frame machine.nextObject
+                (.objectEntry key expr .empty) = _
+              simp only [evalObjectFields, (evalExpr_adequate he) hk, hw, Bind.bind, Pure.pure,
+                Except.bind, Except.pure]
+              cases k with
+              | zero => exfalso; omega
+              | succ k => simp only [evalObjectFields]; rfl
+  | @objectOneRaised m f key expr final value rank he =>
+      cases k with
+      | zero => exfalso; omega
+      | succ k =>
+          cases k with
+          | zero => exfalso; omega
+          | succ k =>
+              have hk : rank < k := by omega
+              simp only [evalExpr]
+              change evalObjectFields (k + 1) program
+                (allocObject machine (literalObject program.lang machine)).1 frame machine.nextObject
+                (.objectEntry key expr .empty) = _
+              simp only [evalObjectFields, (evalExpr_adequate he) hk, Bind.bind, Pure.pure,
+                Except.bind, Except.pure]
+  | @propertyRaised m f receiver key final value rank he =>
+      cases k with
+      | zero => exfalso; omega
+      | succ k =>
+          have hk : rank < k := by omega
+          simp [evalExpr, (evalExpr_adequate he) hk, Bind.bind, Pure.pure, Except.bind, Except.pure]
+  | @property m f receiver key middle value out rank he hp =>
+      cases k with
+      | zero => exfalso; omega
+      | succ k =>
+          have hk : rank < k := by omega
+          simpa [evalExpr, (evalExpr_adequate he) hk, Bind.bind, Pure.pure, Except.bind, Except.pure] using hp
+  | @binaryLeftRaised m f left right op final value rank hLeft =>
+      cases k with
+      | zero => exfalso; omega
+      | succ k =>
+          have hl : rank < k := by omega
+          simp [Bind.bind, Pure.pure, Functor.map, Except.bind, Except.pure, Except.map, evalExpr, (evalExpr_adequate hLeft) hl]
+  | @binaryRightRaised m f left right op middle final lv value leftRank rightRank hLeft hRight =>
+      cases k with
+      | zero => exfalso; omega
+      | succ k =>
+          have hl : leftRank < k := by omega
+          have hr' : rightRank < k := by omega
+          simp [Bind.bind, Pure.pure, Functor.map, Except.bind, Except.pure, Except.map, evalExpr, (evalExpr_adequate hLeft) hl, (evalExpr_adequate hRight) hr']
+  | @binary m f left right op middle final lv rv result leftRank rightRank hOp hLeft hRight hApply =>
+      cases k with
+      | zero => exfalso; omega
+      | succ k =>
+          have hl : leftRank < k := by omega
+          have hr' : rightRank < k := by omega
+          simp [Bind.bind, Pure.pure, Functor.map, Except.bind, Except.pure, Except.map, evalExpr, (evalExpr_adequate hLeft) hl, (evalExpr_adequate hRight) hr', hOp, hApply]
+termination_by rank
+decreasing_by all_goals omega
+
+theorem evalFields_adequate {program m f ref fields out rank k}
+    (h : DepthDerivesFields program m f ref fields out rank) (hk : rank < k) :
+    evalObjectFields k program m f ref fields = .ok out := by
+  cases h with
+  | empty =>
+      cases k with
+      | zero => exfalso; omega
+      | succ k => simp [evalObjectFields]; rfl
+  | @raised m f ref key expr rest final value rank he =>
+      cases k with
+      | zero => exfalso; omega
+      | succ k =>
+          have hr : rank < k := by omega
+          simp [evalObjectFields, evalExpr_adequate he hr,
+            Bind.bind, Pure.pure, Except.bind, Except.pure]
+  | @entry m f ref key expr rest middle updated value out re rf he hw hf =>
+      cases k with
+      | zero => exfalso; omega
+      | succ k =>
+          have hre : re < k := by omega
+          have hrf : rf < k := by omega
+          simp [evalObjectFields, evalExpr_adequate he hre, hw, evalFields_adequate hf hrf,
+            Bind.bind, Pure.pure, Except.bind, Except.pure]
+termination_by rank
+decreasing_by all_goals omega
+
+theorem evalArgs_adequate {program m f args out rank k}
+    (h : DepthDerivesArgs program m f args out rank) (hk : rank < k) :
+    evalArgValues k program m f args = .ok out := by
+  cases h with
+  | empty =>
+      cases k with
+      | zero => exfalso; omega
+      | succ k => simp [evalArgValues]
+  | @headRaised m f first rest final value rank he =>
+      cases k with
+      | zero => exfalso; omega
+      | succ k =>
+          have hr : rank < k := by omega
+          simp [evalArgValues, evalExpr_adequate he hr,
+            Bind.bind, Pure.pure, Except.bind, Except.pure]
+  | @tailRaised m f first rest middle final value error re ra he ha
+  | @cons m f first rest middle final value values re ra he ha =>
+      cases k with
+      | zero => exfalso; omega
+      | succ k =>
+          have hre : re < k := by omega
+          have hra : ra < k := by omega
+          simp [evalArgValues, evalExpr_adequate he hre, evalArgs_adequate ha hra,
+            Bind.bind, Pure.pure, Except.bind, Except.pure]
+termination_by rank
+decreasing_by all_goals omega
+
 theorem execStmt_adequate {program machine frame stmt outcome rank k}
     (h : DepthDerivesStmt program machine frame stmt outcome rank)
     (hr : rank < k) : execStmt k program machine frame stmt = .ok outcome := by
-  induction h generalizing k with
+  cases h with
   | @letLocal m f name mutable expr final value r he
   | @letLocalRaised m f name mutable expr final value r he
   | @assignLocalRaised m f name expr final value r he
@@ -766,14 +1137,14 @@ theorem execStmt_adequate {program machine frame stmt outcome rank k}
           have hk : r < k := by omega
           simp [execStmt, evalExpr_adequate he hk, hl, ha, allocCell,
             Bind.bind, Pure.pure, Except.bind, Except.pure]
-  | @ifTrue m f cond yes no middle value out rc rb hc ht hb ih
-  | @ifFalse m f cond yes no middle value out rc rb hc ht hb ih =>
+  | @ifTrue m f cond yes no middle value out rc rb hc ht hb
+  | @ifFalse m f cond yes no middle value out rc rb hc ht hb =>
       cases k with
       | zero => exact False.elim (by omega)
       | succ k =>
           have hck : rc < k := by omega
           have hbk : rb < k := by omega
-          simp [execStmt, evalExpr_adequate hc hck, ht, ih hbk,
+          simp [execStmt, evalExpr_adequate hc hck, ht, (execStmt_adequate hb) hbk,
             Bind.bind, Pure.pure, Except.bind, Except.pure]
   | @ifRaised m f cond yes no final value rank hc =>
       cases k with
@@ -794,20 +1165,20 @@ theorem execStmt_adequate {program machine frame stmt outcome rank k}
       cases k with
       | zero => exact False.elim (by omega)
       | succ k => simp [execStmt, h]
-  | @sequenceNormal m f first rest middle midFrame final r1 r2 h1 h2 ih1 ih2 =>
+  | @sequenceNormal m f first rest middle midFrame final r1 r2 h1 h2 =>
       cases k with
       | zero => exact False.elim (by omega)
       | succ k =>
           have h1k : r1 < k := by omega
           have h2k : r2 < k := by omega
-          simp [execStmt, ih1 h1k, ih2 h2k,
+          simp [execStmt, (execStmt_adequate h1) h1k, (execStmt_adequate h2) h2k,
             Bind.bind, Pure.pure, Except.bind, Except.pure]
-  | @sequenceExit m f first rest out r h1 hExit ih =>
+  | @sequenceExit m f first rest out r h1 hExit =>
       cases k with
       | zero => exact False.elim (by omega)
       | succ k =>
           have hk : r < k := by omega
-          cases hc : out.control <;> simp_all [execStmt, ih hk,
+          cases hc : outcome.control <;> simp_all [execStmt, (execStmt_adequate h1) hk,
             Bind.bind, Pure.pure, Except.bind, Except.pure]
   | @returnValue m f expr final value r hExpr
   | @returnRaised m f expr final value r hExpr
@@ -827,7 +1198,7 @@ theorem execStmt_adequate {program machine frame stmt outcome rank k}
           have hk : r < k := by omega
           simp [execStmt, evalExpr_adequate hExpr hk, hWrite,
             Bind.bind, Pure.pure, Except.bind, Except.pure]
-  | @finallyNormal m f body ct binder handler cleanup attempted final finalFrame rb rc hb hu hc ihb ihc =>
+  | @finallyNormal m f body ct binder handler cleanup attempted final finalFrame rb rc hb hu hc =>
       cases k with
       | zero => exact False.elim (by omega)
       | succ k =>
@@ -835,42 +1206,254 @@ theorem execStmt_adequate {program machine frame stmt outcome rank k}
           have hck : rc < k := by omega
           cases hctrl : attempted.control <;>
             simp only [hctrl] at hu <;>
-            simp only [execStmt, ihb hbk, ihc hck, hctrl, hu, Bool.false_eq_true,
+            simp only [execStmt, (execStmt_adequate hb) hbk, (execStmt_adequate hc) hck, hctrl, hu, Bool.false_eq_true,
               ↓reduceIte, Bind.bind, Pure.pure, Except.bind, Except.pure]
-  | @finallyOverride m f body ct binder handler cleanup attempted final rb rc hb hu hc he ihb ihc =>
+  | @finallyOverride m f body ct binder handler cleanup attempted final rb rc hb hu hc he =>
       cases k with
       | zero => exact False.elim (by omega)
       | succ k =>
           have hbk : rb < k := by omega
           have hck : rc < k := by omega
-          cases hctrl : attempted.control <;> cases hf : final.control <;>
+          cases hctrl : attempted.control <;> cases hf : outcome.control <;>
             simp only [hctrl] at hu <;>
-            simp only [execStmt, ihb hbk, ihc hck, hctrl, hf, hu, Bool.false_eq_true,
+            simp only [execStmt, (execStmt_adequate hb) hbk, (execStmt_adequate hc) hck, hctrl, hf, hu, Bool.false_eq_true,
               ↓reduceIte, Bind.bind, Pure.pure, Except.bind, Except.pure]
           all_goals first | exact False.elim (he hf) | rfl
 
-  | @caughtFinallyNormal m f body ct binder handler cleanup middle midFrame err handled final ff rb rh rc hb ht hh hc ihb ihh ihc =>
+  | @caughtFinallyNormal m f body ct binder handler cleanup middle midFrame err handled final ff rb rh rc hb ht hh hc =>
       cases k with
       | zero => exact False.elim (by omega)
       | succ k =>
           have hbk : rb < k := by omega
           have hhk : rh < k := by omega
           have hck : rc < k := by omega
-          simp only [execStmt, ihb hbk, ht, ↓reduceIte,
-            ihh hhk, ihc hck, Bind.bind, Pure.pure, Except.bind, Except.pure]
-  | @caughtFinallyOverride m f body ct binder handler cleanup middle midFrame err handled final rb rh rc hb ht hh hc he ihb ihh ihc =>
+          simp only [execStmt, (execStmt_adequate hb) hbk, ht, ↓reduceIte,
+            (execStmt_adequate hh) hhk, (execStmt_adequate hc) hck, Bind.bind, Pure.pure, Except.bind, Except.pure]
+  | @caughtFinallyOverride m f body ct binder handler cleanup middle midFrame err handled final rb rh rc hb ht hh hc he =>
       cases k with
       | zero => exact False.elim (by omega)
       | succ k =>
           have hbk : rb < k := by omega
           have hhk : rh < k := by omega
           have hck : rc < k := by omega
-          cases hf : final.control <;>
-            simp only [execStmt, ihb hbk, ht, ↓reduceIte,
-              ihh hhk, ihc hck, hf, Bind.bind, Pure.pure, Except.bind, Except.pure]
+          cases hf : outcome.control <;>
+            simp only [execStmt, (execStmt_adequate hb) hbk, ht, ↓reduceIte,
+              (execStmt_adequate hh) hhk, (execStmt_adequate hc) hck, hf, Bind.bind, Pure.pure, Except.bind, Except.pure]
           all_goals first | exact False.elim (he hf) | rfl
 
-/-- Two supported statement paths cannot choose different control or heaps. -/
+termination_by rank
+decreasing_by all_goals omega
+end
+
+/-- Adequacy forces any two supported paths of the same expression to have
+    the same result, even if their derivation ranks differ. -/
+theorem DepthDerivesExpr.deterministic {program m f expr out₁ out₂ r₁ r₂}
+    (h₁ : DepthDerivesExpr program m f expr out₁ r₁)
+    (h₂ : DepthDerivesExpr program m f expr out₂ r₂) : out₁ = out₂ := by
+  have hk₁ : r₁ < max r₁ r₂ + 1 := Nat.lt_succ_of_le (Nat.le_max_left _ _)
+  have hk₂ : r₂ < max r₁ r₂ + 1 := Nat.lt_succ_of_le (Nat.le_max_right _ _)
+  exact Except.ok.inj ((evalExpr_adequate h₁ hk₁).symm.trans (evalExpr_adequate h₂ hk₂))
+
+/-- Syntax coverage of this read-only proof slice; `.add` needs a separate
+    Python list-concatenation rule before entering the common binary case. -/
+inductive ScalarSyntax : TargetExpr → Prop where
+  | undefined : ScalarSyntax .undefined
+  | null : ScalarSyntax .null
+  | bool (b : Bool) : ScalarSyntax (.bool b)
+  | integer (n : Int) : ScalarSyntax (.integer n)
+  | string (s : String) : ScalarSyntax (.string s)
+  | localRead (name : String) : ScalarSyntax (.local name)
+  | global (name : String) : ScalarSyntax (.global name)
+  | checkerField (name : String) : ScalarSyntax (.checkerField name)
+  | binary {op left right} (hOp : op ≠ .add)
+      (hLeft : ScalarSyntax left) (hRight : ScalarSyntax right) :
+      ScalarSyntax (.binary op left right)
+
+/-- Evaluator soundness for the explicitly covered syntax, including raised
+    source outcomes on either ordered child. No success premise occurs in the
+    semantic derivation constructors themselves. -/
+theorem evalScalar_sound {program machine frame expr outcome k}
+    (hs : ScalarSyntax expr)
+    (h : evalExpr k program machine frame expr = .ok outcome) :
+    ∃ rank, DepthDerivesExpr program machine frame expr outcome rank ∧ rank < k := by
+  induction hs generalizing k machine outcome with
+  | undefined =>
+      cases k with
+      | zero => simp [evalExpr] at h
+      | succ k => simp only [evalExpr] at h; cases h; exact ⟨0, .undefined, by omega⟩
+  | null =>
+      cases k with
+      | zero => simp [evalExpr] at h
+      | succ k => simp only [evalExpr] at h; cases h; exact ⟨0, .null, by omega⟩
+  | bool b =>
+      cases k with
+      | zero => simp [evalExpr] at h
+      | succ k => simp only [evalExpr] at h; cases h; exact ⟨0, .bool b, by omega⟩
+  | integer n =>
+      cases k with
+      | zero => simp [evalExpr] at h
+      | succ k => simp only [evalExpr] at h; cases h; exact ⟨0, .integer n, by omega⟩
+  | string s =>
+      cases k with
+      | zero => simp [evalExpr] at h
+      | succ k => simp only [evalExpr] at h; cases h; exact ⟨0, .string s, by omega⟩
+  | localRead name =>
+      cases k with
+      | zero => simp [evalExpr] at h
+      | succ k =>
+          cases hv : localValue machine frame name with
+          | error e =>
+              simp [evalExpr, hv, Bind.bind, Pure.pure, Except.bind, Except.pure] at h
+          | ok value =>
+              simp only [evalExpr, hv, Bind.bind, Pure.pure, Except.bind, Except.pure] at h
+              cases h
+              exact ⟨0, .localRead hv, by omega⟩
+  | global name =>
+      cases k with
+      | zero => simp [evalExpr] at h
+      | succ k =>
+          cases hv : localValue machine frame name with
+          | error e =>
+              simp [evalExpr, hv, Bind.bind, Pure.pure, Except.bind, Except.pure] at h
+          | ok value =>
+              simp only [evalExpr, hv, Bind.bind, Pure.pure, Except.bind, Except.pure] at h
+              cases h
+              exact ⟨0, .global hv, by omega⟩
+  | checkerField name =>
+      cases k with
+      | zero => simp [evalExpr] at h
+      | succ k =>
+          cases hv : readCheckerField machine name with
+          | error e =>
+              simp [evalExpr, hv, Bind.bind, Pure.pure, Except.bind, Except.pure] at h
+          | ok value =>
+              simp only [evalExpr, hv, Bind.bind, Pure.pure, Except.bind, Except.pure] at h
+              cases h
+              exact ⟨0, .checkerField hv, by omega⟩
+  | @binary op left right hOp _ _ ihLeft ihRight =>
+      cases k with
+      | zero => simp [evalExpr] at h
+      | succ k =>
+          cases hLeft : evalExpr k program machine frame left with
+          | error err => simp [Bind.bind, Pure.pure, Functor.map, Except.bind, Except.pure, Except.map, evalExpr, hLeft] at h
+          | ok lhs =>
+              rcases lhs with ⟨middle, lhs⟩
+              obtain ⟨leftRank, leftPath, leftBound⟩ := ihLeft hLeft
+              cases lhs with
+              | error value =>
+                  have heq : outcome = ⟨middle, .error value⟩ := by
+                    simpa [Bind.bind, Pure.pure, Functor.map, Except.bind, Except.pure, Except.map, evalExpr, hLeft] using h.symm
+                  subst outcome
+                  exact ⟨1 + leftRank, .binaryLeftRaised leftPath, by omega⟩
+              | ok lv =>
+                  cases hRight : evalExpr k program middle frame right with
+                  | error err => simp [Bind.bind, Pure.pure, Functor.map, Except.bind, Except.pure, Except.map, evalExpr, hLeft, hRight] at h
+                  | ok rhs =>
+                      rcases rhs with ⟨final, rhs⟩
+                      obtain ⟨rightRank, rightPath, rightBound⟩ := ihRight hRight
+                      cases rhs with
+                      | error value =>
+                          have heq : outcome = ⟨final, .error value⟩ := by
+                            simpa [Bind.bind, Pure.pure, Functor.map, Except.bind, Except.pure, Except.map, evalExpr, hLeft, hRight] using h.symm
+                          subst outcome
+                          exact ⟨1 + max leftRank rightRank,
+                            .binaryRightRaised leftPath rightPath, by omega⟩
+                      | ok rv =>
+                          cases hApply : binaryValue program.lang final op lv rv with
+                          | error err => simp [Bind.bind, Pure.pure, Functor.map, Except.bind, Except.pure, Except.map, evalExpr, hLeft, hRight, hOp, hApply] at h
+                          | ok result =>
+                              have heq : outcome = ⟨final, result⟩ := by
+                                simpa [Bind.bind, Pure.pure, Functor.map, Except.bind, Except.pure, Except.map, evalExpr, hLeft, hRight, hOp, hApply] using h.symm
+                              subst outcome
+                              exact ⟨1 + max leftRank rightRank,
+                                .binary hOp leftPath rightPath hApply, by omega⟩
+
+/-- Executable soundness for scalar-receiver property paths. The property
+    operation may allocate a bound closure; its complete outcome is retained. -/
+theorem evalProperty_sound {program m f receiver key out k}
+    (hs : ScalarSyntax receiver)
+    (he : evalExpr k program m f (.property receiver key) = .ok out) :
+    ∃ rank, DepthDerivesExpr program m f (.property receiver key) out rank ∧ rank < k := by
+  cases k with
+  | zero => simp [evalExpr] at he
+  | succ k =>
+      cases hv : evalExpr k program m f receiver with
+      | error e => simp [evalExpr, hv, Bind.bind, Except.bind] at he
+      | ok result =>
+          obtain ⟨r, hd, hr⟩ := evalScalar_sound hs hv
+          cases result with
+          | mk middle result =>
+              cases result with
+              | error value =>
+                  simp [evalExpr, hv, Bind.bind, Pure.pure, Except.bind, Except.pure] at he
+                  cases he
+                  exact ⟨1 + r, .propertyRaised hd, by omega⟩
+              | ok value =>
+                  simp only [evalExpr, hv, Bind.bind, Pure.pure, Except.bind, Except.pure] at he
+                  exact ⟨1 + r, .property hd he, by omega⟩
+
+/-- Scalar syntax preserves the heap. Property reads are excluded because
+    binding a generated method allocates a fresh receiver-bound closure. -/
+theorem evalScalar_machine_eq {program m f expr out k}
+    (hs : ScalarSyntax expr) (he : evalExpr k program m f expr = .ok out) :
+    out.machine = m := by
+  induction hs generalizing m out k with
+  | undefined | null | bool | integer | string =>
+      cases k with
+      | zero => simp [evalExpr] at he
+      | succ k => simp [evalExpr, Except.ok.injEq] at he; cases he; rfl
+  | localRead name | global name =>
+      cases k with
+      | zero => simp [evalExpr] at he
+      | succ k =>
+          cases hv : localValue m f name <;>
+            simp [evalExpr, hv, Bind.bind, Pure.pure, Except.bind, Except.pure] at he
+          cases he; rfl
+  | checkerField name =>
+      cases k with
+      | zero => simp [evalExpr] at he
+      | succ k =>
+          cases hv : readCheckerField m name <;>
+            simp [evalExpr, hv, Bind.bind, Pure.pure, Except.bind, Except.pure] at he
+          cases he; rfl
+  | @binary op left right hop hl hr ihl ihr =>
+      cases k with
+      | zero => simp [evalExpr] at he
+      | succ k =>
+          cases el : evalExpr k program m f left with
+          | error e => simp [evalExpr, el, Bind.bind, Except.bind] at he
+          | ok lo =>
+              have hm := ihl el
+              cases lo with
+              | mk lm lr =>
+                cases lr with
+                | error v =>
+                    simp [evalExpr, el, Bind.bind, Pure.pure, Except.bind, Except.pure] at he
+                    cases he; exact hm
+                | ok lv =>
+                    cases er : evalExpr k program lm f right with
+                    | error e => simp [evalExpr, el, er, Bind.bind, Except.bind] at he
+                    | ok ro =>
+                        have hm' := ihr er
+                        cases ro with
+                        | mk rm rr =>
+                          cases rr with
+                          | error v =>
+                              simp [evalExpr, el, er, Bind.bind, Pure.pure, Except.bind, Except.pure] at he
+                              cases he; simp_all
+                          | ok rv =>
+                              simp only [evalExpr, el, er, hop, ↓reduceIte, Bind.bind,
+                                Pure.pure, Except.bind, Except.pure] at he
+                              cases eb : binaryValue program.lang rm op lv rv <;>
+                                simp_all [Functor.map, Except.map]
+                              cases he; simp_all
+
+theorem stmt_path_runs {program machine frame stmt outcome rank}
+    (h : DepthDerivesStmt program machine frame stmt outcome rank) :
+    StmtRuns program machine frame stmt outcome := stmt_path_runs_cont h []
+
+/-- Reverse adequacy for the supported statement paths, including a mutating
+    finalizer. No executable success is a premise of a semantic derivation. -/
 theorem DepthDerivesStmt.deterministic {program m f stmt out₁ out₂ r₁ r₂}
     (h₁ : DepthDerivesStmt program m f stmt out₁ r₁)
     (h₂ : DepthDerivesStmt program m f stmt out₂ r₂) : out₁ = out₂ := by
@@ -1059,8 +1642,9 @@ def FrameWF (m : TargetMachine) (f : TargetFrame) : Prop := frameWFCheck m f = t
 
 theorem scalar_runs_heapWF {program machine frame expr outcome rank lang}
     (h : DepthDerivesExpr program machine frame expr outcome rank)
+    (hs : ScalarSyntax expr)
     (hwf : HeapWF lang machine) : HeapWF lang outcome.machine := by
-  rw [h.machine_eq]
+  rw [evalScalar_machine_eq hs (evalExpr_adequate h (Nat.lt_succ_self rank))]
   exact hwf
 
 end Harmonia.Applications.Kadmos.Generated

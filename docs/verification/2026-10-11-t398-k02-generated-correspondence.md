@@ -570,3 +570,58 @@ The passing constructor/step targets above retain their boundary assertions. Sep
 | `lake build kadmosGeneratedK02CorrespondenceTest` | Exit1; unknown target |
 
 This commit is a verified prerequisite checkpoint, **not completion of the requested universal constructor/branch/correspondence mission**. The plan workspace is retained for resumption.
+
+
+## Property/object/call prerequisite continuation — 2026-10-12
+
+Resumed from clean `f66a9581428240ff920343bce24b45762e9afb2a` in the specified isolated `feat/t396-generated-correspondence` worktree. This checkpoint advances generic simulation infrastructure; **Tasks 2B, 3 and 4 remain incomplete**.
+
+`TargetSimulation.lean` now derives receiver-property evaluation (including method-binding closure allocation), fresh TS object/Python dict allocation with ordered field writes, ordered argument spines, supplied-parameter binding with fresh mutable cells, calls through the actual stored closure body, caller-frame restoration and body/argument exception propagation. Direct basic host calls cover unbound builtins excluding `next/tuple/list`, and bound builtins excluding callback `find/some/map`; those exclusions are also enforced by the unfueled host-finish transition. Default selection and excess-argument paths are outside the provided-parameter binding relation. No generated constructor, sanitizer, evaluator, bounds or step helper becomes a primitive.
+
+Expression/field/argument/statement derivations are mutually indexed, and their arbitrary-continuation trace projections and reverse adequacy proofs recurse on strictly smaller ranks. Calls use `1 + max` over callee, argument spine, binding spine and body; `callClosure` adds no depth match. Fields and parameter/argument tails each retain their actual predecessor edge. The proof preserves executed machines, including bound-closure allocation; scalar machine/heap preservation now explicitly requires `ScalarSyntax`. HeapWF preservation for allocating expressions/calls, canonical globals and generated helper execution are still open. The mutual adequacy declaration exceeded the default 200,000-heartbeat limit during development and now has a scoped 1,000,000-heartbeat limit; no trust option, Lake target or stack setting changed.
+
+`TargetSemantics.lean` exposes six previously private definitions (`readPropertyValue`, `hostCall`, `evalObjectFields`, `evalArgValues`, `bindCallParams`, `callClosure`). The owner compared final text against the base after exactly those six visibility replacements; every interpreter body is identical. No Core, Distributed, legacy protocol, compiler/runtime or fixture changes.
+
+Observed RED→GREEN tests cover the missing property/object/field/argument/closure/host derivation interfaces and scalar-receiver property soundness. Symbolic regressions cover `this` and `self`, physical method-closure allocation, one/two-field order, provided arguments despite defaults, TS undefined-default exclusion, actual parameter-cell reads, sibling depth maxima, body/argument exceptions, caller restoration and insufficient depth. These tests establish generic model rules, not execution of all generated bodies.
+
+Independent actual read-only Codex CLI review used **gpt-6.1-sol/high**, session `01a13374-a5af-75c2-89e1-a52d4a796f6c`, against a frozen `git archive f66a958` snapshot plus the three-file diff, and exited 0. It found no static semantic mismatch in the covered derivations, but **did not accept the full mission**. Its Important vacuous host test finding was repaired in one fix pass: the original theorem assumed success for zero-argument `isSafeInteger`, which the executor rejects. A valid one-argument regression first failed (serial SimulationTest exit 1), then passed after deriving the primitive result without any host-success premise. A concrete satisfiable callee binding now has both unfueled trace and executable-adequacy witnesses, and invalid zero-argument arity has a separate rejection fact.
+
+The subsequent strict audit exposed `Classical.choice` in the method-allocation test's `simp` proof of `counter + 1 ≠ counter`. Printed proof dependencies and a minimal Init-only probe localized it to a Nat simplifier auxiliary. The final proof uses `Nat.ne_of_lt (Nat.lt_succ_self _)` directly; its permanent axiom print reports `[propext, Quot.sound]`. No whitelist relaxation. The owner reran the entire serial suite after both fixes. Both reviewed product postimages match final source byte-for-byte; post-review changes are test repairs validated RED→GREEN and by the final strict audit. No second review was substituted for verification.
+
+Deferred review minor: composed call tests should further exercise captured-cell mutation, receiver reads inside the body, repeated calls with distinct parameter cells and caller restoration after an exception. Default/generator/callback/collection/declaration coverage remains required proof work, not an optional completion claim. Full-language JS/Python/runtime/compiler/serialization correctness and order/repeated-call semantics remain outside the spec's first-call theorem. The reviewer verified patch pre/post blob hashes but did not independently authenticate upstream/base association, run Lean/Lake, kernel/native/CI checks or edit files; owner archive/rev-parse and serial checks provide local evidence. Native runtime and hosted Linux evidence were not rerun or inferred.
+
+Final strict Generated audit: **8,573 theorems / 11,768 declarations**, observed axioms and whitelist **`[propext, Quot.sound]`** (+127/+246 from `f66a958`). The refreshed portable dependency listing contains exactly 8,573 unique entries. Foundation audit: 52 theorems with observed `[propext, Quot.sound]`, historical policy unchanged. World compatibility: 9,661 theorems / 13,398 declarations, with historical `[propext, Quot.sound, Classical.choice]` observations/policy reported separately. Artifact tests: 8 (7 mutations + 1 smoke); inventory tests: 13 (12 mutations + 1 smoke). Inventory unchanged at 20 product modules, 37 test/audit modules, 63 certified closure modules, 28 test targets and 32 World inventory modules. Lean remains `leanprover/lean4:v4.16.0`; fixture SHA-256 remains `3006d2ece39affff067b4116fe16a3aeb61cff4fd9ba0dac2fba43fd574382c3`. Existing Bridge.Certificate unnecessarySimpa warning persists.
+
+All twenty final serial commands exited 0:
+
+| Command | Exit |
+| --- | --- |
+| `lake build HarmoniaTests.KadmosGeneratedK02ConstructorProofTS` | 0 |
+| `lake build HarmoniaTests.KadmosGeneratedK02ConstructorProofPython` | 0 |
+| `lake build kadmosGeneratedK02ConstructorProofTest` | 0 |
+| `lake build HarmoniaTests.KadmosGeneratedK02BalanceStepProofTS` | 0 |
+| `lake build HarmoniaTests.KadmosGeneratedK02BalanceStepProofPython` | 0 |
+| `lake build kadmosGeneratedK02BalanceStepProofTest` | 0 |
+| `lake build kadmosGeneratedK02ConstructorProofTest kadmosGeneratedK02BalanceStepProofTest` | 0 |
+| `lake build kadmosGeneratedK02SimulationTest` | 0 |
+| `lake build kadmosGeneratedK02SemanticsTest` | 0 |
+| `lake build kadmosGeneratedK02BalanceTSStepTest` | 0 |
+| `lake build` | 0 |
+| `lake build foundationsTest foundationsAudit foundationsAuditRejection` | 0 |
+| `lake build kadmosGeneratedK02BalanceTSParseTest kadmosGeneratedK02BalancePythonParseTest kadmosGeneratedK02BalanceTSCertificateTest kadmosGeneratedK02BalancePythonCertificateTest` | 0 |
+| `lake build kadmosGeneratedK02Audit` | 0 |
+| `lake build kadmosGeneratedK02AuditRejection` | 0 |
+| `lake build kadmosWorldTest kadmosWorldAudit kadmosWorldAuditRejection` | 0 |
+| `python3 scripts/check_kadmos_generated_k02_artifacts.py` | 0 |
+| `python3 scripts/test_kadmos_generated_k02_artifacts.py` | 0 |
+| `python3 scripts/check_kadmos_generated_k02_audit.py` | 0 |
+| `python3 scripts/test_kadmos_generated_k02_audit.py` | 0 |
+
+Separate universal acceptance probes retain their failures:
+
+| Gate | Observed result |
+| --- | --- |
+| Lean interface probe | Exit 1: all five requested universal names and `CanonicalGlobals`, `ProgramDerives`, `parseGenerated_sound`, `balanceProgram` unknown |
+| `lake build kadmosGeneratedK02CorrespondenceTest` | Exit 1: unknown target |
+
+Universal constructor composition, the three branch lemmas, checked whole-source admission and one-call correspondence have not been proved. Existing constructor/step roots still establish boundary facts. No correspondence stub or weakened theorem was added, no task-complete ledger line, push or merge; retain the incomplete plan workspace for resumption.
