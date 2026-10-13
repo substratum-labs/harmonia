@@ -755,3 +755,35 @@ theorem kadmos_generated_ts_integral_member_dot_rejected :
 
 theorem kadmos_generated_python_integral_member_dot_rejected :
     validateExprText .python "1.foo" (.property (.integer 1) "foo") = false := by decide +kernel
+
+-- Empty list sentinels are not executable expression nodes.
+theorem kadmos_generated_empty_runtime_expression_rejected :
+    validateExprText .python "" .empty = false := by decide +kernel
+
+theorem kadmos_generated_python_ghost_statement_rejected :
+    validateStmtText .python .function "" (.doExpr .empty) = false := by decide +kernel
+
+theorem kadmos_generated_python_trailing_ghost_rejected :
+    validateStmtText .python .body "x\n    "
+      (.sequence (.doExpr (.local "x"))
+        (.sequence (.doExpr .empty) .empty)) = false := by decide +kernel
+
+theorem kadmos_generated_ts_empty_operand_rejected :
+    validateExprText .ts " - x" (.binary .sub .empty (.local "x")) = false := by decide +kernel
+
+theorem kadmos_generated_empty_arguments_retained :
+    validateArgumentText .python "" .empty = true := by decide +kernel
+
+theorem kadmos_generated_empty_call_retained :
+    validateExprText .python "f()" (.call (.local "f") .empty) = true := by decide +kernel
+
+theorem kadmos_generated_empty_expression_not_grammatical {lang source} :
+    ¬ ExprSyntax lang source .empty := by
+  intro h
+  cases h
+
+theorem kadmos_generated_python_ghost_not_grammatical {source} :
+    ¬ StmtSyntax .python .function source (.doExpr .empty) := by
+  intro h
+  cases h with
+  | pythonDo hExpr => exact ExprSyntax.no_empty hExpr

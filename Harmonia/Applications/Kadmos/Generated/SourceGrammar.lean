@@ -116,7 +116,6 @@ mutual
     sequences have their own sort: a bare expression cannot also be an
     argument-list AST for the same source. -/
 inductive ExprSyntax : TargetLang → String → TargetExpr → Prop where
-  | empty (lang : TargetLang) : ExprSyntax lang "" .empty
   | call {lang : TargetLang} {calleeText argsText : String}
       {callee args : TargetExpr} {tokens : List SourceToken}
       (hLex : Lexes lang (calleeText ++ "(" ++ argsText ++ ")") tokens)
@@ -259,66 +258,42 @@ theorem ArgumentSyntax.empty_only {lang source expr}
       have hCommaLength : ("," : String).length = 1 := by decide
       simp [String.length_append, hCommaLength] at hLen
 
+/-- `.empty` represents a list terminator, never a runtime expression. -/
+theorem ExprSyntax.no_empty {lang source} :
+    ¬ ExprSyntax lang source .empty := by
+  intro h
+  cases h
+
 theorem ExprSyntax.no_empty_callee {lang source args} :
     ¬ ExprSyntax lang source (.call .empty args) := by
   intro h
   cases h with
-  | call hLex hOpen hNonempty hCallee hArgs _ =>
-      cases hCallee with
-      | empty =>
-          have hz : ("" : String).isEmpty = true := by decide
-          rw [hz] at hNonempty
-          cases hNonempty
+  | call _ _ _ hCallee _ _ => exact no_empty hCallee
 
 theorem ArgumentSyntax.no_empty_first {lang source rest} :
     ¬ ArgumentSyntax lang source (.sequence .empty rest) := by
   intro h
   cases h with
-  | one hNonempty hValue =>
-      cases hValue with
-      | empty =>
-          have hz : ("" : String).isEmpty = true := by decide
-          rw [hz] at hNonempty
-          cases hNonempty
-  | more hNonempty hLex hComma hGap hFirst hRest =>
-      cases hFirst with
-      | empty =>
-          have hz : ("" : String).isEmpty = true := by decide
-          rw [hz] at hNonempty
-          cases hNonempty
+  | one _ hValue => exact ExprSyntax.no_empty hValue
+  | more _ _ _ _ hFirst _ => exact ExprSyntax.no_empty hFirst
 
 theorem ExprSyntax.no_empty_property_receiver {lang source name} :
     ¬ ExprSyntax lang source (.property .empty name) := by
   intro h
   cases h with
-  | property hNonempty hBase hName _ _ =>
-      cases hBase with
-      | empty =>
-          have hz : ("" : String).isEmpty = true := by decide
-          rw [hz] at hNonempty
-          cases hNonempty
+  | property _ hBase _ _ _ => exact no_empty hBase
 
 theorem ExprSyntax.no_empty_optional_receiver {source name} :
     ¬ ExprSyntax .ts source (.optionalProperty .empty name) := by
   intro h
   cases h with
-  | tsOptionalProperty hNonempty hBase hName _ =>
-      cases hBase with
-      | empty =>
-          have hz : ("" : String).isEmpty = true := by decide
-          rw [hz] at hNonempty
-          cases hNonempty
+  | tsOptionalProperty _ hBase _ _ => exact no_empty hBase
 
 theorem ExprSyntax.no_empty_index_receiver {lang source key} :
     ¬ ExprSyntax lang source (.index .empty key) := by
   intro h
   cases h with
-  | index hNonempty hBase hKey _ =>
-      cases hBase with
-      | empty =>
-          have hz : ("" : String).isEmpty = true := by decide
-          rw [hz] at hNonempty
-          cases hNonempty
+  | index _ hBase _ _ => exact no_empty hBase
 
 /-- A comparison cannot be the unparenthesized left operand of subtraction;
     this is a grammar fact, not a preference of the executable validator. -/

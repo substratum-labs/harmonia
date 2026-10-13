@@ -195,7 +195,7 @@ mutual
 /-- AST-guided source check: source text, rather than the raw decoder,
     determines these operator boundaries. -/
 def validateExprText (lang : TargetLang) (source : String) : TargetExpr → Bool
-  | .empty => source == ""
+  | .empty => false
   | .call callee args =>
       match tokenizeSource lang source with
       | .error _ => false
@@ -340,8 +340,6 @@ private theorem validateExprAndArgument_sound (lang : TargetLang) (expr : Target
       constructor
       · intro source h
         simp [validateExprText] at h
-        subst source
-        exact .empty lang
       · intro source h
         simp [validateArgumentText] at h
         subst source

@@ -137,7 +137,8 @@ private def resultTag (lang : TargetLang) (left right : NumberTag) : NumberTag :
 private def safeIntermediate (n : Int) : Bool :=
   n.natAbs ≤ 9007199254740991
 
-private def binaryValue (lang : TargetLang) (m : TargetMachine) (op : BinaryOp)
+/-- Basic tagged binary operations, shared with the independent execution rules. -/
+def binaryValue (lang : TargetLang) (m : TargetMachine) (op : BinaryOp)
     (left right : TargetValue) : Except TargetError (Except TargetValue TargetValue) :=
   let bool (v : Bool) : Except TargetError (Except TargetValue TargetValue) := .ok (.ok (.bool v))
   match op with

@@ -57,3 +57,9 @@ jobs:
         run: lake build quorumTest quorumAudit quorumAuditRejection
       - name: Quorum source and axiom audit check
         run: python3 scripts/check_quorum_audit.py --self-test && python3 scripts/check_quorum_audit.py
+      - name: Generated K-02 source and root inventory
+        run: python3 scripts/check_kadmos_generated_k02_audit.py && python3 scripts/test_kadmos_generated_k02_audit.py
+      - name: Generated K-02 scalar simulation probes
+        run: lake build kadmosGeneratedK02SimulationTest
+      - name: Generated K-02 strict certified axiom audit
+        run: lake build kadmosGeneratedK02Audit kadmosGeneratedK02AuditRejection

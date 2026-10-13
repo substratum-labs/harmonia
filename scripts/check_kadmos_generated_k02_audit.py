@@ -20,6 +20,7 @@ TEST_TARGETS = (
     'kadmosGeneratedK02PythonBooleanSyntaxTest',
     'kadmosGeneratedK02StatementCertificateTest',
     'kadmosGeneratedK02PythonLinesTest',
+    'kadmosGeneratedK02SimulationTest',
     'kadmosGeneratedK02MachineTest',
     'kadmosGeneratedK02ExpressionParserTest',
     'kadmosGeneratedK02StatementParserTest',

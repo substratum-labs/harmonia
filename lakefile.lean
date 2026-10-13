@@ -88,6 +88,9 @@ lean_lib kadmosGeneratedK02PythonLinesTest where
   -- stack; this changes resource capacity, not proof trust or reduction mode.
   moreLeanArgs := #["--tstack=131072"]
 
+lean_lib kadmosGeneratedK02SimulationTest where
+  roots := #[`HarmoniaTests.KadmosGeneratedK02Simulation]
+
 lean_lib kadmosGeneratedK02MachineTest where
   roots := #[`HarmoniaTests.KadmosGeneratedK02Machine]
 
