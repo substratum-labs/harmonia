@@ -59,7 +59,18 @@ jobs:
         run: python3 scripts/check_quorum_audit.py --self-test && python3 scripts/check_quorum_audit.py
       - name: Generated K-02 source and root inventory
         run: python3 scripts/check_kadmos_generated_k02_audit.py && python3 scripts/test_kadmos_generated_k02_audit.py
-      - name: Generated K-02 scalar simulation probes
+      - name: Generated K-02 expression and statement simulation probes
         run: lake build kadmosGeneratedK02SimulationTest
+      - name: Generated K-02 closed constructor boundary proofs
+        run: |
+          lake build kadmosGeneratedK02ClosedProgramsTest
+          lake build HarmoniaTests.KadmosGeneratedK02ConstructorProofTS
+          lake build HarmoniaTests.KadmosGeneratedK02ConstructorProofPython
+          lake build kadmosGeneratedK02ConstructorProofTest
+      - name: Generated K-02 closed step content proofs
+        run: |
+          lake build HarmoniaTests.KadmosGeneratedK02BalanceStepProofTS
+          lake build HarmoniaTests.KadmosGeneratedK02BalanceStepProofPython
+          lake build kadmosGeneratedK02BalanceStepProofTest
       - name: Generated K-02 strict certified axiom audit
         run: lake build kadmosGeneratedK02Audit kadmosGeneratedK02AuditRejection

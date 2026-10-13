@@ -2,8 +2,9 @@ import Harmonia.Applications.Kadmos.Generated.TargetSemantics
 
 namespace Harmonia.Applications.Kadmos.Generated
 
-/-- Unfueled execution configurations. The initial rule slice covers scalar
-    leaves and ordered binary evaluation; calls and statements remain to add. -/
+/-- Unfueled execution configurations. The current rule slice covers scalar
+    leaves, ordered binary evaluation and elementary statement/control paths;
+    calls and collection/helper execution remain to add. -/
 inductive TargetFocus where
   | eval (expr : TargetExpr)
   | exec (stmt : TargetStmt)
@@ -11,11 +12,17 @@ inductive TargetFocus where
   | exit (control : ControlResult)
   deriving Repr
 
-/-- Each continuation owns the remaining ordered children of one binary node.
-    The left rule installs the right child; the right rule retains its value. -/
+/-- Continuations own ordered children and pending statement actions. A
+    finalizer saves the outcome control before a caught frame is cleared. -/
 inductive ResumeFrame where
   | binaryLeft (op : BinaryOp) (right : TargetExpr)
   | binaryRight (op : BinaryOp) (left : TargetValue)
+  | stmtSequence (rest : TargetStmt)
+  | stmtReturn | stmtThrow
+  | stmtAssignField (name : String)
+  | stmtProtect (catchType binder : Option String) (handler cleanup : TargetStmt)
+  | stmtHandledFinally (cleanup : TargetStmt)
+  | stmtFinally (saved : ControlResult)
   deriving Repr
 
 structure TargetConfig where
@@ -65,6 +72,81 @@ inductive SmallStep (program : TargetProgram) : TargetConfig → TargetConfig �
       SmallStep program ⟨m, f, .value right, .binaryRight op left :: c⟩
         ⟨m, f, exprResultFocus result, c⟩
 
+  | stmtEmpty {m f c} :
+      SmallStep program ⟨m, f, .exec .empty, c⟩ ⟨m, f, .exit .normal, c⟩
+  | stmtSequence {m f c first rest} :
+      SmallStep program ⟨m, f, .exec (.sequence first rest), c⟩
+        ⟨m, f, .exec first, .stmtSequence rest :: c⟩
+  | stmtSequenceNext {m f c rest} :
+      SmallStep program ⟨m, f, .exit .normal, .stmtSequence rest :: c⟩
+        ⟨m, f, .exec rest, c⟩
+  | stmtSequenceExit {m f c rest control} (h : control ≠ .normal) :
+      SmallStep program ⟨m, f, .exit control, .stmtSequence rest :: c⟩
+        ⟨m, f, .exit control, c⟩
+  | stmtReturnVoid {m f c} :
+      SmallStep program ⟨m, f, .exec .returnVoid, c⟩
+        ⟨m, f, .exit (.returned .undefined), c⟩
+  | stmtReturnEnter {m f c expr} :
+      SmallStep program ⟨m, f, .exec (.returnValue expr), c⟩
+        ⟨m, f, .eval expr, .stmtReturn :: c⟩
+  | stmtReturnFinish {m f c value} :
+      SmallStep program ⟨m, f, .value value, .stmtReturn :: c⟩
+        ⟨m, f, .exit (.returned value), c⟩
+  | stmtReturnRaised {m f c value} :
+      SmallStep program ⟨m, f, .exit (.raised value), .stmtReturn :: c⟩
+        ⟨m, f, .exit (.raised value), c⟩
+  | stmtThrowEnter {m f c expr} :
+      SmallStep program ⟨m, f, .exec (.throwValue expr), c⟩
+        ⟨m, f, .eval expr, .stmtThrow :: c⟩
+  | stmtThrowFinish {m f c value} :
+      SmallStep program ⟨m, f, .value value, .stmtThrow :: c⟩
+        ⟨m, f, .exit (.raised value), c⟩
+  | stmtThrowRaised {m f c value} :
+      SmallStep program ⟨m, f, .exit (.raised value), .stmtThrow :: c⟩
+        ⟨m, f, .exit (.raised value), c⟩
+  | stmtRethrow {m f c value} (h : f.control = .raised value) :
+      SmallStep program ⟨m, f, .exec .rethrow, c⟩
+        ⟨m, f, .exit (.raised value), c⟩
+  | stmtBreak {m f c label} :
+      SmallStep program ⟨m, f, .exec (.breakTarget label), c⟩
+        ⟨m, f, .exit (.broke label), c⟩
+  | stmtContinue {m f c label} :
+      SmallStep program ⟨m, f, .exec (.continueTarget label), c⟩
+        ⟨m, f, .exit (.continued label), c⟩
+  | stmtAssignFieldEnter {m f c name expr} :
+      SmallStep program ⟨m, f, .exec (.assign (.field name) expr), c⟩
+        ⟨m, f, .eval expr, .stmtAssignField name :: c⟩
+  | stmtAssignFieldFinish {m final f c name value}
+      (h : writeCheckerField m name value = .ok final) :
+      SmallStep program ⟨m, f, .value value, .stmtAssignField name :: c⟩
+        ⟨final, f, .exit .normal, c⟩
+  | stmtAssignFieldRaised {m f c name value} :
+      SmallStep program ⟨m, f, .exit (.raised value), .stmtAssignField name :: c⟩
+        ⟨m, f, .exit (.raised value), c⟩
+  | stmtProtectEnter {m f c body catchType binder handler cleanup} :
+      SmallStep program ⟨m, f, .exec (.tryCatchFinally body catchType binder handler cleanup), c⟩
+        ⟨m, f, .exec body, .stmtProtect catchType binder handler cleanup :: c⟩
+  | stmtProtectUncaught {m f c control catchType binder handler cleanup}
+      (h : controlCaught catchType control = false) :
+      SmallStep program ⟨m, f, .exit control, .stmtProtect catchType binder handler cleanup :: c⟩
+        ⟨m, f, .exec cleanup, .stmtFinally control :: c⟩
+  | stmtProtectCaught {m f c errorValue catchType binder handler cleanup}
+      (h : controlCaught catchType (.raised errorValue) = true) :
+      SmallStep program
+        ⟨m, f, .exit (.raised errorValue), .stmtProtect catchType binder handler cleanup :: c⟩
+        ⟨(bindCatchFrame m f binder errorValue).1,
+          (bindCatchFrame m f binder errorValue).2,
+          .exec handler, .stmtHandledFinally cleanup :: c⟩
+  | stmtHandlerExit {m f c control cleanup} :
+      SmallStep program ⟨m, f, .exit control, .stmtHandledFinally cleanup :: c⟩
+        ⟨m, { f with control := .normal }, .exec cleanup, .stmtFinally control :: c⟩
+  | stmtFinallyNormal {m f c saved} :
+      SmallStep program ⟨m, f, .exit .normal, .stmtFinally saved :: c⟩
+        ⟨m, f, .exit saved, c⟩
+  | stmtFinallyOverride {m f c saved control} (h : control ≠ .normal) :
+      SmallStep program ⟨m, f, .exit control, .stmtFinally saved :: c⟩
+        ⟨m, f, .exit control, c⟩
+
 inductive Runs (program : TargetProgram) : TargetConfig → TargetConfig → Prop where
   | refl (config) : Runs program config config
   | tail {first middle last} : Runs program first middle →
@@ -79,6 +161,32 @@ theorem Runs.trans {program first middle last}
   induction hLast with
   | refl => exact hFirst
   | tail _ hStep ih => exact .tail ih hStep
+
+/-- A separately indexed diagnostic trace count. Counting is relational:
+    Prop-valued Runs proofs cannot be eliminated into a Nat function. The count
+    is never an executable fuel premise and never uses TargetMachine.fuel. -/
+inductive CountedRuns (program : TargetProgram) :
+    TargetConfig → TargetConfig → Nat → Prop where
+  | refl (config) : CountedRuns program config config 0
+  | tail {first middle last n} : CountedRuns program first middle n →
+      SmallStep program middle last → CountedRuns program first last (n + 1)
+
+theorem CountedRuns.single {program first last} (h : SmallStep program first last) :
+    CountedRuns program first last 1 := .tail (.refl first) h
+
+theorem CountedRuns.trans {program first middle last n m}
+    (hFirst : CountedRuns program first middle n)
+    (hLast : CountedRuns program middle last m) :
+    CountedRuns program first last (n + m) := by
+  induction hLast with
+  | refl => simpa using hFirst
+  | tail _ step ih => simpa [Nat.add_assoc] using CountedRuns.tail ih step
+
+theorem CountedRuns.forget {program first last n}
+    (h : CountedRuns program first last n) : Runs program first last := by
+  induction h with
+  | refl => exact .refl _
+  | tail _ step ih => exact .tail ih step
 
 def ExprRuns (program : TargetProgram) (machine : TargetMachine)
     (frame : TargetFrame) (expr : TargetExpr) (outcome : ExprOutcome) : Prop :=
@@ -254,17 +362,245 @@ theorem evalScalar_sound {program machine frame expr outcome k}
                               exact ⟨1 + max leftRank rightRank,
                                 .binary hOp leftPath rightPath hApply, by omega⟩
 
-/-- Scalar rules preserve the entire heap, independent of any chosen heap
-    invariant. This will not hold for the future allocation/write rules. -/
-theorem SmallStep.machine_eq {program first last}
-    (h : SmallStep program first last) : last.machine = first.machine := by
-  cases h <;> rfl
-
-theorem Runs.machine_eq {program first last}
-    (h : Runs program first last) : last.machine = first.machine := by
+/-- Expression derivations in the scalar slice still preserve the machine.
+    General Runs now include statement writes and cannot claim this property. -/
+theorem DepthDerivesExpr.machine_eq {program m f expr out rank}
+    (h : DepthDerivesExpr program m f expr out rank) : out.machine = m := by
   induction h with
-  | refl => rfl
-  | tail _ step ih => exact step.machine_eq.trans ih
+  | undefined | null | bool | integer | string => rfl
+  | binaryLeftRaised _ ih => exact ih
+  | binaryRightRaised _ _ ihLeft ihRight => exact ihRight.trans ihLeft
+  | binary _ _ _ _ ihLeft ihRight => exact ihRight.trans ihLeft
+
+
+/-- Ranked statement derivations. Each recursive sequence tail is a depth edge;
+    first/rest, body/cleanup and expression siblings share predecessor fuel. -/
+inductive DepthDerivesStmt (program : TargetProgram) :
+    TargetMachine → TargetFrame → TargetStmt → StmtOutcome → Nat → Prop where
+  | empty {m f} : DepthDerivesStmt program m f .empty ⟨m, f, .normal⟩ 0
+  | returnVoid {m f} :
+      DepthDerivesStmt program m f .returnVoid ⟨m, f, .returned .undefined⟩ 0
+  | breakTarget {m f} (label : String) :
+      DepthDerivesStmt program m f (.breakTarget label) ⟨m, f, .broke label⟩ 0
+  | continueTarget {m f} (label : String) :
+      DepthDerivesStmt program m f (.continueTarget label) ⟨m, f, .continued label⟩ 0
+  | rethrow {m f value} (h : f.control = .raised value) :
+      DepthDerivesStmt program m f .rethrow ⟨m, f, .raised value⟩ 0
+  | sequenceNormal {m f first rest middle midFrame final rankFirst rankRest}
+      (hFirst : DepthDerivesStmt program m f first ⟨middle, midFrame, .normal⟩ rankFirst)
+      (hRest : DepthDerivesStmt program middle midFrame rest final rankRest) :
+      DepthDerivesStmt program m f (.sequence first rest) final (1 + max rankFirst rankRest)
+  | sequenceExit {m f first rest out rank}
+      (hFirst : DepthDerivesStmt program m f first out rank)
+      (hExit : out.control ≠ .normal) :
+      DepthDerivesStmt program m f (.sequence first rest) out (1 + rank)
+  | returnValue {m f expr final value rank}
+      (hExpr : DepthDerivesExpr program m f expr ⟨final, .ok value⟩ rank) :
+      DepthDerivesStmt program m f (.returnValue expr) ⟨final, f, .returned value⟩ (1 + rank)
+  | returnRaised {m f expr final value rank}
+      (hExpr : DepthDerivesExpr program m f expr ⟨final, .error value⟩ rank) :
+      DepthDerivesStmt program m f (.returnValue expr) ⟨final, f, .raised value⟩ (1 + rank)
+  | throwValue {m f expr final value rank}
+      (hExpr : DepthDerivesExpr program m f expr ⟨final, .ok value⟩ rank) :
+      DepthDerivesStmt program m f (.throwValue expr) ⟨final, f, .raised value⟩ (1 + rank)
+  | throwRaised {m f expr final value rank}
+      (hExpr : DepthDerivesExpr program m f expr ⟨final, .error value⟩ rank) :
+      DepthDerivesStmt program m f (.throwValue expr) ⟨final, f, .raised value⟩ (1 + rank)
+  | assignField {m f name expr middle final value rank}
+      (hExpr : DepthDerivesExpr program m f expr ⟨middle, .ok value⟩ rank)
+      (hWrite : writeCheckerField middle name value = .ok final) :
+      DepthDerivesStmt program m f (.assign (.field name) expr) ⟨final, f, .normal⟩ (1 + rank)
+  | assignFieldRaised {m f name expr final value rank}
+      (hExpr : DepthDerivesExpr program m f expr ⟨final, .error value⟩ rank) :
+      DepthDerivesStmt program m f (.assign (.field name) expr) ⟨final, f, .raised value⟩ (1 + rank)
+  | finallyNormal {m f body catchType binder handler cleanup attempted final finalFrame rb rc}
+      (hBody : DepthDerivesStmt program m f body attempted rb)
+      (hUncaught : controlCaught catchType attempted.control = false)
+      (hCleanup : DepthDerivesStmt program attempted.machine attempted.frame cleanup
+        ⟨final, finalFrame, .normal⟩ rc) :
+      DepthDerivesStmt program m f (.tryCatchFinally body catchType binder handler cleanup)
+        ⟨final, finalFrame, attempted.control⟩ (1 + max rb rc)
+  | finallyOverride {m f body catchType binder handler cleanup attempted final rb rc}
+      (hBody : DepthDerivesStmt program m f body attempted rb)
+      (hUncaught : controlCaught catchType attempted.control = false)
+      (hCleanup : DepthDerivesStmt program attempted.machine attempted.frame cleanup final rc)
+      (hExit : final.control ≠ .normal) :
+      DepthDerivesStmt program m f (.tryCatchFinally body catchType binder handler cleanup)
+        final (1 + max rb rc)
+
+  | caughtFinallyNormal {m f body catchType binder handler cleanup middle midFrame errorValue
+      handled final finalFrame rb rh rc}
+      (hBody : DepthDerivesStmt program m f body ⟨middle, midFrame, .raised errorValue⟩ rb)
+      (hCaught : controlCaught catchType (.raised errorValue) = true)
+      (hHandler : DepthDerivesStmt program (bindCatchFrame middle midFrame binder errorValue).1
+        (bindCatchFrame middle midFrame binder errorValue).2 handler handled rh)
+      (hCleanup : DepthDerivesStmt program handled.machine
+        { handled.frame with control := .normal } cleanup ⟨final, finalFrame, .normal⟩ rc) :
+      DepthDerivesStmt program m f (.tryCatchFinally body catchType binder handler cleanup)
+        ⟨final, finalFrame, handled.control⟩ (1 + max rb (max rh rc))
+  | caughtFinallyOverride {m f body catchType binder handler cleanup middle midFrame errorValue
+      handled final rb rh rc}
+      (hBody : DepthDerivesStmt program m f body ⟨middle, midFrame, .raised errorValue⟩ rb)
+      (hCaught : controlCaught catchType (.raised errorValue) = true)
+      (hHandler : DepthDerivesStmt program (bindCatchFrame middle midFrame binder errorValue).1
+        (bindCatchFrame middle midFrame binder errorValue).2 handler handled rh)
+      (hCleanup : DepthDerivesStmt program handled.machine
+        { handled.frame with control := .normal } cleanup final rc)
+      (hExit : final.control ≠ .normal) :
+      DepthDerivesStmt program m f (.tryCatchFinally body catchType binder handler cleanup)
+        final (1 + max rb (max rh rc))
+
+def StmtRuns (program : TargetProgram) (machine : TargetMachine) (frame : TargetFrame)
+    (stmt : TargetStmt) (outcome : StmtOutcome) : Prop :=
+  Runs program ⟨machine, frame, .exec stmt, []⟩
+    ⟨outcome.machine, outcome.frame, .exit outcome.control, []⟩
+
+theorem stmt_path_runs_cont {program machine frame stmt outcome rank}
+    (h : DepthDerivesStmt program machine frame stmt outcome rank)
+    (continuation : List ResumeFrame) :
+    Runs program ⟨machine, frame, .exec stmt, continuation⟩
+      ⟨outcome.machine, outcome.frame, .exit outcome.control, continuation⟩ := by
+  induction h generalizing continuation with
+  | empty => exact .single .stmtEmpty
+  | returnVoid => exact .single .stmtReturnVoid
+  | breakTarget label => exact .single .stmtBreak
+  | continueTarget label => exact .single .stmtContinue
+  | rethrow h => exact .single (.stmtRethrow h)
+  | sequenceNormal hFirst hRest ihFirst ihRest =>
+      exact ((Runs.single .stmtSequence).trans (ihFirst _)).trans
+        ((Runs.single .stmtSequenceNext).trans (ihRest _))
+  | sequenceExit hFirst hExit ih =>
+      exact ((Runs.single .stmtSequence).trans (ih _)).trans
+        (.single (.stmtSequenceExit hExit))
+  | returnValue hExpr =>
+      exact ((Runs.single .stmtReturnEnter).trans (expr_path_runs_cont hExpr _)).trans
+        (.single .stmtReturnFinish)
+  | returnRaised hExpr =>
+      exact ((Runs.single .stmtReturnEnter).trans (expr_path_runs_cont hExpr _)).trans
+        (.single .stmtReturnRaised)
+  | throwValue hExpr =>
+      exact ((Runs.single .stmtThrowEnter).trans (expr_path_runs_cont hExpr _)).trans
+        (.single .stmtThrowFinish)
+  | throwRaised hExpr =>
+      exact ((Runs.single .stmtThrowEnter).trans (expr_path_runs_cont hExpr _)).trans
+        (.single .stmtThrowRaised)
+  | assignField hExpr hWrite =>
+      exact ((Runs.single .stmtAssignFieldEnter).trans (expr_path_runs_cont hExpr _)).trans
+        (.single (.stmtAssignFieldFinish hWrite))
+  | assignFieldRaised hExpr =>
+      exact ((Runs.single .stmtAssignFieldEnter).trans (expr_path_runs_cont hExpr _)).trans
+        (.single .stmtAssignFieldRaised)
+  | finallyNormal hBody hUncaught hCleanup ihBody ihCleanup =>
+      exact ((((Runs.single .stmtProtectEnter).trans (ihBody _)).trans
+        (.single (.stmtProtectUncaught hUncaught))).trans (ihCleanup _)).trans
+          (.single .stmtFinallyNormal)
+  | finallyOverride hBody hUncaught hCleanup hExit ihBody ihCleanup =>
+      exact ((((Runs.single .stmtProtectEnter).trans (ihBody _)).trans
+        (.single (.stmtProtectUncaught hUncaught))).trans (ihCleanup _)).trans
+          (.single (.stmtFinallyOverride hExit))
+
+  | caughtFinallyNormal hb hc hh hcl ihb ihh ihcl =>
+      exact ((((((Runs.single .stmtProtectEnter).trans (ihb _)).trans
+        (.single (.stmtProtectCaught hc))).trans (ihh _)).trans
+          (.single .stmtHandlerExit)).trans (ihcl _)).trans (.single .stmtFinallyNormal)
+  | caughtFinallyOverride hb hc hh hcl he ihb ihh ihcl =>
+      exact ((((((Runs.single .stmtProtectEnter).trans (ihb _)).trans
+        (.single (.stmtProtectCaught hc))).trans (ihh _)).trans
+          (.single .stmtHandlerExit)).trans (ihcl _)).trans (.single (.stmtFinallyOverride he))
+
+theorem stmt_path_runs {program machine frame stmt outcome rank}
+    (h : DepthDerivesStmt program machine frame stmt outcome rank) :
+    StmtRuns program machine frame stmt outcome := stmt_path_runs_cont h []
+
+/-- Reverse adequacy for the supported statement paths, including a mutating
+    finalizer. No executable success is a premise of a semantic derivation. -/
+theorem execStmt_adequate {program machine frame stmt outcome rank k}
+    (h : DepthDerivesStmt program machine frame stmt outcome rank)
+    (hr : rank < k) : execStmt k program machine frame stmt = .ok outcome := by
+  induction h generalizing k with
+  | empty | returnVoid | breakTarget | continueTarget =>
+      cases k with
+      | zero => exact False.elim (by omega)
+      | succ k => simp only [execStmt]
+  | rethrow h =>
+      cases k with
+      | zero => exact False.elim (by omega)
+      | succ k => simp [execStmt, h]
+  | @sequenceNormal m f first rest middle midFrame final r1 r2 h1 h2 ih1 ih2 =>
+      cases k with
+      | zero => exact False.elim (by omega)
+      | succ k =>
+          have h1k : r1 < k := by omega
+          have h2k : r2 < k := by omega
+          simp [execStmt, ih1 h1k, ih2 h2k,
+            Bind.bind, Pure.pure, Except.bind, Except.pure]
+  | @sequenceExit m f first rest out r h1 hExit ih =>
+      cases k with
+      | zero => exact False.elim (by omega)
+      | succ k =>
+          have hk : r < k := by omega
+          cases hc : out.control <;> simp_all [execStmt, ih hk,
+            Bind.bind, Pure.pure, Except.bind, Except.pure]
+  | @returnValue m f expr final value r hExpr
+  | @returnRaised m f expr final value r hExpr
+  | @throwValue m f expr final value r hExpr
+  | @throwRaised m f expr final value r hExpr
+  | @assignFieldRaised m f name expr final value r hExpr =>
+      cases k with
+      | zero => exact False.elim (by omega)
+      | succ k =>
+          have hk : r < k := by omega
+          simp [execStmt, evalExpr_adequate hExpr hk,
+            Bind.bind, Pure.pure, Except.bind, Except.pure]
+  | @assignField m f name expr middle final value r hExpr hWrite =>
+      cases k with
+      | zero => exact False.elim (by omega)
+      | succ k =>
+          have hk : r < k := by omega
+          simp [execStmt, evalExpr_adequate hExpr hk, hWrite,
+            Bind.bind, Pure.pure, Except.bind, Except.pure]
+  | @finallyNormal m f body ct binder handler cleanup attempted final finalFrame rb rc hb hu hc ihb ihc =>
+      cases k with
+      | zero => exact False.elim (by omega)
+      | succ k =>
+          have hbk : rb < k := by omega
+          have hck : rc < k := by omega
+          cases hctrl : attempted.control <;>
+            simp only [hctrl] at hu <;>
+            simp only [execStmt, ihb hbk, ihc hck, hctrl, hu, Bool.false_eq_true,
+              ↓reduceIte, Bind.bind, Pure.pure, Except.bind, Except.pure]
+  | @finallyOverride m f body ct binder handler cleanup attempted final rb rc hb hu hc he ihb ihc =>
+      cases k with
+      | zero => exact False.elim (by omega)
+      | succ k =>
+          have hbk : rb < k := by omega
+          have hck : rc < k := by omega
+          cases hctrl : attempted.control <;> cases hf : final.control <;>
+            simp only [hctrl] at hu <;>
+            simp only [execStmt, ihb hbk, ihc hck, hctrl, hf, hu, Bool.false_eq_true,
+              ↓reduceIte, Bind.bind, Pure.pure, Except.bind, Except.pure]
+          all_goals first | exact False.elim (he hf) | rfl
+
+  | @caughtFinallyNormal m f body ct binder handler cleanup middle midFrame err handled final ff rb rh rc hb ht hh hc ihb ihh ihc =>
+      cases k with
+      | zero => exact False.elim (by omega)
+      | succ k =>
+          have hbk : rb < k := by omega
+          have hhk : rh < k := by omega
+          have hck : rc < k := by omega
+          simp only [execStmt, ihb hbk, ht, ↓reduceIte,
+            ihh hhk, ihc hck, Bind.bind, Pure.pure, Except.bind, Except.pure]
+  | @caughtFinallyOverride m f body ct binder handler cleanup middle midFrame err handled final rb rh rc hb ht hh hc he ihb ihh ihc =>
+      cases k with
+      | zero => exact False.elim (by omega)
+      | succ k =>
+          have hbk : rb < k := by omega
+          have hhk : rh < k := by omega
+          have hck : rc < k := by omega
+          cases hf : final.control <;>
+            simp only [execStmt, ihb hbk, ht, ↓reduceIte,
+              ihh hhk, ihc hck, hf, Bind.bind, Pure.pure, Except.bind, Except.pure]
+          all_goals first | exact False.elim (he hf) | rfl
 
 /-- Finite address/descriptor checks. Values stored in the heap do not
     recursively traverse objects: liveness checks references, including cycles. -/
@@ -341,9 +677,9 @@ instance (lang : TargetLang) (m : TargetMachine) : Decidable (HeapWF lang m) :=
 
 def FrameWF (m : TargetMachine) (f : TargetFrame) : Prop := frameWFCheck m f = true
 
-theorem scalar_runs_heapWF {program first last lang}
-    (h : Runs program first last) (hwf : HeapWF lang first.machine) :
-    HeapWF lang last.machine := by
+theorem scalar_runs_heapWF {program machine frame expr outcome rank lang}
+    (h : DepthDerivesExpr program machine frame expr outcome rank)
+    (hwf : HeapWF lang machine) : HeapWF lang outcome.machine := by
   rw [h.machine_eq]
   exact hwf
 

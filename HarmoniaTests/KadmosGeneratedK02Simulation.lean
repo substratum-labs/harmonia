@@ -93,3 +93,128 @@ private def staleGeneratorState : TargetMachine :=
 
 theorem kadmos_generated_heap_generator_requires_object :
     ¬ HeapWF .python staleGeneratorState := by decide +kernel
+
+-- Mutating statement paths preserve returned control through busy clearing.
+theorem kadmos_generated_finally_return_depth {program m f} :
+    DepthDerivesStmt program m f
+      (.tryCatchFinally (.returnValue (.bool true)) none none .empty
+        (.assign (.field "busy") (.bool false)))
+      ⟨{ m with checker := { m.checker with busy := false } }, f,
+        .returned (.bool true)⟩ 2 := by
+  exact .finallyNormal (.returnValue (.bool true)) (by rfl)
+    (.assignField (.bool false) (by simp [writeCheckerField]))
+
+theorem kadmos_generated_finally_return_adequate {program m f} :
+    execStmt 3 program m f
+      (.tryCatchFinally (.returnValue (.bool true)) none none .empty
+        (.assign (.field "busy") (.bool false))) =
+      .ok ⟨{ m with checker := { m.checker with busy := false } }, f,
+        .returned (.bool true)⟩ :=
+  execStmt_adequate kadmos_generated_finally_return_depth (by decide)
+
+theorem kadmos_generated_finally_return_runs {program m f} :
+    StmtRuns program m f
+      (.tryCatchFinally (.returnValue (.bool true)) none none .empty
+        (.assign (.field "busy") (.bool false)))
+      ⟨{ m with checker := { m.checker with busy := false } }, f,
+        .returned (.bool true)⟩ := stmt_path_runs kadmos_generated_finally_return_depth
+
+theorem kadmos_generated_finally_override_depth {program m f} :
+    DepthDerivesStmt program m f
+      (.tryCatchFinally (.returnValue (.bool true)) none none .empty .returnVoid)
+      ⟨m, f, .returned .undefined⟩ 2 :=
+  .finallyOverride (.returnValue (.bool true)) (by rfl) .returnVoid (by intro h; cases h)
+
+theorem kadmos_generated_sequence_exit_skips_tail {program m f} :
+    DepthDerivesStmt program m f
+      (.sequence .returnVoid (.assign (.field "state") (.bool false)))
+      ⟨m, f, .returned .undefined⟩ 1 :=
+  .sequenceExit .returnVoid (by intro h; cases h)
+
+#print axioms execStmt_adequate
+#print axioms stmt_path_runs
+#print axioms BalanceRep.view
+#print axioms balanceRepCheck_sound
+
+-- Caught return and rethrow retain the outcome control after frame clearing.
+theorem kadmos_generated_caught_return_depth {program m f} :
+    DepthDerivesStmt program m f
+      (.tryCatchFinally (.throwValue (.string "boom")) (some "any") (some "e")
+        (.returnValue (.bool true)) (.assign (.field "busy") (.bool false)))
+      ⟨{ (bindCatchFrame m f (some "e") (.string "boom")).1 with
+          checker := { m.checker with busy := false } },
+        { (bindCatchFrame m f (some "e") (.string "boom")).2 with control := .normal },
+        .returned (.bool true)⟩ 2 := by
+  exact .caughtFinallyNormal (.throwValue (.string "boom")) (by rfl)
+    (.returnValue (.bool true)) (.assignField (.bool false) (by simp [writeCheckerField, bindCatchFrame, allocCell]))
+
+theorem kadmos_generated_caught_return_adequate {program m f} :
+    execStmt 3 program m f
+      (.tryCatchFinally (.throwValue (.string "boom")) (some "any") (some "e")
+        (.returnValue (.bool true)) (.assign (.field "busy") (.bool false))) =
+      .ok ⟨{ (bindCatchFrame m f (some "e") (.string "boom")).1 with
+          checker := { m.checker with busy := false } },
+        { (bindCatchFrame m f (some "e") (.string "boom")).2 with control := .normal },
+        .returned (.bool true)⟩ :=
+  execStmt_adequate kadmos_generated_caught_return_depth (by decide)
+
+theorem kadmos_generated_caught_rethrow_depth {program m f} :
+    DepthDerivesStmt program m f
+      (.tryCatchFinally (.throwValue (.string "boom")) (some "Exception") none
+        .rethrow (.assign (.field "_busy") (.bool false)))
+      ⟨{ m with checker := { m.checker with busy := false } },
+        { f with control := .normal }, .raised (.string "boom")⟩ 2 := by
+  exact .caughtFinallyNormal (.throwValue (.string "boom")) (by rfl)
+    (.rethrow (by rfl)) (.assignField (.bool false) (by simp [writeCheckerField, bindCatchFrame]))
+
+theorem kadmos_generated_caught_override_depth {program m f} :
+    DepthDerivesStmt program m f
+      (.tryCatchFinally (.throwValue (.string "boom")) (some "any") none
+        .returnVoid (.throwValue (.string "cleanup")))
+      ⟨m, { f with control := .normal }, .raised (.string "cleanup")⟩ 2 := by
+  exact .caughtFinallyOverride (.throwValue (.string "boom")) (by rfl)
+    .returnVoid (.throwValue (.string "cleanup")) (by intro h; cases h)
+
+theorem kadmos_generated_catch_binder_fresh {m f errorValue} :
+    (bindCatchFrame m f (some "e") errorValue).1.nextCell = m.nextCell + 1 ∧
+    (bindCatchFrame m f (some "e") errorValue).2.locals = ("e", m.nextCell) :: f.locals ∧
+    readCell (bindCatchFrame m f (some "e") errorValue).1 m.nextCell = .ok errorValue := by
+  simp [bindCatchFrame, allocCell, readCell]
+
+private def equalityTree : Nat → TargetExpr
+  | 0 => .bool true
+  | n + 1 => .binary .strictEq (equalityTree n) (equalityTree n)
+
+private def equalityTreeTrace : Nat → Nat
+  | 0 => 1
+  | n + 1 => 3 + 2 * equalityTreeTrace n
+
+private theorem equalityTree_depth {program m f} (n : Nat) :
+    DepthDerivesExpr program m f (equalityTree n) ⟨m, .ok (.bool true)⟩ n := by
+  induction n with
+  | zero => exact .bool true
+  | succ n ih =>
+      simpa [equalityTree, Nat.add_comm] using DepthDerivesExpr.binary (op := .strictEq) (result := .ok (.bool true)) (by decide) ih ih (by rfl)
+
+private theorem equalityTree_counted {program m f} (n : Nat)
+    (c : List ResumeFrame) :
+    CountedRuns program ⟨m, f, .eval (equalityTree n), c⟩
+      ⟨m, f, .value (.bool true), c⟩ (equalityTreeTrace n) := by
+  induction n generalizing c with
+  | zero => exact .single (.bool true)
+  | succ n ih =>
+      have count : (((1 + equalityTreeTrace n) + 1) + equalityTreeTrace n) + 1 =
+          equalityTreeTrace (n + 1) := by simp only [equalityTreeTrace]; omega
+      rw [← count]
+      exact ((((CountedRuns.single .binaryEnter).trans (ih _)).trans
+        (.single .binaryNext)).trans (ih _)).trans
+          (.single (SmallStep.binaryFinish (program := program) (m := m)
+            (op := .strictEq) (left := .bool true) (right := .bool true)
+            (result := .ok (.bool true)) (by decide) (by rfl)))
+
+-- 253 relation steps, rank 6, executor depth 7: neither meter is fuel=253.
+theorem kadmos_generated_trace_exceeds_depth_budget {program m f} :
+    CountedRuns program ⟨m, f, .eval (equalityTree 6), []⟩
+        ⟨m, f, .value (.bool true), []⟩ 253 ∧
+      evalExpr 7 program m f (equalityTree 6) = .ok ⟨m, .ok (.bool true)⟩ := by
+  exact ⟨equalityTree_counted 6 [], evalExpr_adequate (equalityTree_depth 6) (by decide)⟩

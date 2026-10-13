@@ -21,6 +21,9 @@ TEST_TARGETS = (
     'kadmosGeneratedK02StatementCertificateTest',
     'kadmosGeneratedK02PythonLinesTest',
     'kadmosGeneratedK02SimulationTest',
+    'kadmosGeneratedK02ClosedProgramsTest',
+    'kadmosGeneratedK02ConstructorProofTest',
+    'kadmosGeneratedK02BalanceStepProofTest',
     'kadmosGeneratedK02MachineTest',
     'kadmosGeneratedK02ExpressionParserTest',
     'kadmosGeneratedK02StatementParserTest',
@@ -53,21 +56,26 @@ def trap(name):
 
 
 def checked_lake_roots_source(lake):
-    """Permit only the dedicated Python-line proof's exact resource option.
+    """Permit the exact stack-capacity option on two certificate targets.
 
-    The shared strict `target_roots` parser then sees the same literal roots
-    declaration; no arbitrary target suffix or proof option is accepted.
+    No proof-trust option or arbitrary root-array suffix is accepted. The
+    common strict root parser consumes the remaining literal declarations.
     """
-    match = re.search(
-        r'(?ms)^lean_lib kadmosGeneratedK02PythonLinesTest where\n(.*?)(?=^lean_lib |\Z)',
-        lake)
-    if not match:
-        raise AuditInventoryError('missing Python line-certificate target')
-    block = match.group(1)
-    if len(re.findall(r'(?m)^' + re.escape(PYTHON_LINES_STACK) + r'$', block)) != 1:
-        raise AuditInventoryError('Python line-certificate stack option differs')
-    stripped = block.replace(PYTHON_LINES_STACK, '', 1)
-    return lake[:match.start(1)] + stripped + lake[match.end(1):]
+    for target, label in (
+        ('kadmosGeneratedK02PythonLinesTest', 'Python line-certificate'),
+        ('kadmosGeneratedK02ClosedProgramsTest', 'closed-program certificate'),
+    ):
+        match = re.search(
+            r'(?ms)^lean_lib ' + re.escape(target) + r' where\n(.*?)(?=^lean_lib |\Z)',
+            lake)
+        if not match:
+            raise AuditInventoryError(f'missing {label} target')
+        block = match.group(1)
+        if len(re.findall(r'(?m)^' + re.escape(PYTHON_LINES_STACK) + r'$', block)) != 1:
+            raise AuditInventoryError(f'{label} stack option differs')
+        stripped = block.replace(PYTHON_LINES_STACK, '', 1)
+        lake = lake[:match.start(1)] + stripped + lake[match.end(1):]
+    return lake
 
 
 def generated_manifest(source):

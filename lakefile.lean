@@ -91,6 +91,21 @@ lean_lib kadmosGeneratedK02PythonLinesTest where
 lean_lib kadmosGeneratedK02SimulationTest where
   roots := #[`HarmoniaTests.KadmosGeneratedK02Simulation]
 
+lean_lib kadmosGeneratedK02ClosedProgramsTest where
+  roots := #[`HarmoniaTests.KadmosGeneratedK02ClosedPrograms]
+  moreLeanArgs := #["--tstack=131072"]
+
+lean_lib kadmosGeneratedK02ConstructorProofTest where
+  roots := #[`HarmoniaTests.KadmosGeneratedK02ConstructorProof,
+    `HarmoniaTests.KadmosGeneratedK02ConstructorProofTS,
+    `HarmoniaTests.KadmosGeneratedK02ConstructorProofPython]
+
+lean_lib kadmosGeneratedK02BalanceStepProofTest where
+  roots := #[`HarmoniaTests.KadmosGeneratedK02BalanceStepProof,
+    `HarmoniaTests.KadmosGeneratedK02BalanceStepProofCases,
+    `HarmoniaTests.KadmosGeneratedK02BalanceStepProofTS,
+    `HarmoniaTests.KadmosGeneratedK02BalanceStepProofPython]
+
 lean_lib kadmosGeneratedK02MachineTest where
   roots := #[`HarmoniaTests.KadmosGeneratedK02Machine]
 

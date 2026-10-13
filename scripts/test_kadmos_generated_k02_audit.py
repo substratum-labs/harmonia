@@ -106,6 +106,24 @@ class GeneratedK02InventoryTests(unittest.TestCase):
         with self.assertRaisesRegex(AuditInventoryError, 'stack option'):
             check(self.root)
 
+    def test_closed_program_stack_option_is_exact(self):
+        self.change('lakefile.lean',
+                    'roots := #[`HarmoniaTests.KadmosGeneratedK02ClosedPrograms]\n'
+                    '  moreLeanArgs := #["--tstack=131072"]',
+                    'roots := #[`HarmoniaTests.KadmosGeneratedK02ClosedPrograms]\n'
+                    '  moreLeanArgs := #["-DtrustLevel=1"]')
+        with self.assertRaisesRegex(AuditInventoryError, 'stack option'):
+            check(self.root)
+
+    def test_commented_closed_program_stack_option_is_rejected(self):
+        self.change('lakefile.lean',
+                    'roots := #[`HarmoniaTests.KadmosGeneratedK02ClosedPrograms]\n'
+                    '  moreLeanArgs := #["--tstack=131072"]',
+                    'roots := #[`HarmoniaTests.KadmosGeneratedK02ClosedPrograms]\n'
+                    '  -- moreLeanArgs := #["--tstack=131072"]')
+        with self.assertRaisesRegex(AuditInventoryError, 'stack option'):
+            check(self.root)
+
     def test_unused_axiom_is_rejected(self):
         path = self.root / 'Harmonia/Applications/Kadmos/Generated/TargetObservation.lean'
         path.write_text(path.read_text() + '\nnamespace Escape\naxiom unused : Nat\nend Escape\n')

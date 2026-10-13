@@ -33,6 +33,27 @@ structure BindOutcome where
   result : Except TargetValue Unit
   deriving Repr
 
+/-- Exact source catch selection, shared by the declarative control rules.
+    This tests only exception tags; it assumes no generated helper result. -/
+def controlCaught (catchType : Option String) : ControlResult → Bool
+  | .raised errorValue =>
+      catchType == some "any" || catchType == some "Exception" ||
+        (match errorValue, catchType with
+          | .exception className _, some wanted => className == wanted
+          | _, _ => false)
+  | _ => false
+
+/-- Lexical catch binding allocates one fresh cell when the source names an
+    exception binder, then records the active exception for a bare rethrow. -/
+def bindCatchFrame (m : TargetMachine) (f : TargetFrame) (binder : Option String)
+    (errorValue : TargetValue) : TargetMachine × TargetFrame :=
+  let (updated, localFrame) := match binder with
+    | none => (m, f)
+    | some name =>
+        let (updated, ref) := allocCell m errorValue true
+        (updated, { f with locals := (name, ref) :: f.locals })
+  (updated, { localFrame with control := .raised errorValue })
+
 private def done (m : TargetMachine) (value : TargetValue) : ExprOutcome :=
   ⟨m, .ok value⟩
 
@@ -1600,18 +1621,10 @@ def execStmt (fuel : Nat) (program : TargetProgram) (m : TargetMachine)
         let attempted ← execStmt fuel program m frame body
         let handled ← match attempted.control with
           | .raised errorValue =>
-              let catches := catchType == some "any" || catchType == some "Exception" ||
-                (match errorValue, catchType with
-                  | .exception className _, some wanted => className == wanted
-                  | _, _ => false)
+              let catches := controlCaught catchType (.raised errorValue)
               if catches then do
-                let (updated, localFrame) ← match binder with
-                  | none => .ok (attempted.machine, attempted.frame)
-                  | some name =>
-                      let (updated, ref) := allocCell attempted.machine errorValue true
-                      let localFrame := { attempted.frame with locals := (name, ref) :: attempted.frame.locals }
-                      .ok (updated, localFrame)
-                let activeFrame := { localFrame with control := .raised errorValue }
+                let (updated, activeFrame) :=
+                  bindCatchFrame attempted.machine attempted.frame binder errorValue
                 let handled ← execStmt fuel program updated activeFrame handler
                 pure { handled with frame := { handled.frame with control := .normal } }
               else .ok attempted
