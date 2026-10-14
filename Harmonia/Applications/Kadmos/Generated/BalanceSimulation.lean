@@ -2235,4 +2235,748 @@ theorem balanceReset_body_first_eq (lang : TargetLang) (k : Nat) (m : TargetMach
   conv => lhs; rw [(statementSpineCheck_sequence shape).1]
   exact execSequence_eq _ _ _ _ _ _
 
+/-- Reached canonical reset entry after busy acquisition. Python includes its
+    six constructor initialization writes before reset is called. -/
+def balanceCanonicalResetEntry (lang : TargetLang) (b : Int) : TargetMachine × TargetFrame :=
+  let entry := if lang == .ts then balanceResetBodyEntry lang b else balancePythonResetBodyEntry b
+  (balanceSetBusy entry.1 true, entry.2)
+
+/-- Small physical stages; no source body is executed by this selector.
+    Stage 3 is after all snapshots and rollback closure installation. -/
+def balanceCanonicalResetStage (lang : TargetLang) (b : Int) (i : Nat) : TargetMachine × TargetFrame :=
+  let entry := balanceCanonicalResetEntry lang b
+  if i == 0 then entry else if i == 1 then resetSnapshotState lang entry.1 entry.2
+  else if i == 2 then resetSnapshotContext lang entry.1 entry.2
+  else resetSnapshotsInstalled lang entry.1 entry.2
+
+def balanceCanonicalResetPrefixLength (lang : TargetLang) (i : Nat) : Nat :=
+  (if lang == .ts then 0 else 2) + (if i < 2 then 0 else if i == 2 then 1 else 2)
+
+set_option maxRecDepth 65536 in
+set_option maxHeartbeats 10000000 in
+/-- Only the seed object's payload varies. These projection equations discard
+    stored code before comparing symbolic inputs; no interpreter/AST reduction
+    on the integer is used. -/
+theorem balanceCanonicalResetStage_footprint (lang : TargetLang) (b : Int)
+    (i : Nat) (hi : i ≤ 3) :
+    let actual := balanceCanonicalResetStage lang b i
+    let base := balanceCanonicalResetStage lang 0 i
+    actual.1.objects = List.take (balanceCanonicalResetPrefixLength lang i) base.1.objects ++
+      ((balancePreparation lang).1.nextObject, balanceHeapObject lang (balancePreparation lang).1 b) :: (balancePreparation lang).1.objects ∧
+    actual.2 = base.2 ∧ actual.1.cells = base.1.cells ∧ actual.1.globals = base.1.globals ∧
+    actual.1.nextObject = base.1.nextObject ∧ actual.1.objectPrototype = base.1.objectPrototype ∧
+    actual.1.checkerRef = base.1.checkerRef ∧ actual.1.checker = base.1.checker ∧
+    actual.1.nextCell = base.1.nextCell := by
+  cases lang <;> have : i = 0 ∨ i = 1 ∨ i = 2 ∨ i = 3 := by omega
+  all_goals rcases this with rfl | rfl | rfl | rfl <;>
+    exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+
+theorem lookup_seed_payload {α : Type} (front tail : List (Nat × α))
+    (seed ref : Nat) (x y : α) (hn : ref ≠ seed) :
+    (front ++ (seed, x) :: tail).lookup ref = (front ++ (seed, y) :: tail).lookup ref := by
+  induction front with
+  | nil => simp [List.lookup_cons, beq_eq_false_iff_ne.mpr hn]
+  | cons head tail ih =>
+      rcases head with ⟨key, value⟩
+      simp only [List.cons_append, List.lookup_cons]
+      rw [ih]
+
+/-- All non-seed heap reads are independent of the symbolic seed value. -/
+theorem balanceCanonicalResetStage_objectAt (lang : TargetLang) (b : Int)
+    (i : Nat) (hi : i ≤ 3) (ref : ObjRef)
+    (hn : ref ≠ (balancePreparation lang).1.nextObject) :
+    objectAt (balanceCanonicalResetStage lang b i).1 ref =
+      objectAt (balanceCanonicalResetStage lang 0 i).1 ref := by
+  unfold objectAt
+  conv => lhs; rw [(balanceCanonicalResetStage_footprint lang b i hi).1]
+  conv => rhs; rw [(balanceCanonicalResetStage_footprint lang 0 i hi).1]
+  rw [lookup_seed_payload _ _ _ _ _ (balanceHeapObject lang (balancePreparation lang).1 0) hn]
+
+theorem balanceCanonicalResetStage_localValue (lang : TargetLang) (b : Int)
+    (i : Nat) (hi : i ≤ 3) (name : String) :
+    localValue (balanceCanonicalResetStage lang b i).1 (balanceCanonicalResetStage lang b i).2 name =
+      localValue (balanceCanonicalResetStage lang 0 i).1 (balanceCanonicalResetStage lang 0 i).2 name := by
+  obtain ⟨_, hf, hc, hg, _, _, _, _⟩ := balanceCanonicalResetStage_footprint lang b i hi
+  simp only [localValue, readCell, hf, hc, hg]
+
+theorem balanceCanonicalResetStage_address (lang : TargetLang) (b : Int)
+    (i : Nat) (hi : i ≤ 3) (name : String) :
+    snapshotAddress (balanceCanonicalResetStage lang b i).1 (balanceCanonicalResetStage lang b i).2 name =
+      snapshotAddress (balanceCanonicalResetStage lang 0 i).1 (balanceCanonicalResetStage lang 0 i).2 name := by
+  obtain ⟨_, hf, _, hg, _, _, _, _⟩ := balanceCanonicalResetStage_footprint lang b i hi
+  simp only [snapshotAddress, hf, hg]
+
+theorem balanceCanonicalResetStage_keys (lang : TargetLang) (b : Int)
+    (i : Nat) (hi : i ≤ 3) :
+    (balanceCanonicalResetStage lang b i).1.objects.map Prod.fst =
+      (balanceCanonicalResetStage lang 0 i).1.objects.map Prod.fst := by
+  conv => lhs; rw [(balanceCanonicalResetStage_footprint lang b i hi).1]
+  conv => rhs; rw [(balanceCanonicalResetStage_footprint lang 0 i hi).1]
+  simp only [List.map_append, List.map_cons]
+
+/-- The Python copy module has this one physical host descriptor. -/
+def balanceCopyModuleObject : HeapObject :=
+  ⟨.jsOrdinary, some 0,
+    [("deepcopy", ⟨some (.builtin .deepCopy), none, none, true, true, true⟩)], [], [], false, false⟩
+
+theorem balanceCopyModule_read {m : TargetMachine} (hc : (2 == m.checkerRef) = false)
+    (ho : objectAt m 2 = .ok balanceCopyModuleObject) :
+    readPropertyValue .python m (.object 2) "deepcopy" = .ok ⟨m, .ok (.builtin .deepCopy)⟩ := by
+  simp [readPropertyValue, hc, ho, balanceCopyModuleObject, readOwn, List.lookup,
+    Bind.bind, Pure.pure, Except.bind, Except.pure]
+  rfl
+
+/-- Only primitive physical observations occur in this check. In particular,
+    no equality compares complete machines or stored source bodies. -/
+def balanceResetPhysicalCheck (lang : TargetLang) (b : Int) : Prop :=
+  let e := balanceCanonicalResetStage lang b 0
+  let s := balanceCanonicalResetStage lang b 1
+  let c := balanceCanonicalResetStage lang b 2
+  let ready := balanceCanonicalResetStage lang b 3
+  objectAt s.1 e.1.checker.context = .ok (resetSnapshotContextObject lang s.1) ∧
+  e.1.checker.context ≠ s.1.nextObject ∧
+  s.1.objects.all (fun x => x.1 != s.1.nextObject) = true ∧
+  (lang = .python → localValue s.1 s.2 "dict" = .ok (.builtin .dict)) ∧
+  objectAt c.1 e.1.checker.history = .ok (emptyBalanceHistory lang c.1) ∧
+  c.1.objects.all (fun x => x.1 != c.1.nextObject) = true ∧
+  (if lang == .ts then localValue c.1 c.2 "structuredClone" = .ok (.builtin .structuredClone)
+   else localValue c.1 c.2 "copy" = .ok (.object 2) ∧
+     objectAt c.1 2 = .ok balanceCopyModuleObject ∧ (2 == c.1.checkerRef) = false) ∧
+  (lang = .python → snapshotAddress e.1 e.2 (snapshotName lang 0) = none) ∧
+  (lang = .python → snapshotAddress s.1 s.2 (snapshotName lang 1) = none) ∧
+  (lang = .python → snapshotAddress c.1 c.2 (snapshotName lang 2) = none) ∧
+  ready.1.objects.all (fun x => x.1 != ready.1.nextObject) = true
+
+instance (lang : TargetLang) (b : Int) : Decidable (balanceResetPhysicalCheck lang b) := by
+  unfold balanceResetPhysicalCheck
+  infer_instance
+
+set_option maxRecDepth 65536 in
+set_option maxHeartbeats 10000000 in
+theorem balanceResetPhysicalCheck_zero (lang : TargetLang) :
+    balanceResetPhysicalCheck lang 0 := by
+  cases lang <;> unfold balanceResetPhysicalCheck balanceCanonicalResetStage
+    balanceCanonicalResetEntry balanceResetBodyEntry balancePythonResetBodyEntry
+    balanceConstructorBodyEntry balanceConstructorBoundEntry balanceConstructorArgumentEntry
+    balanceStoredReset balanceResetLookup balanceStoredConstructor balanceConstructorLookup
+    balanceConstructorName balancePreparation
+  · rw [balanceProgram_of_parse BalancePrograms.balanceTsProgram_source]; decide +kernel
+  · rw [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]; decide +kernel
+
+/-- A seed address never aliases any constructor snapshot read. -/
+def balanceResetNonSeedCheck (lang : TargetLang) : Prop :=
+  let e := balanceCanonicalResetStage lang 0 0
+  e.1.checker.context ≠ (balancePreparation lang).1.nextObject ∧
+  e.1.checker.history ≠ (balancePreparation lang).1.nextObject ∧
+  2 ≠ (balancePreparation lang).1.nextObject
+
+instance (lang : TargetLang) : Decidable (balanceResetNonSeedCheck lang) := by
+  unfold balanceResetNonSeedCheck
+  infer_instance
+
+set_option maxRecDepth 65536 in
+set_option maxHeartbeats 10000000 in
+theorem balanceResetNonSeedCheck_true (lang : TargetLang) : balanceResetNonSeedCheck lang := by
+  cases lang <;> unfold balanceResetNonSeedCheck balanceCanonicalResetStage
+    balanceCanonicalResetEntry balanceResetBodyEntry balancePythonResetBodyEntry
+    balanceConstructorBodyEntry balanceConstructorBoundEntry balanceConstructorArgumentEntry
+    balanceStoredReset balanceResetLookup balanceStoredConstructor balanceConstructorLookup
+    balanceConstructorName balancePreparation
+  · rw [balanceProgram_of_parse BalancePrograms.balanceTsProgram_source]; decide +kernel
+  · rw [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]; decide +kernel
+
+/-- The freshness predicate inspects addresses, never descriptor payloads. -/
+theorem balanceCanonicalResetStage_fresh (lang : TargetLang) (b : Int)
+    (i : Nat) (hi : i ≤ 3) :
+    (balanceCanonicalResetStage lang b i).1.objects.all
+      (fun x => x.1 != (balanceCanonicalResetStage lang b i).1.nextObject) =
+    (balanceCanonicalResetStage lang 0 i).1.objects.all
+      (fun x => x.1 != (balanceCanonicalResetStage lang 0 i).1.nextObject) := by
+  have hkeys := balanceCanonicalResetStage_keys lang b i hi
+  have hn := (balanceCanonicalResetStage_footprint lang b i hi).2.2.2.2.1
+  rw [hn]
+  have hm (xs : List (ObjRef × HeapObject)) (n : ObjRef) :
+      xs.all (fun x => x.1 != n) = (xs.map Prod.fst).all (fun x => x != n) := by
+    simp only [List.all_map]
+    rfl
+  rw [hm, hm, hkeys]
+
+theorem balanceResetPhysicalCheck_all (lang : TargetLang) (b : Int) :
+    balanceResetPhysicalCheck lang b := by
+  have h0 := balanceResetPhysicalCheck_zero lang
+  have hn := balanceResetNonSeedCheck_true lang
+  unfold balanceResetNonSeedCheck at hn
+  unfold balanceResetPhysicalCheck at h0 ⊢
+  dsimp only at h0 ⊢
+  have hc := (balanceCanonicalResetStage_footprint lang b 0 (by decide)).2.2.2.2.2.2.2.1
+  have hp1 := (balanceCanonicalResetStage_footprint lang b 1 (by decide)).2.2.2.2.2.1
+  have hp2 := (balanceCanonicalResetStage_footprint lang b 2 (by decide)).2.2.2.2.2.1
+  rw [balanceCanonicalResetStage_fresh lang b 1 (by decide),
+    balanceCanonicalResetStage_fresh lang b 2 (by decide),
+    balanceCanonicalResetStage_fresh lang b 3 (by decide)]
+  simp only [hc, resetSnapshotContextObject, balanceHeapObject, literalObject,
+    emptyBalanceHistory, hp1, hp2,
+    balanceCanonicalResetStage_localValue lang b 1 (by decide),
+    balanceCanonicalResetStage_localValue lang b 2 (by decide),
+    balanceCanonicalResetStage_address lang b 0 (by decide),
+    balanceCanonicalResetStage_address lang b 1 (by decide),
+    balanceCanonicalResetStage_address lang b 2 (by decide),
+    balanceCanonicalResetStage_fresh lang b 1 (by decide),
+    balanceCanonicalResetStage_fresh lang b 2 (by decide),
+    balanceCanonicalResetStage_fresh lang b 3 (by decide),
+    balanceCanonicalResetStage_objectAt lang b 1 (by decide) _ hn.1,
+    balanceCanonicalResetStage_objectAt lang b 2 (by decide) _ hn.2.1,
+    balanceCanonicalResetStage_objectAt lang b 2 (by decide) _ hn.2.2,
+    (balanceCanonicalResetStage_footprint lang b 1 (by decide)).2.2.2.2.1,
+    (balanceCanonicalResetStage_footprint lang b 2 (by decide)).2.2.2.2.2.2.1]
+  simpa only [resetSnapshotContextObject, balanceHeapObject, literalObject, emptyBalanceHistory] using h0
+
+set_option maxRecDepth 65536 in
+set_option maxHeartbeats 10000000 in
+theorem balanceCanonicalResetEntry_receiver_zero (lang : TargetLang) :
+    (balanceCanonicalResetStage lang 0 0).2.receiver =
+      some (balanceCanonicalResetStage lang 0 0).1.checkerRef := by
+  cases lang <;> unfold balanceCanonicalResetStage balanceCanonicalResetEntry
+    balanceResetBodyEntry balancePythonResetBodyEntry balanceConstructorBodyEntry
+    balanceConstructorBoundEntry balanceConstructorArgumentEntry balanceStoredReset
+    balanceResetLookup balanceStoredConstructor balanceConstructorLookup balanceConstructorName balancePreparation
+  · rw [balanceProgram_of_parse BalancePrograms.balanceTsProgram_source]; decide +kernel
+  · rw [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]; decide +kernel
+
+theorem balanceCanonicalResetEntry_receiver (lang : TargetLang) (b : Int) :
+    (balanceCanonicalResetStage lang b 0).2.receiver =
+      some (balanceCanonicalResetStage lang b 0).1.checkerRef := by
+  rw [(balanceCanonicalResetStage_footprint lang b 0 (by decide)).2.1,
+    (balanceCanonicalResetStage_footprint lang b 0 (by decide)).2.2.2.2.2.2.1]
+  exact balanceCanonicalResetEntry_receiver_zero lang
+
+theorem objects_all_fresh {m : TargetMachine}
+    (h : m.objects.all (fun x => x.1 != m.nextObject) = true) :
+    ∀ e ∈ m.objects, e.1 ≠ m.nextObject := by
+  intro e he
+  simpa using (List.all_eq_true.mp h e he)
+
+theorem snapshotCloneRead_of_physical {lang m f}
+    (hc : if lang == .ts then localValue m f "structuredClone" = .ok (.builtin .structuredClone)
+      else localValue m f "copy" = .ok (.object 2) ∧
+        objectAt m 2 = .ok balanceCopyModuleObject ∧ (2 == m.checkerRef) = false) :
+    SnapshotCloneRead lang m f := by
+  cases lang with
+  | ts => exact hc
+  | python => exact ⟨.object 2, hc.1, balanceCopyModule_read hc.2.2 hc.2.1⟩
+
+/-- All snapshot premises are discharged from actual constructor provenance,
+    uniformly in b (and hence for every bounded balance). -/
+theorem balanceReset_canonical_snapshot_execute (lang : TargetLang) (b : Int) (k : Nat) :
+    let e := balanceCanonicalResetEntry lang b
+    execStmt (k + 8) (balanceProgram lang) e.1 e.2 (balanceResetSnapshots lang) =
+      execStmt (k + 4) (balanceProgram lang)
+        (balanceCanonicalResetStage lang b 3).1 (balanceCanonicalResetStage lang b 3).2
+        (dropStmts 4 (balanceResetSnapshots lang)) := by
+  obtain ⟨hcontext, hn, hf, hd, hhistory, hhf, hc, hn0, hn1, hn2, _⟩ :=
+    balanceResetPhysicalCheck_all lang b
+  exact balanceReset_snapshot_execute (balanceCanonicalResetEntry_receiver lang b)
+    hcontext hn (objects_all_fresh hf) hd hhistory (objects_all_fresh hhf) (snapshotCloneRead_of_physical hc) hn0 hn1 hn2
+
+/-- Fixed source defaults, including Python's real proxy prototype and freeze bit. -/
+def balanceResetDefaultsRef (lang : TargetLang) : ObjRef := if lang == .ts then 17 else 68
+
+def balanceResetDefaultsObject (lang : TargetLang) : HeapObject :=
+  if lang == .ts then balanceHeapObject .ts (balancePreparation lang).1 100
+  else ⟨.mappingProxy, some 67, [("balance", balanceDataDescriptor .python 100)], [], [], true, false⟩
+
+def balanceResetCandidatePhysicalCheck (lang : TargetLang) (b : Int) : Prop :=
+  let e := balanceCanonicalResetStage lang b 3
+  localValue e.1 e.2 (if lang == .ts then "contextDefaults" else "_DEFAULTS") =
+    .ok (.object (balanceResetDefaultsRef lang)) ∧
+  objectAt e.1 (balanceResetDefaultsRef lang) = .ok (balanceResetDefaultsObject lang) ∧
+  balanceResetDefaultsRef lang ≠ e.1.nextObject ∧
+  (lang = .python → localValue e.1 e.2 "dict" = .ok (.builtin .dict)) ∧
+  (lang = .python → snapshotAddress e.1 e.2 "candidate" = none)
+
+instance (lang : TargetLang) (b : Int) : Decidable (balanceResetCandidatePhysicalCheck lang b) := by
+  unfold balanceResetCandidatePhysicalCheck
+  infer_instance
+
+set_option maxRecDepth 65536 in
+set_option maxHeartbeats 10000000 in
+theorem balanceResetCandidatePhysicalCheck_zero (lang : TargetLang) :
+    balanceResetCandidatePhysicalCheck lang 0 ∧
+      balanceResetDefaultsRef lang ≠ (balancePreparation lang).1.nextObject ∧
+      (balanceCanonicalResetStage lang 0 3).1.objectPrototype = (balancePreparation lang).1.objectPrototype := by
+  cases lang <;> unfold balanceResetCandidatePhysicalCheck balanceCanonicalResetStage
+    balanceCanonicalResetEntry balanceResetBodyEntry balancePythonResetBodyEntry
+    balanceConstructorBodyEntry balanceConstructorBoundEntry balanceConstructorArgumentEntry
+    balanceStoredReset balanceResetLookup balanceStoredConstructor balanceConstructorLookup
+    balanceConstructorName balancePreparation
+  · rw [balanceProgram_of_parse BalancePrograms.balanceTsProgram_source]; decide +kernel
+  · rw [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]; decide +kernel
+
+theorem balanceResetCandidatePhysicalCheck_all (lang : TargetLang) (b : Int) :
+    balanceResetCandidatePhysicalCheck lang b := by
+  obtain ⟨h0, hn, _⟩ := balanceResetCandidatePhysicalCheck_zero lang
+  unfold balanceResetCandidatePhysicalCheck at h0 ⊢
+  dsimp only at h0 ⊢
+  rw [balanceCanonicalResetStage_localValue lang b 3 (by decide),
+    balanceCanonicalResetStage_objectAt lang b 3 (by decide) _ hn,
+    (balanceCanonicalResetStage_footprint lang b 3 (by decide)).2.2.2.2.1,
+    balanceCanonicalResetStage_localValue lang b 3 (by decide),
+    balanceCanonicalResetStage_address lang b 3 (by decide)]
+  exact h0
+
+def balanceResetCandidateEntry (lang : TargetLang) (b : Int) : TargetMachine × TargetFrame :=
+  let e := balanceCanonicalResetStage lang b 3
+  snapshotBound lang (allocObject e.1 (balanceHeapObject lang e.1 100)).1 e.2 "candidate" (.object e.1.nextObject)
+
+theorem localValue_allocObject (m : TargetMachine) (f : TargetFrame) (o : HeapObject) (name : String) :
+    localValue (allocObject m o).1 f name = localValue m f name := rfl
+
+theorem balanceReset_candidate_execute {lang m f k}
+    (hl : localValue m f (if lang == .ts then "contextDefaults" else "_DEFAULTS") =
+      .ok (.object (balanceResetDefaultsRef lang)))
+    (ho : objectAt m (balanceResetDefaultsRef lang) = .ok (balanceResetDefaultsObject lang))
+    (hn : balanceResetDefaultsRef lang ≠ m.nextObject)
+    (hd : lang = .python → localValue m f "dict" = .ok (.builtin .dict))
+    (ha : lang = .python → snapshotAddress m f "candidate" = none)
+    (hf : ∀ e ∈ m.objects, e.1 ≠ m.nextObject)
+    (hp : m.objectPrototype = (balancePreparation lang).1.objectPrototype) :
+    execStmt (k + 4) (balanceProgram lang) m f (firstStmt (balanceResetProtected lang).body) =
+      .ok ⟨(snapshotBound lang (allocObject m (balanceHeapObject lang m 100)).1 f "candidate" (.object m.nextObject)).1,
+        (snapshotBound lang (allocObject m (balanceHeapObject lang m 100)).1 f "candidate" (.object m.nextObject)).2, .normal⟩ := by
+  cases lang with
+  | ts =>
+      apply balanceReset_candidate_ts_execute (ref := 17)
+      · rw [localValue_allocObject]; exact hl
+      · simpa only [balanceResetDefaultsRef, balanceResetDefaultsObject, balanceHeapObject, hp] using ho
+      · exact hn
+      · exact hf
+  | python => exact balanceReset_candidate_python_execute (hd rfl) hl ho rfl rfl (ha rfl)
+
+/-- The real defaults copy executes after the canonical snapshots. All physical
+    premises have been proved, without a reset-success or representation premise. -/
+theorem balanceReset_canonical_candidate_execute (lang : TargetLang) (b : Int) (k : Nat) :
+    let e := balanceCanonicalResetStage lang b 3
+    execStmt (k + 4) (balanceProgram lang) e.1 e.2
+      (firstStmt (balanceResetProtected lang).body) =
+      .ok ⟨(balanceResetCandidateEntry lang b).1, (balanceResetCandidateEntry lang b).2, .normal⟩ := by
+  obtain ⟨hl, ho, hn, hd, ha⟩ := balanceResetCandidatePhysicalCheck_all lang b
+  have hf := objects_all_fresh (balanceResetPhysicalCheck_all lang b).2.2.2.2.2.2.2.2.2.2
+  have hp : (balanceCanonicalResetStage lang b 3).1.objectPrototype =
+      (balancePreparation lang).1.objectPrototype := by
+    rw [(balanceCanonicalResetStage_footprint lang b 3 (by decide)).2.2.2.2.2.1]
+    exact (balanceResetCandidatePhysicalCheck_zero lang).2.2
+  exact balanceReset_candidate_execute hl ho hn hd ha hf hp
+
+/-- A header deliberately omits branch and loop bodies. Closed certificates
+    expose one source node without reducing a symbolic input through its children. -/
+inductive ResetMiddleHeader where
+  | bind (name : String) (mutable : Bool) (expr : TargetExpr)
+  | assign (target : AssignTarget) (expr : TargetExpr)
+  | branch (expr : TargetExpr)
+  | loop (names : List String) (expr : TargetExpr)
+  | other
+  deriving DecidableEq, Repr
+
+def resetMiddleHeader : TargetStmt → ResetMiddleHeader
+  | .letLocal name mutable expr => .bind name mutable expr
+  | .assign target expr => .assign target expr
+  | .ifThenElse expr _ _ => .branch expr
+  | .forDo names expr _ => .loop names expr
+  | _ => .other
+
+def balanceResetMiddleStmt (lang : TargetLang) (i : Nat) : TargetStmt :=
+  firstStmt (dropStmts i (balanceResetProtected lang).body)
+
+def resetPythonCtxExpr : TargetExpr :=
+  .conditional (.binary .isIdentity (.local "initial_context") .null)
+    (resetField .python "#constructorSeed" "__constructor_seed") (.local "initial_context")
+
+def resetSeedPresenceExpr (lang : TargetLang) : TargetExpr :=
+  if lang == .ts then
+    .orElse (.binary .strictEq (.local "initialContext") .null)
+      (.binary .strictEq (.local "initialContext") .undefined)
+  else .binary .isNotIdentity (.local "ctx") .null
+
+def resetBoundsCall (lang : TargetLang) : TargetExpr :=
+  .call (.property (resetReceiver lang) (if lang == .ts then "checkBounds" else "_bounds"))
+    (.sequence (.local "candidate") .empty)
+
+def resetInvariantCall (lang : TargetLang) : TargetExpr :=
+  .call (.property (resetReceiver lang) (if lang == .ts then "checkInvariants" else "_invariant"))
+    (.sequence (if lang == .ts then .string "Ready" else .local "_INITIAL")
+      (.sequence (.local "candidate") .empty))
+
+def resetMiddleExpectedHeaders (lang : TargetLang) : List ResetMiddleHeader :=
+  let validation := [
+    (if lang == .ts then .bind "invalid" false (resetBoundsCall lang)
+     else .assign (.local "invalid") (resetBoundsCall lang)),
+    .branch (.local "invalid"),
+    (if lang == .ts then .bind "violated" false (resetInvariantCall lang)
+     else .assign (.local "violated") (resetInvariantCall lang)),
+    .branch (.local "violated")]
+  (if lang == .ts then [
+    .bind "overrides" true .undefined,
+    .branch (resetSeedPresenceExpr lang),
+    .loop ["name", "value"] (.call (.property (.local "Object") "entries")
+      (.sequence (.local "overrides") .empty))]
+   else [.assign (.local "ctx") resetPythonCtxExpr, .branch (resetSeedPresenceExpr lang)]) ++ validation
+
+set_option maxRecDepth 65536 in
+set_option maxHeartbeats 10000000 in
+/-- Every middle sibling is selected, including both helper calls and both
+    rejection tests. This is source shape, not validation/helper success. -/
+theorem balanceReset_middle_shapes (lang : TargetLang) :
+    ((List.range (if lang == .ts then 7 else 6)).map
+      (fun i => resetMiddleHeader (balanceResetMiddleStmt lang (i + 1)))) =
+      resetMiddleExpectedHeaders lang := by
+  cases lang <;> unfold balanceResetMiddleStmt balanceResetProtected balanceResetSnapshots
+    balanceStoredReset balanceResetLookup balancePreparation
+  · rw [balanceProgram_of_parse BalancePrograms.balanceTsProgram_source]; decide +kernel
+  · rw [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]; decide +kernel
+
+set_option maxRecDepth 65536 in
+set_option maxHeartbeats 10000000 in
+theorem balanceReset_middle_entry_shape (lang : TargetLang) :
+    balanceResetMiddleStmt lang 1 =
+      if lang == .ts then .letLocal "overrides" true .undefined
+      else .assign (.local "ctx") resetPythonCtxExpr := by
+  cases lang <;> unfold balanceResetMiddleStmt balanceResetProtected balanceResetSnapshots
+    balanceStoredReset balanceResetLookup balancePreparation
+  · rw [balanceProgram_of_parse BalancePrograms.balanceTsProgram_source]; decide +kernel
+  · rw [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]; decide +kernel
+
+def resetTsOverridesEntry (m : TargetMachine) (f : TargetFrame) : TargetMachine × TargetFrame :=
+  ((allocCell m .undefined true).1, { f with locals := ("overrides", m.nextCell) :: f.locals })
+
+theorem balanceReset_ts_overrides_execute (m : TargetMachine) (f : TargetFrame) (k : Nat) :
+    execStmt (k + 2) (balanceProgram .ts) m f (balanceResetMiddleStmt .ts 1) =
+      .ok ⟨(resetTsOverridesEntry m f).1, (resetTsOverridesEntry m f).2, .normal⟩ := by
+  rw [balanceReset_middle_entry_shape]
+  exact execStmt_adequate (.letLocal DepthDerivesExpr.undefined) (by omega)
+
+/-- For a supplied object the Python conditional chooses that object, without
+    reading the constructor-seed fallback or inspecting any descriptor. -/
+theorem resetPythonCtx_execute {m f ref k}
+    (hp : localValue m f "initial_context" = .ok (.object ref)) :
+    evalExpr (k + 3) (balanceProgram .python) m f resetPythonCtxExpr =
+      .ok ⟨m, .ok (.object ref)⟩ := by
+  have hb : evalExpr (k + 2) (balanceProgram .python) m f
+      (.binary .isIdentity (.local "initial_context") .null) = .ok ⟨m, .ok (.bool false)⟩ :=
+    evalExpr_adequate (.binary (by decide) (.localRead hp) .null
+      (by rw [balanceProgram_lang]; rfl)) (by omega)
+  simp only [resetPythonCtxExpr, evalExpr, hb, balanceProgram_lang,
+    sourceTruthy, Bind.bind, Pure.pure, Except.bind, Except.pure]
+  simp only [Bool.false_eq_true, if_false, hp]
+  rfl
+
+theorem balanceReset_python_ctx_execute {m f ref k}
+    (hp : localValue m f "initial_context" = .ok (.object ref))
+    (hn : snapshotAddress m f "ctx" = none) :
+    execStmt (k + 4) (balanceProgram .python) m f (balanceResetMiddleStmt .python 1) =
+      .ok ⟨(snapshotBound .python m f "ctx" (.object ref)).1,
+        (snapshotBound .python m f "ctx" (.object ref)).2, .normal⟩ := by
+  rw [balanceReset_middle_entry_shape]
+  exact execSnapshotBind (lang := .python) (resetPythonCtx_execute hp) (fun _ => hn)
+
+theorem balanceCanonicalResetStage_nextCell (lang : TargetLang) (b : Int)
+    (i : Nat) (hi : i ≤ 3) :
+    (balanceCanonicalResetStage lang b i).1.nextCell =
+      (balanceCanonicalResetStage lang 0 i).1.nextCell :=
+  (balanceCanonicalResetStage_footprint lang b i hi).2.2.2.2.2.2.2.2
+
+/-- Compare reads only after projecting away the unused heap/code fields. -/
+theorem localValue_fields_congr {m n : TargetMachine} {f g : TargetFrame} {name : String}
+    (hf : f = g) (hc : m.cells = n.cells) (hg : m.globals = n.globals) :
+    localValue m f name = localValue n g name := by
+  unfold localValue readCell
+  rw [hf, hc, hg]
+
+theorem snapshotAddress_fields_congr {m n : TargetMachine} {f g : TargetFrame} {name : String}
+    (hf : f = g) (hg : m.globals = n.globals) :
+    snapshotAddress m f name = snapshotAddress n g name := by
+  unfold snapshotAddress
+  rw [hf, hg]
+
+theorem candidateBinding_frame_congr {lang m n f g o p}
+    (hf : f = g) (hn : m.nextCell = n.nextCell) :
+    (snapshotBound lang (allocObject m o).1 f "candidate" (.object m.nextObject)).2 =
+      (snapshotBound lang (allocObject n p).1 g "candidate" (.object n.nextObject)).2 := by
+  change { f with locals := ("candidate", m.nextCell) :: f.locals } =
+    { g with locals := ("candidate", n.nextCell) :: g.locals }
+  rw [hf, hn]
+
+theorem candidateBinding_localValue_congr {lang m n f g o p name}
+    (hf : f = g) (hc : m.cells = n.cells) (hg : m.globals = n.globals)
+    (hn : m.nextCell = n.nextCell) (ho : m.nextObject = n.nextObject) :
+    localValue (snapshotBound lang (allocObject m o).1 f "candidate" (.object m.nextObject)).1
+      (snapshotBound lang (allocObject m o).1 f "candidate" (.object m.nextObject)).2 name =
+    localValue (snapshotBound lang (allocObject n p).1 g "candidate" (.object n.nextObject)).1
+      (snapshotBound lang (allocObject n p).1 g "candidate" (.object n.nextObject)).2 name := by
+  apply localValue_fields_congr (candidateBinding_frame_congr hf hn)
+  · change (m.nextCell, .object m.nextObject) :: m.cells =
+      (n.nextCell, .object n.nextObject) :: n.cells
+    rw [hn, ho, hc]
+  · exact hg
+
+theorem balanceResetCandidateEntry_localValue (lang : TargetLang) (b : Int) (name : String) :
+    localValue (balanceResetCandidateEntry lang b).1 (balanceResetCandidateEntry lang b).2 name =
+      localValue (balanceResetCandidateEntry lang 0).1 (balanceResetCandidateEntry lang 0).2 name := by
+  obtain ⟨_, hf, hc, hg, ho, _, _, _⟩ := balanceCanonicalResetStage_footprint lang b 3 (by decide)
+  exact candidateBinding_localValue_congr hf hc hg (balanceCanonicalResetStage_nextCell lang b 3 (by decide)) ho
+
+theorem balanceResetCandidateEntry_address (lang : TargetLang) (b : Int) (name : String) :
+    snapshotAddress (balanceResetCandidateEntry lang b).1 (balanceResetCandidateEntry lang b).2 name =
+      snapshotAddress (balanceResetCandidateEntry lang 0).1 (balanceResetCandidateEntry lang 0).2 name := by
+  obtain ⟨_, hf, _, hg, _, _, _, _⟩ := balanceCanonicalResetStage_footprint lang b 3 (by decide)
+  exact snapshotAddress_fields_congr
+    (candidateBinding_frame_congr hf (balanceCanonicalResetStage_nextCell lang b 3 (by decide))) hg
+
+set_option maxRecDepth 65536 in
+set_option maxHeartbeats 10000000 in
+theorem balanceResetCandidateEntry_parameter_zero (lang : TargetLang) :
+    localValue (balanceResetCandidateEntry lang 0).1 (balanceResetCandidateEntry lang 0).2
+      (balanceConstructorParam lang) = .ok (.object (balancePreparation lang).1.nextObject) ∧
+    (lang = .python → snapshotAddress (balanceResetCandidateEntry lang 0).1
+      (balanceResetCandidateEntry lang 0).2 "ctx" = none) := by
+  cases lang <;> unfold balanceResetCandidateEntry balanceCanonicalResetStage
+    balanceCanonicalResetEntry balanceResetBodyEntry balancePythonResetBodyEntry
+    balanceConstructorBodyEntry balanceConstructorBoundEntry balanceConstructorArgumentEntry
+    balanceStoredReset balanceResetLookup balanceStoredConstructor balanceConstructorLookup
+    balanceConstructorName balancePreparation
+  · rw [balanceProgram_of_parse BalancePrograms.balanceTsProgram_source]; decide +kernel
+  · rw [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]; decide +kernel
+
+section CanonicalResetComposition
+
+-- Resource limits only: this section follows the large closed physical
+-- certificates. All symbolic steps still use explicit small projections.
+set_option maxRecDepth 65536
+set_option maxHeartbeats 10000000
+
+theorem balanceResetCandidateEntry_parameter (lang : TargetLang) (b : Int) :
+    localValue (balanceResetCandidateEntry lang b).1 (balanceResetCandidateEntry lang b).2
+      (balanceConstructorParam lang) = .ok (.object (balancePreparation lang).1.nextObject) := by
+  rw [balanceResetCandidateEntry_localValue lang b (balanceConstructorParam lang)]
+  exact (balanceResetCandidateEntry_parameter_zero lang).1
+
+def balanceResetMiddleEntry (lang : TargetLang) (b : Int) : TargetMachine × TargetFrame :=
+  let e := balanceResetCandidateEntry lang b
+  if lang == .ts then resetTsOverridesEntry e.1 e.2
+  else snapshotBound .python e.1 e.2 "ctx" (.object (balancePreparation lang).1.nextObject)
+
+theorem balanceReset_ts_canonical_overrides_execute (b : Int) (k : Nat) :
+    let e := balanceResetCandidateEntry .ts b
+    execStmt (k + 2) (balanceProgram .ts) e.1 e.2 (balanceResetMiddleStmt .ts 1) =
+      .ok ⟨(balanceResetMiddleEntry .ts b).1, (balanceResetMiddleEntry .ts b).2, .normal⟩ :=
+  balanceReset_ts_overrides_execute _ _ _
+
+theorem balanceReset_python_canonical_ctx_execute (b : Int) (k : Nat) :
+    let e := balanceResetCandidateEntry .python b
+    execStmt (k + 4) (balanceProgram .python) e.1 e.2 (balanceResetMiddleStmt .python 1) =
+      .ok ⟨(balanceResetMiddleEntry .python b).1, (balanceResetMiddleEntry .python b).2, .normal⟩ := by
+  have hp := balanceResetCandidateEntry_parameter .python b
+  have ha : snapshotAddress (balanceResetCandidateEntry .python b).1
+      (balanceResetCandidateEntry .python b).2 "ctx" = none := by
+    rw [balanceResetCandidateEntry_address .python b "ctx"]
+    exact (balanceResetCandidateEntry_parameter_zero .python).2 rfl
+  exact balanceReset_python_ctx_execute hp ha
+
+/-- The middle prefix leaves the original overlay/validation continuation
+    intact. Both normal statements are proved at their actual sibling budgets. -/
+theorem balanceReset_canonical_body_prefix_execute (lang : TargetLang) (b : Int) (k : Nat) :
+    let e := balanceCanonicalResetStage lang b 3
+    execStmt (k + 8) (balanceProgram lang) e.1 e.2 (balanceResetProtected lang).body =
+      execStmt (k + 6) (balanceProgram lang)
+        (balanceResetMiddleEntry lang b).1 (balanceResetMiddleEntry lang b).2
+        (dropStmts 2 (balanceResetProtected lang).body) := by
+  dsimp only
+  have hs := (balanceReset_body_spine lang).1
+  have shape : statementSpineCheck ((if lang == .ts then 10 else 9) + 2)
+      (balanceResetProtected lang).body = true := by
+    cases lang with
+    | ts => exact hs
+    | python => exact hs
+  have first := statementSpineCheck_sequence shape
+  have second := statementSpineCheck_sequence first.2
+  have h0 := balanceReset_canonical_candidate_execute lang b (k + 3)
+  have h1 : execStmt (k + 6) (balanceProgram lang)
+      (balanceResetCandidateEntry lang b).1 (balanceResetCandidateEntry lang b).2
+      (balanceResetMiddleStmt lang 1) =
+      .ok ⟨(balanceResetMiddleEntry lang b).1, (balanceResetMiddleEntry lang b).2, .normal⟩ := by
+    cases lang with
+    | ts => exact balanceReset_ts_canonical_overrides_execute b (k + 4)
+    | python => exact balanceReset_python_canonical_ctx_execute b (k + 2)
+  conv => lhs; rw [first.1]
+  rw [execSequence_of_normal h0]
+  conv => lhs; rw [second.1]
+  exact execSequence_of_normal h1
+
+/-- Caller restoration and the actual post-reset constructor seed-copy suffix
+    remain explicit. This continuation does not assert successful reset. -/
+def balanceConstructorResetContinuation (lang : TargetLang) (b : Int)
+    (resetBody : StmtOutcome) : Except TargetError StmtOutcome := do
+  let called ← closureResult lang resetBody
+  let head : StmtOutcome := match called.result with
+    | .error e => ⟨called.machine, (balanceConstructorBodyEntry lang b).2, .raised e⟩
+    | .ok _ => ⟨called.machine, (balanceConstructorBodyEntry lang b).2, .normal⟩
+  match head.control with
+  | .normal =>
+      execStmt (if lang == .ts then 98 else 91) (balanceProgram lang) head.machine head.frame
+        (if lang == .ts then restStmt (balanceConstructorBodyTemplate .ts)
+         else restStmt balancePythonAfterInit)
+  | _ => pure head
+
+/-- Full canonical constructor composition now reaches the protected reset
+    subtree after executing the snapshots for every symbolic input. -/
+theorem balanceConstructor_canonical_snapshots_eq (lang : TargetLang) (b : Int) :
+    execStmt 99 (balanceProgram lang)
+      (balanceConstructorBodyEntry lang b).1 (balanceConstructorBodyEntry lang b).2
+      (balanceStoredConstructor lang).2.body = (do
+      let resetBody ← execStmt (if lang == .ts then 90 else 83) (balanceProgram lang)
+        (balanceCanonicalResetStage lang b 3).1 (balanceCanonicalResetStage lang b 3).2
+        (dropStmts 4 (balanceResetSnapshots lang))
+      balanceConstructorResetContinuation lang b resetBody) := by
+  cases lang with
+  | ts =>
+      have h := balanceReset_canonical_snapshot_execute .ts b 86
+      change execStmt 94 (balanceProgram .ts)
+        (balanceSetBusy (balanceResetBodyEntry .ts b).1 true) (balanceResetBodyEntry .ts b).2
+        (restStmt (restStmt (balanceStoredReset .ts).2.body)) = _ at h
+      rw [balanceConstructor_ts_snapshots_eq b, h]
+      rfl
+  | python =>
+      have h := balanceReset_canonical_snapshot_execute .python b 79
+      change execStmt 87 (balanceProgram .python)
+        (balanceSetBusy (balancePythonResetBodyEntry b).1 true) (balancePythonResetBodyEntry b).2
+        (restStmt (restStmt (balanceStoredReset .python).2.body)) = _ at h
+      rw [balanceConstructor_python_snapshots_eq b, h]
+      rfl
+
+/-- Successful execution of the still-open protected body is followed by the
+    actual finally block. This conditional lemma does not supply body success. -/
+theorem balanceReset_protected_normal {lang m f final ff k}
+    (hb : execStmt (k + 4) (balanceProgram lang) m f (balanceResetProtected lang).body =
+      .ok ⟨final, ff, .normal⟩)
+    (hr : ff.receiver = some final.checkerRef) :
+    execStmt (k + 5) (balanceProgram lang) m f (balanceResetProtected lang).stmt =
+      .ok ⟨balanceSetBusy final false, ff, .normal⟩ := by
+  rw [execProtectedSyntax_eq (k + 4) (balanceProgram lang) m f (balanceResetProtected lang), hb]
+  simp only [Bind.bind, Except.bind, Pure.pure, Except.pure]
+  rw [balanceReset_cleanup_execute (lang := lang) (m := final) (f := ff) (k := k + 4) hr (by omega)]
+
+/-- Canonical snapshots, source try body and finally compose. The sole semantic
+    execution premise is the remaining protected body, kept explicit. -/
+theorem balanceReset_canonical_snapshots_normal {lang b final ff k}
+    (hb : execStmt (k + 4) (balanceProgram lang)
+      (balanceCanonicalResetStage lang b 3).1 (balanceCanonicalResetStage lang b 3).2
+      (balanceResetProtected lang).body = .ok ⟨final, ff, .normal⟩)
+    (hr : ff.receiver = some final.checkerRef) :
+    let e := balanceCanonicalResetEntry lang b
+    execStmt (k + 10) (balanceProgram lang) e.1 e.2 (balanceResetSnapshots lang) =
+      .ok ⟨balanceSetBusy final false, ff, .normal⟩ := by
+  dsimp only
+  rw [balanceReset_canonical_snapshot_execute lang b (k + 2)]
+  have hs : dropStmts 4 (balanceResetSnapshots lang) =
+      .sequence (balanceResetProtected lang).stmt .empty := balanceReset_protected_shape lang
+  rw [hs, execSequence_of_normal (balanceReset_protected_normal hb hr)]
+  exact execStmt_adequate .empty (by omega)
+
+def ifNoStmt : TargetStmt → TargetStmt
+  | .ifThenElse _ _ no => no
+  | _ => .empty
+
+theorem resetMiddleHeader_branch_shape {stmt expr}
+    (h : resetMiddleHeader stmt = .branch expr) :
+    stmt = .ifThenElse expr (ifYesStmt stmt) (ifNoStmt stmt) := by
+  cases stmt <;> simp_all [resetMiddleHeader, ifYesStmt, ifNoStmt]
+
+set_option maxRecDepth 65536 in
+set_option maxHeartbeats 10000000 in
+theorem balanceReset_seed_presence_header (lang : TargetLang) :
+    resetMiddleHeader (balanceResetMiddleStmt lang 2) = .branch (resetSeedPresenceExpr lang) := by
+  cases lang <;> unfold balanceResetMiddleStmt balanceResetProtected balanceResetSnapshots
+    balanceStoredReset balanceResetLookup balancePreparation
+  · rw [balanceProgram_of_parse BalancePrograms.balanceTsProgram_source]; decide +kernel
+  · rw [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]; decide +kernel
+
+/-- Presence testing uses the supplied object's identity, independently of its
+    balance descriptor. The branches still contain all actual overlay code. -/
+theorem resetSeedPresence_execute {lang m f ref k}
+    (hp : localValue m f (if lang == .ts then "initialContext" else "ctx") = .ok (.object ref)) :
+    evalExpr (k + 4) (balanceProgram lang) m f (resetSeedPresenceExpr lang) =
+      .ok ⟨m, .ok (.bool (lang != .ts))⟩ := by
+  cases lang with
+  | ts =>
+      change localValue m f "initialContext" = .ok (.object ref) at hp
+      have hnull : evalExpr (k + 3) (balanceProgram .ts) m f
+          (.binary .strictEq (.local "initialContext") .null) = .ok ⟨m, .ok (.bool false)⟩ :=
+        evalExpr_adequate (.binary (by decide) (.localRead hp) .null
+          (by rw [balanceProgram_lang]; rfl)) (by omega)
+      have hundefined : evalExpr (k + 3) (balanceProgram .ts) m f
+          (.binary .strictEq (.local "initialContext") .undefined) = .ok ⟨m, .ok (.bool false)⟩ :=
+        evalExpr_adequate (.binary (by decide) (.localRead hp) .undefined
+          (by rw [balanceProgram_lang]; rfl)) (by omega)
+      change evalExpr (k + 4) (balanceProgram .ts) m f
+        (.orElse (.binary .strictEq (.local "initialContext") .null)
+          (.binary .strictEq (.local "initialContext") .undefined)) = _
+      rw [evalExpr, hnull]
+      simpa only [Bind.bind, Except.bind, Pure.pure, Except.pure, sourceTruthy,
+        Bool.false_eq_true, if_false] using hundefined
+  | python =>
+      change localValue m f "ctx" = .ok (.object ref) at hp
+      exact evalExpr_adequate (.binary (by decide) (.localRead hp) .null
+        (by rw [balanceProgram_lang]; rfl)) (by omega)
+
+theorem balanceReset_ts_seed_present {m f ref k}
+    (hp : localValue m f "initialContext" = .ok (.object ref)) :
+    execStmt (k + 5) (balanceProgram .ts) m f (balanceResetMiddleStmt .ts 2) =
+      execStmt (k + 4) (balanceProgram .ts) m f (ifNoStmt (balanceResetMiddleStmt .ts 2)) := by
+  conv => lhs; rw [resetMiddleHeader_branch_shape (balanceReset_seed_presence_header .ts)]
+  exact execIf_of_false (resetSeedPresence_execute (lang := .ts) hp) rfl
+
+theorem balanceReset_python_seed_present {m f ref k}
+    (hp : localValue m f "ctx" = .ok (.object ref)) :
+    execStmt (k + 5) (balanceProgram .python) m f (balanceResetMiddleStmt .python 2) =
+      execStmt (k + 4) (balanceProgram .python) m f (ifYesStmt (balanceResetMiddleStmt .python 2)) := by
+  conv => lhs; rw [resetMiddleHeader_branch_shape (balanceReset_seed_presence_header .python)]
+  rw [execStmt, resetSeedPresence_execute (lang := .python) hp]
+  rfl
+
+/-- The nested Python plain-dict guard is selected without its throw body. -/
+def resetPythonPlainGuardExpr : TargetExpr :=
+  .binary .isNotIdentity (.call (.local "type") (.sequence (.local "ctx") .empty)) (.local "dict")
+
+set_option maxRecDepth 65536 in
+set_option maxHeartbeats 10000000 in
+theorem balanceReset_python_plain_guard_header :
+    resetMiddleHeader (firstStmt (ifYesStmt (balanceResetMiddleStmt .python 2))) =
+      .branch resetPythonPlainGuardExpr := by
+  unfold balanceResetMiddleStmt balanceResetProtected balanceResetSnapshots
+    balanceStoredReset balanceResetLookup balancePreparation
+  rw [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]
+  decide +kernel
+
+theorem resetPythonPlainGuard_execute {m f ref object k}
+    (hp : localValue m f "ctx" = .ok (.object ref))
+    (ht : localValue m f "type" = .ok (.builtin .type))
+    (hd : localValue m f "dict" = .ok (.builtin .dict))
+    (ho : objectAt m ref = .ok object) (hk : object.kind = .pythonDict) :
+    evalExpr (k + 4) (balanceProgram .python) m f resetPythonPlainGuardExpr =
+      .ok ⟨m, .ok (.bool false)⟩ := by
+  have htype : DepthDerivesExpr (balanceProgram .python) m f
+      (.call (.local "type") (.sequence (.local "ctx") .empty))
+      ⟨m, .ok (.builtin .dict)⟩ 2 := by
+    apply DepthDerivesExpr.callBuiltin (.localRead ht) (.cons (.localRead hp) .empty) (by decide)
+    rw [balanceProgram_lang]
+    unfold hostCall
+    dsimp only
+    rw [ho]
+    dsimp only [Bind.bind, Except.bind]
+    rw [hk]
+    rfl
+  exact evalExpr_adequate (.binary (by decide) htype (.localRead hd)
+    (by rw [balanceProgram_lang]; rfl)) (by omega)
+
+end CanonicalResetComposition
+
 end Harmonia.Applications.Kadmos.Generated

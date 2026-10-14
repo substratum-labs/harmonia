@@ -129,3 +129,80 @@ example (lang : TargetLang) :
 example (lang : TargetLang) : resetPublication lang ≠ .empty := by
   rw [balanceReset_publication_shape]
   cases lang <;> decide +kernel
+
+-- Headers expose every middle sibling while keeping generated branch/loop
+-- bodies opaque. Wrong helper names and seed-presence operators are detected.
+example (lang : TargetLang) :
+    ((List.range (if lang == .ts then 7 else 6)).map
+      (fun i => resetMiddleHeader (balanceResetMiddleStmt lang (i + 1)))) =
+      resetMiddleExpectedHeaders lang :=
+  balanceReset_middle_shapes lang
+
+example : resetMiddleHeader (.ifThenElse (.local "invalid") .empty .empty) ≠
+    ResetMiddleHeader.branch (.local "violated") := by decide +kernel
+
+example : resetSeedPresenceExpr .python ≠
+    .binary .isIdentity (.local "ctx") .null := by decide +kernel
+
+example : resetBoundsCall .ts ≠ .call (.property (.local "this") "checkInvariants")
+    (.sequence (.local "candidate") .empty) := by decide +kernel
+
+-- Every symbolic seed reaches the untouched statement-2 continuation. This
+-- does not assume that overlay, bounds or invariant helpers will succeed.
+example (lang : TargetLang) (b : Int) :
+    let e := balanceCanonicalResetStage lang b 3
+    execStmt 16 (balanceProgram lang) e.1 e.2 (balanceResetProtected lang).body =
+      execStmt 14 (balanceProgram lang)
+        (balanceResetMiddleEntry lang b).1 (balanceResetMiddleEntry lang b).2
+        (dropStmts 2 (balanceResetProtected lang).body) :=
+  balanceReset_canonical_body_prefix_execute lang b 8
+
+-- Normal completion of the body runs the actual finally block and retains
+-- its resulting frame. The open body execution is an explicit premise.
+example {lang m f final ff}
+    (hb : execStmt 8 (balanceProgram lang) m f (balanceResetProtected lang).body =
+      .ok ⟨final, ff, .normal⟩)
+    (hr : ff.receiver = some final.checkerRef) :
+    execStmt 9 (balanceProgram lang) m f (balanceResetProtected lang).stmt =
+      .ok ⟨balanceSetBusy final false, ff, .normal⟩ :=
+  balanceReset_protected_normal hb hr
+
+#print axioms balanceReset_middle_shapes
+#print axioms balanceReset_canonical_body_prefix_execute
+#print axioms balanceReset_protected_normal
+#print axioms balanceReset_canonical_snapshots_normal
+
+-- Presence tests choose different source branches in the two languages.
+example {m f ref} (hp : localValue m f "initialContext" = .ok (.object ref)) :
+    execStmt 9 (balanceProgram .ts) m f (balanceResetMiddleStmt .ts 2) =
+      execStmt 8 (balanceProgram .ts) m f (ifNoStmt (balanceResetMiddleStmt .ts 2)) :=
+  balanceReset_ts_seed_present (k := 4) hp
+
+example {m f ref} (hp : localValue m f "ctx" = .ok (.object ref)) :
+    execStmt 9 (balanceProgram .python) m f (balanceResetMiddleStmt .python 2) =
+      execStmt 8 (balanceProgram .python) m f (ifYesStmt (balanceResetMiddleStmt .python 2)) :=
+  balanceReset_python_seed_present (k := 4) hp
+
+-- The real Python type host accepts a physical plain dict. No overlay-loop
+-- or numeric/invariant helper result is assumed or inferred here.
+example {m f ref object}
+    (hp : localValue m f "ctx" = .ok (.object ref))
+    (ht : localValue m f "type" = .ok (.builtin .type))
+    (hd : localValue m f "dict" = .ok (.builtin .dict))
+    (ho : objectAt m ref = .ok object) (hk : object.kind = .pythonDict) :
+    evalExpr 8 (balanceProgram .python) m f resetPythonPlainGuardExpr =
+      .ok ⟨m, .ok (.bool false)⟩ :=
+  resetPythonPlainGuard_execute (k := 4) hp ht hd ho hk
+
+example (m : TargetMachine) (f : TargetFrame) :
+    execStmt 1 (balanceProgram .ts) m f (balanceResetMiddleStmt .ts 1) =
+      .error .exhaustedFuel := by
+  rw [balanceReset_middle_entry_shape]
+  simp [execStmt, evalExpr, Bind.bind, Pure.pure, Except.bind, Except.pure]
+
+#print axioms balanceReset_seed_presence_header
+#print axioms resetSeedPresence_execute
+#print axioms balanceReset_ts_seed_present
+#print axioms balanceReset_python_seed_present
+#print axioms balanceReset_python_plain_guard_header
+#print axioms resetPythonPlainGuard_execute

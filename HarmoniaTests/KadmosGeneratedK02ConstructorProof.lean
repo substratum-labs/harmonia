@@ -332,3 +332,63 @@ example {m f} (hd : localValue m f "dict" = .ok (.builtin .dict)) :
   change evalExpr 2 _ _ _ (.call (.local "dict") (.sequence (.local "_DEFAULTS") .empty)) = _
   simp [evalExpr, evalArgValues, hd, Bind.bind, Pure.pure, Except.bind, Except.pure]
   rfl
+
+-- Physical premises are discharged from constructor provenance for arbitrary
+-- inputs. Bounds are needed later by validation, not by snapshots/default copy.
+example (lang : TargetLang) (b : Int) : balanceResetPhysicalCheck lang b :=
+  balanceResetPhysicalCheck_all lang b
+
+example (lang : TargetLang) (b : Int) : balanceResetCandidatePhysicalCheck lang b :=
+  balanceResetCandidatePhysicalCheck_all lang b
+
+example (lang : TargetLang) (b : Int) :
+    localValue (balanceResetCandidateEntry lang b).1 (balanceResetCandidateEntry lang b).2
+      (balanceConstructorParam lang) = .ok (.object (balancePreparation lang).1.nextObject) :=
+  balanceResetCandidateEntry_parameter lang b
+
+example (lang : TargetLang) (b : Int) :
+    let e := balanceCanonicalResetEntry lang b
+    execStmt 94 (balanceProgram lang) e.1 e.2 (balanceResetSnapshots lang) =
+      execStmt 90 (balanceProgram lang)
+        (balanceCanonicalResetStage lang b 3).1 (balanceCanonicalResetStage lang b 3).2
+        (dropStmts 4 (balanceResetSnapshots lang)) :=
+  balanceReset_canonical_snapshot_execute lang b 86
+
+example (lang : TargetLang) (b : Int) :
+    let e := balanceCanonicalResetStage lang b 3
+    execStmt 8 (balanceProgram lang) e.1 e.2 (firstStmt (balanceResetProtected lang).body) =
+      .ok ⟨(balanceResetCandidateEntry lang b).1, (balanceResetCandidateEntry lang b).2, .normal⟩ :=
+  balanceReset_canonical_candidate_execute lang b 4
+
+-- Python chooses the supplied object at the next real source statement.
+example (b : Int) :
+    let e := balanceResetCandidateEntry .python b
+    execStmt 8 (balanceProgram .python) e.1 e.2 (balanceResetMiddleStmt .python 1) =
+      .ok ⟨(balanceResetMiddleEntry .python b).1, (balanceResetMiddleEntry .python b).2, .normal⟩ :=
+  balanceReset_python_canonical_ctx_execute b 4
+
+#print axioms balanceResetPhysicalCheck_all
+#print axioms balanceReset_canonical_snapshot_execute
+#print axioms balanceReset_canonical_candidate_execute
+#print axioms balanceResetCandidateEntry_parameter
+#print axioms balanceReset_python_canonical_ctx_execute
+#print axioms balanceConstructor_canonical_snapshots_eq
+
+-- Bounded inputs enter the actual targetConstruct API, not merely a manually
+-- supplied reset frame. The residual try/catch/finally and seed-copy stay live.
+theorem kadmos_generated_constructor_snapshot_continuation (lang : TargetLang) {b : Int}
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S) :
+    targetConstruct (balanceProgram lang) (canonicalBalanceSeed lang b) = (do
+      let body ← (do
+        let resetBody ← execStmt (if lang == .ts then 90 else 83) (balanceProgram lang)
+          (balanceCanonicalResetStage lang b 3).1 (balanceCanonicalResetStage lang b 3).2
+          (dropStmts 4 (balanceResetSnapshots lang))
+        balanceConstructorResetContinuation lang b resetBody)
+      let result ← closureResult lang body
+      match result.result with
+      | .ok _ => pure result.machine
+      | .error e => throw (.sourceException e)) := by
+  rw [targetConstruct_balance_body lang hb, balanceConstructor_canonical_snapshots_eq lang b]
+  rfl
+
+#print axioms kadmos_generated_constructor_snapshot_continuation
