@@ -596,3 +596,162 @@ example {lang b} (hb : 0 ≤ b ∧ b ≤ 9007199254740991) :
 #print axioms balanceResetUpdatedCandidateEntry_range
 #print axioms balanceReset_helpers_zero_check
 #print axioms resetHelperSuccessCheck_sound
+
+-- A live frozen context table and the actual source-selected helper body.
+-- These all-safe body regressions are separate from canonical constructor execution.
+def resetPythonBodyTestMachine (b : Int) : TargetMachine :=
+  { resetSafeHelperTestMachine b with
+    objects := [(2, { literalObject .python TargetMachine.empty with
+        own := [("context", ⟨some (.object 3), none, none, true, true, true⟩)] }),
+      (3, ⟨.mappingProxy, none,
+        [("balance", ⟨some (.object 4), none, none, true, true, true⟩)], [], [], true, false⟩),
+      (4, ⟨.mappingProxy, none,
+        [("type", ⟨some (.string "integer"), none, none, true, true, true⟩)], [], [], true, false⟩),
+      (5, balanceHeapObject .python TargetMachine.empty 100)] ++ (resetSafeHelperTestMachine b).objects,
+    cells := [(8, .string "balance"), (9, .builtin .strType), (10, .object 2), (11, .object 5)] ++
+      (resetSafeHelperTestMachine b).cells,
+    globals := [("str", 9), ("_WORLD", 10), ("candidate", 11)] ++ (resetSafeHelperTestMachine b).globals,
+    nextCell := 12, nextObject := 6 }
+
+def resetPythonBodyTestFrame : TargetFrame :=
+  { resetSafeHelperTestFrame with locals := [("name", 8), ("value", 0)] }
+
+def resetPythonBodyTestTyped (b : Int) : TargetMachine :=
+  (allocObject (resetPythonBodyTestMachine b) (literalObject .python (resetPythonBodyTestMachine b))).1
+
+def resetPythonBodyTestAfterHelper (b : Int) : TargetMachine :=
+  resetSafeTupleMachine (resetPythonSafeCallEntry (resetPythonBodyTestTyped b) resetSafeHelperTestClosure b).1
+
+-- The final machine includes the default-dict, argument-cell and tuple allocations.
+theorem resetPythonBodyTest_execute (b : Int) (hb : b.natAbs ≤ 9007199254740991) (k : Nat) :
+    execStmt (k + 20) (balanceProgram .python) (resetPythonBodyTestMachine b) resetPythonBodyTestFrame
+      (resetLoopBody (balanceResetOverlayLoop .python)) =
+        .ok ⟨balanceOverlayUpdated .python (resetPythonBodyTestAfterHelper b) 5 b,
+          resetPythonBodyTestFrame, .normal⟩ := by
+  apply balanceReset_python_overlay_body_safe (typed := resetPythonBodyTestTyped b)
+    (context := 3) (object := ⟨.mappingProxy, none,
+        [("balance", ⟨some (.object 4), none, none, true, true, true⟩)], [], [], true, false⟩)
+    (helper := 0) (closure := resetSafeHelperTestClosure)
+  · rfl
+  · rfl
+  · rfl
+  · simp only [evalExpr, Bind.bind, Except.bind, Pure.pure, Except.pure, balanceProgram_lang]; rfl
+  · rfl
+  · exact .inr rfl
+  · rfl
+  · simp only [resetPythonOverlayGuardType, evalExpr, evalArgValues, evalObjectFields,
+      Bind.bind, Except.bind, Pure.pure, Except.pure, balanceProgram_lang]; rfl
+  · rfl
+  · rfl
+  · rfl
+  · rfl
+  · rfl
+  · exact ⟨1, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+  · rfl
+  · rfl
+  · rfl
+  · rfl
+  · simp only [resetPythonOverlayStringTest, evalExpr, Bind.bind, Except.bind,
+      Pure.pure, Except.pure, balanceProgram_lang]; rfl
+  · rfl
+  · exact hb
+
+example (b : Int) (hb : b.natAbs ≤ 9007199254740991) :
+    resetOverlaySuccessCheck .python b
+      (execStmt 20 (balanceProgram .python) (resetPythonBodyTestMachine b) resetPythonBodyTestFrame
+        (resetLoopBody (balanceResetOverlayLoop .python))) := by
+  rw [resetPythonBodyTest_execute b hb 0]
+  unfold resetOverlaySuccessCheck
+  simp only [Except.toOption, Option.map, Option.some.injEq, Prod.mk.injEq]
+  exact ⟨True.intro, balanceOverlayUpdated_candidate_read rfl rfl⟩
+
+example : (resetPythonBodyTestAfterHelper 0).nextObject = 8 ∧
+    (resetPythonBodyTestAfterHelper 0).nextCell = 13 := ⟨rfl, rfl⟩
+
+#print axioms balanceReset_python_known_key_proxy_execute
+#print axioms balanceReset_python_overlay_body_shape
+#print axioms balanceReset_python_overlay_body_safe
+#print axioms resetPythonBodyTest_execute
+
+-- Run list(dict.items(ctx)) and the one-entry loop, including fresh Python
+-- bindings, the helper's allocations and the final candidate descriptor.
+def resetPythonLoopTestMachine (b : Int) : TargetMachine :=
+  { resetPythonBodyTestMachine b with
+    objects := (6, balanceHeapObject .python TargetMachine.empty b) :: (resetPythonBodyTestMachine b).objects,
+    cells := [(12, .object 6), (13, .builtin .dict), (14, .builtin .list)] ++
+      (resetPythonBodyTestMachine b).cells,
+    globals := [("ctx", 12), ("dict", 13), ("list", 14)] ++ (resetPythonBodyTestMachine b).globals,
+    nextCell := 15, nextObject := 7 }
+
+def resetPythonLoopTestFrame : TargetFrame :=
+  { resetPythonBodyTestFrame with locals := [] }
+
+def resetPythonLoopTestBound (b : Int) : TargetMachine × TargetFrame :=
+  resetOverlayPairBinding .python (resetIterableMachine .python (resetPythonLoopTestMachine b) b)
+    resetPythonLoopTestFrame (integerValue .python b)
+
+def resetPythonLoopTestTyped (b : Int) : TargetMachine :=
+  (allocObject (resetPythonLoopTestBound b).1 (literalObject .python (resetPythonLoopTestBound b).1)).1
+
+def resetPythonLoopTestAfterHelper (b : Int) : TargetMachine :=
+  resetSafeTupleMachine (resetPythonSafeCallEntry (resetPythonLoopTestTyped b) resetSafeHelperTestClosure b).1
+
+theorem resetPythonLoopTest_execute (b : Int) (hb : b.natAbs ≤ 9007199254740991) (k : Nat) :
+    execStmt (k + 22) (balanceProgram .python) (resetPythonLoopTestMachine b) resetPythonLoopTestFrame
+      (balanceResetOverlayLoop .python) =
+        .ok ⟨balanceOverlayUpdated .python (resetPythonLoopTestAfterHelper b) 5 b,
+          (resetPythonLoopTestBound b).2, .normal⟩ := by
+  have objects := resetIterableMachine_objects .python (resetPythonLoopTestMachine b) b
+  apply balanceReset_overlay_loop_execute (k := k + 19)
+    (list := oneEntryItems .python (resetPythonLoopTestMachine b))
+    (pair := oneEntryPair .python (resetPythonLoopTestMachine b) "balance" (integerValue .python b))
+    (pairRef := (resetPythonLoopTestMachine b).nextObject) (value := integerValue .python b)
+  · exact balanceReset_python_iterable_of_seed rfl rfl rfl rfl rfl
+  · exact objects.1
+  · rfl
+  · rfl
+  · exact objects.2
+  · rfl
+  · intro _; rfl
+  · intro _; rfl
+  · apply balanceReset_python_overlay_body_safe (typed := resetPythonLoopTestTyped b)
+      (context := 3) (object := ⟨.mappingProxy, none,
+        [("balance", ⟨some (.object 4), none, none, true, true, true⟩)], [], [], true, false⟩)
+      (helper := 0) (closure := resetSafeHelperTestClosure)
+    · exact (resetOverlayPairBinding_reads _ _ _ _).1
+    · rfl
+    · rfl
+    · simp only [evalExpr, Bind.bind, Except.bind, Pure.pure, Except.pure, balanceProgram_lang]; rfl
+    · rfl
+    · exact .inr rfl
+    · rfl
+    · simp only [resetPythonOverlayGuardType, evalExpr, evalArgValues, evalObjectFields,
+        Bind.bind, Except.bind, Pure.pure, Except.pure, balanceProgram_lang]; rfl
+    · rfl
+    · rfl
+    · rfl
+    · rfl
+    · rfl
+    · exact ⟨1, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+    · rfl
+    · rfl
+    · rfl
+    · rfl
+    · simp only [resetPythonOverlayStringTest, evalExpr, Bind.bind, Except.bind,
+        Pure.pure, Except.pure, balanceProgram_lang]; rfl
+    · rfl
+    · exact hb
+
+example (b : Int) (hb : b.natAbs ≤ 9007199254740991) :
+    resetOverlaySuccessCheck .python b
+      (execStmt 22 (balanceProgram .python) (resetPythonLoopTestMachine b) resetPythonLoopTestFrame
+        (balanceResetOverlayLoop .python)) := by
+  rw [resetPythonLoopTest_execute b hb 0]
+  unfold resetOverlaySuccessCheck
+  simp only [Except.toOption, Option.map, Option.some.injEq, Prod.mk.injEq]
+  exact ⟨True.intro, balanceOverlayUpdated_candidate_read rfl rfl⟩
+
+example : (resetPythonLoopTestAfterHelper 0).nextObject = 12 ∧
+    (resetPythonLoopTestAfterHelper 0).nextCell = 18 := ⟨rfl, rfl⟩
+
+#print axioms resetPythonLoopTest_execute

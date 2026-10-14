@@ -552,3 +552,32 @@ example (b : Int) (hb : b.natAbs ≤ 9007199254740991) :
 #print axioms resetTsLoopTest_execute
 
 #print axioms balanceReset_ts_seed_loop_safe
+
+-- A live frozen context table exercises the mapping-proxy own-key rule.
+def resetProxyMembershipTestMachine (b : Int) : TargetMachine :=
+  { resetOverlayTestMachine .python b with objects :=
+    (3, ⟨.mappingProxy, none,
+      [("balance", ⟨some (.object 4), none, none, true, true, true⟩)], [], [], true, false⟩) ::
+      (resetOverlayTestMachine .python b).objects }
+
+example (b : Int) (k : Nat) :
+    evalExpr (k + 4) (balanceProgram .python) (resetProxyMembershipTestMachine b) resetOverlayTestFrame
+      resetPythonOverlayKnownKeyTest = .ok ⟨resetProxyMembershipTestMachine b, .ok (.bool false)⟩ := by
+  apply balanceReset_python_known_key_proxy_execute (ref := 3)
+    (object := ⟨.mappingProxy, none,
+      [("balance", ⟨some (.object 4), none, none, true, true, true⟩)], [], [], true, false⟩)
+  · rfl
+  · simp only [evalExpr, Bind.bind, Except.bind, Pure.pure, Except.pure, balanceProgram_lang]; rfl
+  · rfl
+  · rfl
+  · rfl
+
+-- Safe signed overlay acceptance and later nonnegative bounds remain separate.
+example :
+    execStmt 10 (balanceProgram .ts) (resetTsBodyTestMachine 9007199254740991) resetOverlayTestFrame
+      (resetLoopBody (balanceResetOverlayLoop .ts)) =
+        .ok ⟨balanceOverlayUpdated .ts (resetTsBodyTestMachine 9007199254740991) 1 9007199254740991,
+          resetOverlayTestFrame, .normal⟩ :=
+  balanceReset_ts_overlay_body_safe (resetTsBodyTest_physical _) rfl rfl (by decide)
+
+#print axioms balanceReset_python_known_key_proxy_execute

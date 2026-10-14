@@ -3367,6 +3367,26 @@ theorem balanceReset_python_known_key_execute {m f ref object k}
   simp only [binaryValue, ho, hk, hp, Bind.bind, Except.bind, Pure.pure, Except.pure]
   rfl
 
+/-- Frozen canonical context tables use the same own-key membership rule. -/
+theorem balanceReset_python_known_key_proxy_execute {m f ref object k}
+    (hn : localValue m f "name" = .ok (.string "balance"))
+    (hc : evalExpr (k + 3) (balanceProgram .python) m f
+      (.index (.local "_WORLD") (.string "context")) = .ok ⟨m, .ok (.object ref)⟩)
+    (ho : objectAt m ref = .ok object) (hk : object.kind = .mappingProxy)
+    (hp : (object.own.lookup "balance").isSome = true) :
+    evalExpr (k + 4) (balanceProgram .python) m f resetPythonOverlayKnownKeyTest =
+      .ok ⟨m, .ok (.bool false)⟩ := by
+  have hname := evalExpr_adequate (program := balanceProgram .python)
+    (.localRead hn) (k := k + 3) (by omega)
+  change evalExpr (k + 4) _ _ _ (.binary .notInObject _ _) = _
+  rw [evalExpr, hname]
+  simp only [Bind.bind, Except.bind]
+  rw [hc]
+  simp only [Bind.bind, Except.bind]
+  rw [balanceProgram_lang]
+  simp only [binaryValue, ho, hk, hp, Bind.bind, Except.bind, Pure.pure, Except.pure]
+  rfl
+
 /-- Closed facts inspect addresses and builtin locals, not a symbolic seed. -/
 def balanceResetMiddlePythonCheck : Prop :=
   let e := balanceResetMiddleEntry .python 0
@@ -3850,8 +3870,10 @@ theorem balanceReset_ts_overlay_body_safe {m f ref old b k}
     (k := k + 5) hc h.nameRead h.valueRead (writeOwn_balance_existing ho))]
   exact execStmt_adequate .empty (by omega)
 
-/-- The generic one-entry TS loop now needs only physical iterable/table facts;
-    execution of its guard, cast, write and iterator tail is discharged. -/
+/-- The generic one-entry TS loop retains the explicit iterable-evaluation
+    premise `he` alongside physical iterable/table facts. Guard, cast, write and
+    iterator-tail execution are discharged; `balanceReset_ts_seed_loop_safe`
+    also discharges iterable evaluation from physical seed/builtin lookups. -/
 theorem balanceReset_ts_overlay_loop_safe
     {m source f listRef pairRef list pair ref old b k}
     (he : evalExpr (k + 11) (balanceProgram .ts) m f (resetOverlayIterable .ts) =
@@ -4349,6 +4371,108 @@ theorem balanceResetUpdatedCandidateEntry_range {lang b}
       .ok (.ok (.bool true)) :=
   balanceOverlayUpdated_candidate_range (balanceResetMiddleEntry_candidate_read lang b)
     (balanceResetMiddleEntry_candidate_object lang b) hb
+
+
+def resetPythonOverlayGuardType : TargetExpr :=
+  .binary .eq
+    (.call (.property (.call (.property (.index (.local "_WORLD") (.string "context")) "get")
+      (.sequence (.local "name") (.sequence (.object .empty) .empty))) "get")
+      (.sequence (.string "type") .empty)) (.string "string")
+
+def resetPythonOverlayGuard : TargetExpr :=
+  .orElse resetPythonOverlayKnownKeyTest
+    (.conditional resetPythonOverlayGuardType
+      (.binary .isNotIdentity (.call (.local "type") (.sequence (.local "value") .empty)) (.local "str"))
+      (.unary .not resetPythonSafeCall))
+
+theorem balanceReset_python_overlay_body_shape :
+  resetLoopBody (balanceResetOverlayLoop .python) =
+    .sequence (.ifThenElse resetPythonOverlayNameTest
+      (ifYesStmt (firstStmt (resetLoopBody (balanceResetOverlayLoop .python)))) .empty)
+      (.sequence (.ifThenElse resetPythonOverlayGuard
+        (ifYesStmt (firstStmt (restStmt (resetLoopBody (balanceResetOverlayLoop .python))))) .empty)
+        (.sequence (balanceResetOverlayWrite .python) .empty)) := by
+  unfold balanceResetOverlayWrite balanceResetOverlayLoop balanceResetMiddleStmt
+    balanceResetProtected balanceResetSnapshots balanceStoredReset balanceResetLookup balancePreparation
+  rw [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]
+  decide +kernel
+
+/-- Execute every source guard and write, retaining the helper's allocations.
+    Definition-table evaluations and physical reads are explicit premises. -/
+theorem balanceReset_python_overlay_body_safe {m typed f ref context object helper closure b k}
+    (hn : localValue m f "name" = .ok (.string "balance"))
+    (ht : localValue m f "type" = .ok (.builtin .type))
+    (hs : localValue m f "str" = .ok (.builtin .strType))
+    (hc : evalExpr (k + 15) (balanceProgram .python) m f
+      (.index (.local "_WORLD") (.string "context")) = .ok ⟨m, .ok (.object context)⟩)
+    (ho : objectAt m context = .ok object) (hk : object.kind = .pythonDict ∨ object.kind = .mappingProxy)
+    (hp : (object.own.lookup "balance").isSome = true)
+    (hType : evalExpr (k + 15) (balanceProgram .python) m f resetPythonOverlayGuardType =
+      .ok ⟨typed, .ok (.bool false)⟩)
+    (hr : localValue typed f "_safe_integer" = .ok (.closure helper))
+    (hv : localValue typed f "value" = .ok (integerValue .python b))
+    (hClosure : closureAt typed helper = .ok closure)
+    (hParams : closure.params = [⟨"value", none⟩])
+    (hBody : closure.body = balancePythonSafeIntegerClosure.body)
+    (hSafe : let e := resetPythonSafeCallEntry typed closure b
+      ResetPythonSafePhysical e.1 e.2 b)
+    (hCandidate : let n := resetSafeTupleMachine (resetPythonSafeCallEntry typed closure b).1
+      localValue n f "candidate" = .ok (.object ref))
+    (hName : let n := resetSafeTupleMachine (resetPythonSafeCallEntry typed closure b).1
+      localValue n f "name" = .ok (.string "balance"))
+    (hValue : let n := resetSafeTupleMachine (resetPythonSafeCallEntry typed closure b).1
+      localValue n f "value" = .ok (integerValue .python b))
+    (hInt : let n := resetSafeTupleMachine (resetPythonSafeCallEntry typed closure b).1
+      localValue n f "int" = .ok (.builtin .int))
+    (hWriteType : let n := resetSafeTupleMachine (resetPythonSafeCallEntry typed closure b).1
+      evalExpr (k + 15) (balanceProgram .python) n f resetPythonOverlayStringTest =
+        .ok ⟨n, .ok (.bool false)⟩)
+    (hObject : let n := resetSafeTupleMachine (resetPythonSafeCallEntry typed closure b).1
+      objectAt n ref = .ok (balanceHeapObject .python n 100))
+    (hb : b.natAbs ≤ 9007199254740991) :
+    execStmt (k + 20) (balanceProgram .python) m f
+      (resetLoopBody (balanceResetOverlayLoop .python)) =
+        .ok ⟨balanceOverlayUpdated .python
+          (resetSafeTupleMachine (resetPythonSafeCallEntry typed closure b).1) ref b, f, .normal⟩ := by
+  have name := resetPythonOverlayName_execute (k := k + 14) hn ht hs
+  have first : execStmt (k + 19) (balanceProgram .python) m f
+      (.ifThenElse resetPythonOverlayNameTest
+        (ifYesStmt (firstStmt (resetLoopBody (balanceResetOverlayLoop .python)))) .empty) =
+        .ok ⟨m, f, .normal⟩ := by
+    rw [execIf_of_false name rfl]
+    exact execStmt_adequate .empty (by omega)
+  have known : evalExpr (k + 16) (balanceProgram .python) m f resetPythonOverlayKnownKeyTest =
+      .ok ⟨m, .ok (.bool false)⟩ := by
+    rcases hk with hk | hk
+    · exact balanceReset_python_known_key_execute hn hc ho hk hp
+    · exact balanceReset_python_known_key_proxy_execute hn hc ho hk hp
+  have safe := balanceReset_safe_integer_call_execute (k := k + 2) hr hv hClosure hParams hBody hSafe hb
+  have neg : evalExpr (k + 15) (balanceProgram .python) typed f (.unary .not resetPythonSafeCall) =
+      .ok ⟨resetSafeTupleMachine (resetPythonSafeCallEntry typed closure b).1, .ok (.bool false)⟩ := by
+    rw [evalExpr, safe]; rfl
+  have cond : evalExpr (k + 16) (balanceProgram .python) m f
+      (.conditional resetPythonOverlayGuardType
+        (.binary .isNotIdentity (.call (.local "type") (.sequence (.local "value") .empty)) (.local "str"))
+        (.unary .not resetPythonSafeCall)) =
+      .ok ⟨resetSafeTupleMachine (resetPythonSafeCallEntry typed closure b).1, .ok (.bool false)⟩ := by
+    rw [evalExpr, hType]
+    simpa only [Bind.bind, Except.bind, sourceTruthy, balanceProgram_lang, Bool.false_eq_true, if_false] using neg
+  have guard : evalExpr (k + 17) (balanceProgram .python) m f resetPythonOverlayGuard =
+      .ok ⟨resetSafeTupleMachine (resetPythonSafeCallEntry typed closure b).1, .ok (.bool false)⟩ := by
+    unfold resetPythonOverlayGuard
+    rw [evalExpr, known]
+    simpa only [Bind.bind, Except.bind, sourceTruthy, balanceProgram_lang, Bool.false_eq_true, if_false] using cond
+  have second : execStmt (k + 18) (balanceProgram .python) m f
+      (.ifThenElse resetPythonOverlayGuard
+        (ifYesStmt (firstStmt (restStmt (resetLoopBody (balanceResetOverlayLoop .python))))) .empty) =
+      .ok ⟨resetSafeTupleMachine (resetPythonSafeCallEntry typed closure b).1, f, .normal⟩ := by
+    rw [execIf_of_false guard rfl]
+    exact execStmt_adequate .empty (by omega)
+  rw [balanceReset_python_overlay_body_shape, execSequence_of_normal first,
+    execSequence_of_normal second,
+    execSequence_of_normal (balanceReset_overlay_write_python_execute (k := k + 10)
+      hCandidate hName hValue hInt hWriteType hb (writeOwn_balance_existing hObject))]
+  exact execStmt_adequate .empty (by omega)
 
 end CanonicalResetComposition
 
