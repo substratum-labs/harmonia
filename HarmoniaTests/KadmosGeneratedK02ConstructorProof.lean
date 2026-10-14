@@ -755,3 +755,59 @@ example : (resetPythonLoopTestAfterHelper 0).nextObject = 12 ∧
     (resetPythonLoopTestAfterHelper 0).nextCell = 18 := ⟨rfl, rfl⟩
 
 #print axioms resetPythonLoopTest_execute
+
+-- The fixed canonical environment is independent of the supplied descriptor.
+example (b : Int) :
+    localValue (balanceResetPythonOverlayBound b).1 (balanceResetPythonOverlayBound b).2 "type" =
+      .ok (.builtin .type) :=
+  balanceReset_python_canonical_overlay_environment b (entry := ("type", 0, .builtin .type)) (by decide)
+
+example (b : Int) :
+    localValue (balanceResetPythonOverlayBound b).1 (balanceResetPythonOverlayBound b).2 "_safe_integer" =
+      .ok (.closure 4) :=
+  balanceReset_python_canonical_overlay_environment b (entry := ("_safe_integer", 84, .closure 4)) (by decide)
+
+-- The real get/get guard eagerly allocates its default dict, even on a hit.
+theorem resetPythonBodyTest_guard_type_execute (b : Int) (k : Nat) :
+    evalExpr (k + 8) (balanceProgram .python) (resetPythonBodyTestMachine b) resetPythonBodyTestFrame
+      resetPythonOverlayGuardType = .ok ⟨resetPythonBodyTestTyped b, .ok (.bool false)⟩ := by
+  apply resetPythonOverlayGuardType_execute (world := 2) (context := 3) (definition := 4)
+    (ctx := ⟨.mappingProxy, none,
+      [("balance", ⟨some (.object 4), none, none, true, true, true⟩)], [], [], true, false⟩)
+    (defn := ⟨.mappingProxy, none,
+      [("type", ⟨some (.string "integer"), none, none, true, true, true⟩)], [], [], true, false⟩)
+  · rfl
+  · rfl
+  · rfl
+  · rfl
+  · rfl
+  · rfl
+  · rfl
+  · rfl
+  · rfl
+  · exact (by decide : (3 : Nat) ≠ 1)
+  · exact (by decide : (3 : Nat) ≠ 0)
+  · exact (by decide : (4 : Nat) ≠ 1)
+  · exact (by decide : (4 : Nat) ≠ 0)
+  · exact (by decide : (3 : Nat) ≠ 6)
+  · exact (by decide : (4 : Nat) ≠ 6)
+
+#print axioms balanceReset_python_canonical_overlay_environment
+#print axioms resetPythonOverlayGuardType_execute
+#print axioms resetPythonOverlayStringTest_execute
+#print axioms resetPythonBodyTest_guard_type_execute
+
+-- A changed type definition cannot inherit the integer-table conclusion.
+def resetPythonBodyTestWrongTypeMachine (b : Int) : TargetMachine :=
+  { resetPythonBodyTestMachine b with objects :=
+    (4, ⟨.mappingProxy, none,
+      [("type", ⟨some (.string "string"), none, none, true, true, true⟩)], [], [], true, false⟩) ::
+    (resetPythonBodyTestMachine b).objects }
+
+example (b : Int) (k : Nat) :
+    evalExpr (k + 5) (balanceProgram .python) (resetPythonBodyTestWrongTypeMachine b)
+      resetPythonBodyTestFrame resetPythonOverlayStringTest =
+        .ok ⟨resetPythonBodyTestWrongTypeMachine b, .ok (.bool true)⟩ := by
+  simp only [resetPythonOverlayStringTest, evalExpr, Bind.bind, Except.bind,
+    Pure.pure, Except.pure, balanceProgram_lang]
+  rfl

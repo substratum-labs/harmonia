@@ -581,3 +581,19 @@ example :
   balanceReset_ts_overlay_body_safe (resetTsBodyTest_physical _) rfl rfl (by decide)
 
 #print axioms balanceReset_python_known_key_proxy_execute
+
+-- Definition-table tests depend on the name, never on the signed payload.
+-- This is a canonical overlay fact; later nonnegative validation is separate.
+example (b : Int) (k : Nat) :
+    let e := balanceResetPythonOverlayBound b
+    evalExpr (k + 8) (balanceProgram .python) e.1 e.2 resetPythonOverlayGuardType =
+      .ok ⟨resetPythonOverlayTypedMachine e.1, .ok (.bool false)⟩ :=
+  (balanceReset_python_canonical_table_tests b k).1
+
+example (b : Int) (k : Nat) :
+    let e := balanceResetPythonOverlayBound b
+    evalExpr (k + 5) (balanceProgram .python) e.1 e.2 resetPythonOverlayStringTest =
+      .ok ⟨e.1, .ok (.bool false)⟩ :=
+  (balanceReset_python_canonical_table_tests b k).2
+
+#print axioms balanceReset_python_canonical_table_tests
