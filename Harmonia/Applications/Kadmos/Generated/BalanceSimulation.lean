@@ -2977,6 +2977,207 @@ theorem resetPythonPlainGuard_execute {m f ref object k}
   exact evalExpr_adequate (.binary (by decide) htype (.localRead hd)
     (by rw [balanceProgram_lang]; rfl)) (by omega)
 
+/-- Select the actual overlay loop without reducing its body during execution. -/
+def resetLoopBody : TargetStmt → TargetStmt
+  | .forDo _ _ body => body
+  | _ => .empty
+
+def balanceResetOverlayLoop (lang : TargetLang) : TargetStmt :=
+  if lang == .ts then balanceResetMiddleStmt .ts 3
+  else firstStmt (restStmt (ifYesStmt (balanceResetMiddleStmt .python 2)))
+
+def resetPythonOverlayStringTest : TargetExpr :=
+  .binary .eq
+    (.index (.index (.index (.local "_WORLD") (.string "context")) (.local "name")) (.string "type"))
+    (.string "string")
+
+def resetOverlayValue (lang : TargetLang) : TargetExpr :=
+  if lang == .ts then .typeCast (.local "value") "string|number"
+  else .conditional resetPythonOverlayStringTest (.local "value")
+    (.call (.local "int") (.sequence (.local "value") .empty))
+
+def balanceResetOverlayWrite (lang : TargetLang) : TargetStmt :=
+  firstStmt (dropStmts (if lang == .ts then 1 else 2)
+    (resetLoopBody (balanceResetOverlayLoop lang)))
+
+/-- Closed source certificates retain the TS cast and Python int conversion. -/
+theorem balanceReset_overlay_write_shape (lang : TargetLang) :
+    balanceResetOverlayWrite lang =
+      .assign (.index (.local "candidate") (.local "name")) (resetOverlayValue lang) := by
+  cases lang <;> unfold balanceResetOverlayWrite balanceResetOverlayLoop
+    balanceResetMiddleStmt balanceResetProtected balanceResetSnapshots
+    balanceStoredReset balanceResetLookup balancePreparation
+  · rw [balanceProgram_of_parse BalancePrograms.balanceTsProgram_source]; decide +kernel
+  · rw [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]; decide +kernel
+
+theorem balanceReset_python_plain_guard_shape :
+    firstStmt (ifYesStmt (balanceResetMiddleStmt .python 2)) =
+      .ifThenElse resetPythonPlainGuardExpr
+        (ifYesStmt (firstStmt (ifYesStmt (balanceResetMiddleStmt .python 2)))) .empty ∧
+    ifYesStmt (balanceResetMiddleStmt .python 2) =
+      .sequence (firstStmt (ifYesStmt (balanceResetMiddleStmt .python 2)))
+        (restStmt (ifYesStmt (balanceResetMiddleStmt .python 2))) := by
+  unfold balanceResetMiddleStmt balanceResetProtected balanceResetSnapshots
+    balanceStoredReset balanceResetLookup balancePreparation
+  rw [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]
+  decide +kernel
+
+/-- Execute the guard statement, including its empty false branch, then expose
+    the actual loop continuation at its predecessor sibling budget. -/
+theorem balanceReset_python_plain_guard_skip {m f ref object k}
+    (hp : localValue m f "ctx" = .ok (.object ref))
+    (ht : localValue m f "type" = .ok (.builtin .type))
+    (hd : localValue m f "dict" = .ok (.builtin .dict))
+    (ho : objectAt m ref = .ok object) (hk : object.kind = .pythonDict) :
+    execStmt (k + 6) (balanceProgram .python) m f
+      (ifYesStmt (balanceResetMiddleStmt .python 2)) =
+    execStmt (k + 5) (balanceProgram .python) m f
+      (restStmt (ifYesStmt (balanceResetMiddleStmt .python 2))) := by
+  have head : execStmt (k + 5) (balanceProgram .python) m f
+      (firstStmt (ifYesStmt (balanceResetMiddleStmt .python 2))) = .ok ⟨m, f, .normal⟩ := by
+    rw [balanceReset_python_plain_guard_shape.1,
+      execIf_of_false (resetPythonPlainGuard_execute hp ht hd ho hk) rfl]
+    exact execStmt_adequate .empty (by omega)
+  conv => lhs; rw [balanceReset_python_plain_guard_shape.2]
+  exact execSequence_of_normal head
+
+/-- Rejection sites are exact source branches with empty false arms. This
+    certificate does not assume or establish either validation call result. -/
+theorem balanceReset_validation_rejection_shape (lang : TargetLang) (invariant : Bool) :
+    let i := if invariant then (if lang == .ts then 7 else 6) else (if lang == .ts then 5 else 4)
+    balanceResetMiddleStmt lang i =
+      .ifThenElse (.local (if invariant then "violated" else "invalid"))
+        (ifYesStmt (balanceResetMiddleStmt lang i)) .empty := by
+  cases lang <;> cases invariant <;> unfold balanceResetMiddleStmt
+    balanceResetProtected balanceResetSnapshots balanceStoredReset balanceResetLookup balancePreparation
+  all_goals first
+    | (rw [balanceProgram_of_parse BalancePrograms.balanceTsProgram_source]; decide +kernel)
+    | (rw [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]; decide +kernel)
+
+theorem balanceReset_validation_rejection_execute {lang m f k} (invariant : Bool)
+    (hv : localValue m f (if invariant then "violated" else "invalid") = .ok .null) :
+    let i := if invariant then (if lang == .ts then 7 else 6) else (if lang == .ts then 5 else 4)
+    execStmt (k + 2) (balanceProgram lang) m f (balanceResetMiddleStmt lang i) =
+      .ok ⟨m, f, .normal⟩ := by
+  dsimp only
+  rw [balanceReset_validation_rejection_shape]
+  rw [execIf_of_false (evalExpr_adequate (.localRead hv) (by omega))
+    (by cases lang <;> rfl)]
+  exact execStmt_adequate .empty (by omega)
+
+/-- TS validation success uses undefined in the emitted source. Its false
+    branch has the same no-op behavior as Python's null result. -/
+theorem balanceReset_ts_validation_rejection_undefined {m f k} (invariant : Bool)
+    (hv : localValue m f (if invariant then "violated" else "invalid") = .ok .undefined) :
+    let i := if invariant then 7 else 5
+    execStmt (k + 2) (balanceProgram .ts) m f (balanceResetMiddleStmt .ts i) =
+      .ok ⟨m, f, .normal⟩ := by
+  dsimp only
+  have hs := balanceReset_validation_rejection_shape .ts invariant
+  change balanceResetMiddleStmt .ts (if invariant then 7 else 5) = _ at hs
+  rw [hs]
+  rw [execIf_of_false (evalExpr_adequate (.localRead hv) (by omega)) rfl]
+  exact execStmt_adequate .empty (by omega)
+
+/-- The candidate update preserves allocation, cells and code, replacing only
+    the selected object's own balance descriptor. No freshness assumption is
+    needed for an already allocated writable candidate. -/
+def balanceOverlayUpdated (lang : TargetLang) (m : TargetMachine) (ref : ObjRef)
+    (b : Int) : TargetMachine :=
+  { m with objects := m.objects.map fun entry =>
+      (entry.1, if entry.1 == ref then balanceHeapObject lang m b else entry.2) }
+
+theorem writeOwn_balance_existing {lang m ref old b}
+    (ho : objectAt m ref = .ok (balanceHeapObject lang m old)) :
+    writeOwn m ref "balance" (integerValue lang b) =
+      .ok (balanceOverlayUpdated lang m ref b) := by
+  cases lang <;>
+    simp [writeOwn, ho, balanceHeapObject, balanceDataDescriptor, replaceObject,
+      balanceOverlayUpdated, Bind.bind, Pure.pure, Except.bind, Except.pure]
+
+theorem lookup_replace_payload {α : Type} (entries : List (Nat × α)) (ref : Nat) (value : α) :
+    (entries.map (fun entry => (entry.1, if entry.1 == ref then value else entry.2))).lookup ref =
+      (entries.lookup ref).map (fun _ => value) := by
+  induction entries with
+  | nil => rfl
+  | cons entry rest ih =>
+      rcases entry with ⟨key, old⟩
+      by_cases h : key = ref
+      · subst key; simp
+      · have heq : (ref == key) = false := beq_eq_false_iff_ne.mpr (Ne.symm h)
+        have hkey : (key == ref) = false := beq_eq_false_iff_ne.mpr h
+        simp only [List.map_cons, List.lookup_cons, Prod.fst, Prod.snd, heq, hkey, if_false, ih]
+
+/-- The update has a live candidate with exactly the supplied balance. -/
+theorem balanceOverlayUpdated_objectAt {lang m ref old b}
+    (ho : objectAt m ref = .ok (balanceHeapObject lang m old)) :
+    objectAt (balanceOverlayUpdated lang m ref b) ref =
+      .ok (balanceHeapObject lang m b) := by
+  unfold objectAt at ho ⊢
+  change (match (m.objects.map (fun entry =>
+    (entry.1, if entry.1 == ref then balanceHeapObject lang m b else entry.2))).lookup ref with
+    | some o => Except.ok o | none => Except.error (TargetError.danglingObject ref)) = _
+  rw [lookup_replace_payload]
+  cases hl : m.objects.lookup ref with
+  | none => simp [hl] at ho
+  | some value => rfl
+
+/-- Execute TS's selected indexed write for a symbolic integer; the heap write
+    is kept explicit so its descriptor/freshness proof can be reused. -/
+theorem balanceReset_overlay_write_ts_execute {m final f ref b k}
+    (hc : localValue m f "candidate" = .ok (.object ref))
+    (hn : localValue m f "name" = .ok (.string "balance"))
+    (hv : localValue m f "value" = .ok (integerValue .ts b))
+    (hw : writeOwn m ref "balance" (integerValue .ts b) = .ok final) :
+    execStmt (k + 3) (balanceProgram .ts) m f (balanceResetOverlayWrite .ts) =
+      .ok ⟨final, f, .normal⟩ := by
+  rw [balanceReset_overlay_write_shape]
+  have value : evalExpr (k + 2) (balanceProgram .ts) m f (resetOverlayValue .ts) =
+      .ok ⟨m, .ok (integerValue .ts b)⟩ := by
+    change evalExpr (k + 2) _ _ _ (.typeCast (.local "value") "string|number") = _
+    rw [evalExpr]
+    exact evalExpr_adequate (.localRead hv) (by omega)
+  rw [execStmt]
+  have c := evalExpr_adequate (program := balanceProgram .ts) (.localRead hc) (k := k + 2) (by omega)
+  have n := evalExpr_adequate (program := balanceProgram .ts) (.localRead hn) (k := k + 2) (by omega)
+  simp only [c, n, value, hw, Bind.bind, Except.bind, Pure.pure, Except.pure]
+
+/-- Python's selected write takes the integer arm and calls the real int host.
+    The context-definition lookup is explicit, not silently treated as trusted. -/
+theorem balanceReset_overlay_write_python_execute {m final f ref b k}
+    (hc : localValue m f "candidate" = .ok (.object ref))
+    (hn : localValue m f "name" = .ok (.string "balance"))
+    (hv : localValue m f "value" = .ok (integerValue .python b))
+    (hi : localValue m f "int" = .ok (.builtin .int))
+    (ht : evalExpr (k + 5) (balanceProgram .python) m f resetPythonOverlayStringTest =
+      .ok ⟨m, .ok (.bool false)⟩)
+    (hb : b.natAbs ≤ 9007199254740991)
+    (hw : writeOwn m ref "balance" (integerValue .python b) = .ok final) :
+    execStmt (k + 7) (balanceProgram .python) m f (balanceResetOverlayWrite .python) =
+      .ok ⟨final, f, .normal⟩ := by
+  have call : evalExpr (k + 5) (balanceProgram .python) m f
+      (.call (.local "int") (.sequence (.local "value") .empty)) =
+        .ok ⟨m, .ok (integerValue .python b)⟩ := by
+    apply evalExpr_adequate (DepthDerivesExpr.callBuiltin (.localRead hi)
+      (.cons (.localRead hv) .empty) (by decide) ?_) (by omega)
+    rw [balanceProgram_lang]
+    change (if !(decide (b.natAbs ≤ 9007199254740991)) then
+      Except.error TargetError.outsideNumericDomain else
+      Except.ok (⟨m, .ok (integerValue .python b)⟩ : ExprOutcome)) = _
+    simp only [hb, decide_true, Bool.not_true, Bool.false_eq_true, if_false]
+  have value : evalExpr (k + 6) (balanceProgram .python) m f (resetOverlayValue .python) =
+      .ok ⟨m, .ok (integerValue .python b)⟩ := by
+    change evalExpr (k + 6) _ _ _ (.conditional _ _ _) = _
+    rw [evalExpr, ht]
+    simpa only [Bind.bind, Except.bind, Pure.pure, Except.pure,
+      balanceProgram_lang, sourceTruthy, Bool.false_eq_true, if_false] using call
+  rw [balanceReset_overlay_write_shape]
+  rw [execStmt]
+  have c := evalExpr_adequate (program := balanceProgram .python) (.localRead hc) (k := k + 6) (by omega)
+  have n := evalExpr_adequate (program := balanceProgram .python) (.localRead hn) (k := k + 6) (by omega)
+  simp only [c, n, value, hw, Bind.bind, Except.bind, Pure.pure, Except.pure]
+
+
 end CanonicalResetComposition
 
 end Harmonia.Applications.Kadmos.Generated

@@ -392,3 +392,25 @@ theorem kadmos_generated_constructor_snapshot_continuation (lang : TargetLang) {
   rfl
 
 #print axioms kadmos_generated_constructor_snapshot_continuation
+
+-- Source-selected writes retain casts/conversions rather than replacing the
+-- real source loop with an invented assignment.
+example (lang : TargetLang) :
+    balanceResetOverlayWrite lang =
+      .assign (.index (.local "candidate") (.local "name")) (resetOverlayValue lang) :=
+  balanceReset_overlay_write_shape lang
+
+example (lang : TargetLang) {m ref old b}
+    (ho : objectAt m ref = .ok (balanceHeapObject lang m old)) :
+    writeOwn m ref "balance" (integerValue lang b) =
+      .ok (balanceOverlayUpdated lang m ref b) :=
+  writeOwn_balance_existing ho
+
+#print axioms balanceReset_overlay_write_ts_execute
+#print axioms balanceReset_overlay_write_python_execute
+#print axioms writeOwn_balance_existing
+
+example (lang : TargetLang) {m ref old b}
+    (ho : objectAt m ref = .ok (balanceHeapObject lang m old)) :
+    objectAt (balanceOverlayUpdated lang m ref b) ref = .ok (balanceHeapObject lang m b) :=
+  balanceOverlayUpdated_objectAt ho

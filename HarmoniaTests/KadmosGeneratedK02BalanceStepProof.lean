@@ -206,3 +206,120 @@ example (m : TargetMachine) (f : TargetFrame) :
 #print axioms balanceReset_python_seed_present
 #print axioms balanceReset_python_plain_guard_header
 #print axioms resetPythonPlainGuard_execute
+
+-- All four actual validation rejection sites accept a null helper result.
+example (lang : TargetLang) (invariant : Bool) {m f}
+    (hv : localValue m f (if invariant then "violated" else "invalid") = .ok .null) :
+    let i := if invariant then (if lang == .ts then 7 else 6) else (if lang == .ts then 5 else 4)
+    execStmt 2 (balanceProgram lang) m f (balanceResetMiddleStmt lang i) =
+      .ok ⟨m, f, .normal⟩ :=
+  balanceReset_validation_rejection_execute invariant hv
+
+-- The source write executes with a symbolic payload on an existing candidate.
+example {m f ref b}
+    (hc : localValue m f "candidate" = .ok (.object ref))
+    (hn : localValue m f "name" = .ok (.string "balance"))
+    (hv : localValue m f "value" = .ok (integerValue .ts b))
+    (ho : objectAt m ref = .ok (balanceHeapObject .ts m 100)) :
+    execStmt 3 (balanceProgram .ts) m f (balanceResetOverlayWrite .ts) =
+      .ok ⟨balanceOverlayUpdated .ts m ref b, f, .normal⟩ :=
+  balanceReset_overlay_write_ts_execute hc hn hv (writeOwn_balance_existing ho)
+
+example {m f ref b}
+    (hc : localValue m f "candidate" = .ok (.object ref))
+    (hn : localValue m f "name" = .ok (.string "balance"))
+    (hv : localValue m f "value" = .ok (integerValue .python b))
+    (hi : localValue m f "int" = .ok (.builtin .int))
+    (ht : evalExpr 5 (balanceProgram .python) m f resetPythonOverlayStringTest =
+      .ok ⟨m, .ok (.bool false)⟩)
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S)
+    (ho : objectAt m ref = .ok (balanceHeapObject .python m 100)) :
+    execStmt 7 (balanceProgram .python) m f (balanceResetOverlayWrite .python) =
+      .ok ⟨balanceOverlayUpdated .python m ref b, f, .normal⟩ :=
+  balanceReset_overlay_write_python_execute hc hn hv hi ht (balance_natAbs hb)
+    (writeOwn_balance_existing ho)
+
+-- Exhaustion is an actual interpreter result, not just an inferred rank.
+example (m : TargetMachine) (f : TargetFrame) :
+    execStmt 1 (balanceProgram .ts) m f (balanceResetOverlayWrite .ts) =
+      .error .exhaustedFuel := by
+  rw [balanceReset_overlay_write_shape]
+  simp only [execStmt, evalExpr, Bind.bind, Except.bind]
+
+example : resetOverlayValue .ts ≠ .local "value" := by decide +kernel
+example : resetOverlayValue .python ≠ .local "value" := by decide +kernel
+
+#print axioms balanceReset_validation_rejection_execute
+#print axioms balanceReset_overlay_write_shape
+
+-- TS helpers' emitted success sentinel is undefined, distinct from Python None.
+example {m f} (invariant : Bool)
+    (hv : localValue m f (if invariant then "violated" else "invalid") = .ok .undefined) :
+    execStmt 2 (balanceProgram .ts) m f
+      (balanceResetMiddleStmt .ts (if invariant then 7 else 5)) = .ok ⟨m, f, .normal⟩ :=
+  balanceReset_ts_validation_rejection_undefined invariant hv
+
+-- A concrete live heap/frame makes the indexed-write premises nonvacuous.
+def resetOverlayTestFrame : TargetFrame :=
+  ⟨"overlay-test", [], [("candidate", 0), ("name", 1), ("value", 2), ("int", 3), ("_WORLD", 4)],
+    [], none, .normal⟩
+
+def resetOverlayTestMachine (lang : TargetLang) (b : Int) : TargetMachine :=
+  { TargetMachine.empty with
+    objects := [(1, balanceHeapObject lang TargetMachine.empty 100),
+      (2, { literalObject lang TargetMachine.empty with
+        own := [("context", ⟨some (.object 3), none, none, true, true, true⟩)] }),
+      (3, { literalObject lang TargetMachine.empty with
+        own := [("balance", ⟨some (.object 4), none, none, true, true, true⟩)] }),
+      (4, { literalObject lang TargetMachine.empty with
+        own := [("type", ⟨some (.string "integer"), none, none, true, true, true⟩)] })],
+    cells := [(0, .object 1), (1, .string "balance"), (2, integerValue lang b),
+      (3, .builtin .int), (4, .object 2)], nextCell := 5, nextObject := 5 }
+
+example (b : Int) :
+    execStmt 3 (balanceProgram .ts) (resetOverlayTestMachine .ts b) resetOverlayTestFrame
+      (balanceResetOverlayWrite .ts) =
+        .ok ⟨balanceOverlayUpdated .ts (resetOverlayTestMachine .ts b) 1 b,
+          resetOverlayTestFrame, .normal⟩ :=
+  balanceReset_overlay_write_ts_execute rfl rfl rfl (writeOwn_balance_existing rfl)
+
+-- The checker projects the non-DecidableEq ExprOutcome wrapper to its two
+-- decidable physical fields; soundness recovers the complete result.
+private theorem resetOverlayTest_eval {result : Except TargetError ExprOutcome} {m value}
+    (h : result.toOption.map (fun out => (out.machine, out.result)) = some (m, .ok value)) :
+    result = .ok ⟨m, .ok value⟩ := by
+  cases result with
+  | error error => simp [Except.toOption] at h
+  | ok out =>
+      cases out with
+      | mk final returned =>
+          simp only [Except.toOption, Option.map, Option.some.injEq, Prod.mk.injEq] at h
+          rcases h with ⟨rfl, rfl⟩
+          rfl
+
+-- Closed kernel checks inspect no full source body.
+theorem resetOverlayPythonTest_type_zero :
+    evalExpr 5 (balanceProgram .python) (resetOverlayTestMachine .python 0)
+      resetOverlayTestFrame resetPythonOverlayStringTest = .ok ⟨resetOverlayTestMachine .python 0,
+        .ok (.bool false)⟩ :=
+  resetOverlayTest_eval (by
+    rw [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]
+    decide +kernel)
+
+example :
+    execStmt 7 (balanceProgram .python) (resetOverlayTestMachine .python 0) resetOverlayTestFrame
+      (balanceResetOverlayWrite .python) =
+        .ok ⟨balanceOverlayUpdated .python (resetOverlayTestMachine .python 0) 1 0,
+          resetOverlayTestFrame, .normal⟩ :=
+  balanceReset_overlay_write_python_execute rfl rfl rfl rfl
+    resetOverlayPythonTest_type_zero (by decide +kernel) (writeOwn_balance_existing rfl)
+
+example :
+    execStmt 7 (balanceProgram .python) (resetOverlayTestMachine .python 9007199254740991)
+      resetOverlayTestFrame (balanceResetOverlayWrite .python) =
+        .ok ⟨balanceOverlayUpdated .python (resetOverlayTestMachine .python 9007199254740991)
+          1 9007199254740991, resetOverlayTestFrame, .normal⟩ :=
+  balanceReset_overlay_write_python_execute rfl rfl rfl rfl
+    (resetOverlayTest_eval (by
+    rw [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]
+    decide +kernel)) (by decide +kernel) (writeOwn_balance_existing rfl)
