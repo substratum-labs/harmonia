@@ -2135,4 +2135,38 @@ def targetStep (program : TargetProgram) (machine : TargetMachine)
     (request : TargetRequest) : Except TargetError TargetOutcome :=
   targetStepWithFuel 100 program machine request
 
+
+/-- Physical payload/request/cell allocation before the actual generated step
+    method call. This recipe mirrors only the public call wrapper, not a helper. -/
+def debitCallEntry (lang : TargetLang) (machine : TargetMachine) (amount : Int) :
+    TargetMachine × TargetFrame :=
+  let kind := if lang == .ts then ObjectKind.jsOrdinary else .pythonDict
+  let proto := if lang == .ts then some machine.objectPrototype else none
+  let (withPayload, payloadRef) := allocObject machine
+    ⟨kind, proto, [("amount", hostDescriptor (number lang amount))], [], [], false, false⟩
+  let (withRequest, requestRef) := allocObject withPayload
+    ⟨kind, proto, [("transitionId", hostDescriptor (.string "DEBIT")),
+      ("eventPayload", hostDescriptor (.object payloadRef))], [], [], false, false⟩
+  let (withCell, cell) := allocCell withRequest (.object requestRef) true
+  (withCell, ⟨"step-call", [], [("request", cell)], [], some withCell.checkerRef, .normal⟩)
+
+def debitCallExpression (lang : TargetLang) : TargetExpr :=
+  .call (.property (.local (if lang == .ts then "this" else "self")) "step")
+    (.sequence (.local "request") .empty)
+
+/-- Peel the safe canonical DEBIT wrapper without assuming generated method
+    lookup, body success or verdict correctness. Errors still propagate exactly. -/
+theorem targetStepWithFuel_eq_debitEntry {fuel program machine lang amount}
+    (hl : program.lang = lang) (hn : amount.natAbs ≤ 9007199254740991) :
+    targetStepWithFuel fuel program machine (canonicalDebitRequest lang amount) = (do
+      let result ← evalExpr fuel program (debitCallEntry lang machine amount).1
+        (debitCallEntry lang machine amount).2 (debitCallExpression lang)
+      match result.result with
+      | .ok verdict => pure ⟨result.machine, verdict⟩
+      | .error e => throw (.sourceException e)) := by
+  cases lang <;>
+    simp [targetStepWithFuel, canonicalDebitRequest, hl, safeIntermediate, hn,
+      debitCallEntry, debitCallExpression, Bind.bind, Pure.pure, Except.bind, Except.pure]
+
+
 end Harmonia.Applications.Kadmos.Generated

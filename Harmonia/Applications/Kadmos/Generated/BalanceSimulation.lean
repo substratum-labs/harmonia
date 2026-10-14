@@ -151,6 +151,182 @@ theorem targetConstruct_balance_call (lang : TargetLang) {b : Int}
   apply targetConstructFromPrepared_of_seed
   exact allocateSeed_balance (balance_natAbs hb)
 
+/-- These names select actual stored source methods, not ideal constructor bodies. -/
+def balanceConstructorName (lang : TargetLang) : String :=
+  if lang == .ts then "constructor" else "__init__"
+
+def balanceConstructorParam (lang : TargetLang) : String :=
+  if lang == .ts then "initialContext" else "initial_context"
+
+/-- Read constructor provenance from the physically prepared method table. -/
+def balanceConstructorLookup (lang : TargetLang) : Option (ClosureRef × TargetClosure) := do
+  let ref ← (balancePreparation lang).1.classMethods.lookup (balanceConstructorName lang)
+  let closure ← (closureAt (balancePreparation lang).1 ref).toOption
+  pure (ref, closure)
+
+/-- The fallback is excluded by the closed preparation lookup certificate. -/
+def balanceStoredConstructor (lang : TargetLang) : ClosureRef × TargetClosure :=
+  (balanceConstructorLookup lang).getD (0, ⟨"", [], [], .empty, [], none⟩)
+
+set_option maxRecDepth 65536 in
+set_option maxHeartbeats 10000000 in
+theorem balanceConstructorLookup_total (lang : TargetLang) :
+    (balanceConstructorLookup lang).isSome = true := by
+  cases lang with
+  | ts =>
+      unfold balanceConstructorLookup balanceConstructorName balancePreparation
+      rw [balanceProgram_of_parse BalancePrograms.balanceTsProgram_source]
+      decide +kernel
+  | python =>
+      unfold balanceConstructorLookup balanceConstructorName balancePreparation
+      rw [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]
+      decide +kernel
+
+/-- Extract exact method-table and closure-store equations without choice. -/
+theorem balanceStoredConstructor_lookup (lang : TargetLang) :
+    (balancePreparation lang).1.classMethods.lookup (balanceConstructorName lang) =
+      some (balanceStoredConstructor lang).1 ∧
+    closureAt (balancePreparation lang).1 (balanceStoredConstructor lang).1 =
+      .ok (balanceStoredConstructor lang).2 := by
+  have ht := balanceConstructorLookup_total lang
+  unfold balanceConstructorLookup at ht
+  unfold balanceStoredConstructor balanceConstructorLookup
+  cases hm : (balancePreparation lang).1.classMethods.lookup (balanceConstructorName lang) with
+  | none => simp [hm] at ht
+  | some ref =>
+      cases hc : closureAt (balancePreparation lang).1 ref with
+      | error e => simp [hm, hc, Except.toOption] at ht
+      | ok closure => simp [hm, hc, Except.toOption]
+
+set_option maxRecDepth 65536 in
+set_option maxHeartbeats 10000000 in
+/-- Both actual constructors take one supplied seed parameter and are looked
+    up as methods, rather than checker data fields. Their bodies stay stored. -/
+theorem balanceStoredConstructor_shape (lang : TargetLang) :
+    readCheckerField (balancePreparation lang).1 (balanceConstructorName lang) =
+      .error (.unboundLocal (balanceConstructorName lang)) ∧
+    (balanceStoredConstructor lang).2.params =
+      [⟨balanceConstructorParam lang, some .null⟩] ∧
+    (balanceStoredConstructor lang).2.qualifiedName =
+      "WorldChecker." ++ balanceConstructorName lang := by
+  cases lang with
+  | ts =>
+      unfold balanceStoredConstructor balanceConstructorLookup balanceConstructorName
+        balanceConstructorParam balancePreparation
+      rw [balanceProgram_of_parse BalancePrograms.balanceTsProgram_source]
+      decide +kernel
+  | python =>
+      unfold balanceStoredConstructor balanceConstructorLookup balanceConstructorName
+        balanceConstructorParam balancePreparation
+      rw [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]
+      decide +kernel
+
+/-- Physical caller allocation for the canonical seed, before method access. -/
+def balanceConstructorArgumentEntry (lang : TargetLang) (b : Int) :
+    TargetMachine × TargetFrame :=
+  let prepared := balancePreparation lang
+  let seeded := (allocObject prepared.1 (balanceHeapObject lang prepared.1 b)).1
+  let withArgument := (allocCell seeded (.object prepared.1.nextObject) true).1
+  (withArgument, ⟨"construct", [], [("initialContext", seeded.nextCell)],
+    prepared.2.locals, some withArgument.checkerRef, .normal⟩)
+
+/-- Method access allocates this receiver-bound source closure. -/
+def balanceConstructorBoundEntry (lang : TargetLang) (b : Int) :
+    TargetMachine × ClosureRef :=
+  let caller := (balanceConstructorArgumentEntry lang b).1
+  allocClosure caller { (balanceStoredConstructor lang).2 with receiver := some caller.checkerRef }
+
+/-- One fresh supplied-parameter cell, with the actual stored captures/body. -/
+def balanceConstructorBodyEntry (lang : TargetLang) (b : Int) :
+    TargetMachine × TargetFrame :=
+  let bound := (balanceConstructorBoundEntry lang b).1
+  let method := { (balanceStoredConstructor lang).2 with receiver := some bound.checkerRef }
+  ((allocCell bound (.object (balancePreparation lang).1.nextObject) true).1,
+    { closureFrame method with locals := [(balanceConstructorParam lang, bound.nextCell)] })
+
+/-- Canonical receiver dispatch and argument reads have depth one. The parsed
+    constructor body is retained as the remaining executable obligation. -/
+theorem balanceConstructorCall_eq_body (lang : TargetLang) (b : Int) :
+    evalExpr 100 (balanceProgram lang)
+      (balanceConstructorArgumentEntry lang b).1 (balanceConstructorArgumentEntry lang b).2
+      (.call (.property (.local (if lang == .ts then "this" else "self"))
+        (balanceConstructorName lang)) (.sequence (.local "initialContext") .empty)) = (do
+      let body ← execStmt 99 (balanceProgram lang)
+        (balanceConstructorBodyEntry lang b).1 (balanceConstructorBodyEntry lang b).2
+        (balanceStoredConstructor lang).2.body
+      closureResult lang body) := by
+  let caller := (balanceConstructorArgumentEntry lang b).1
+  let frame := (balanceConstructorArgumentEntry lang b).2
+  let bound := (balanceConstructorBoundEntry lang b).1
+  let method := { (balanceStoredConstructor lang).2 with receiver := some caller.checkerRef }
+  have hLookup := balanceStoredConstructor_lookup lang
+  have hShape := balanceStoredConstructor_shape lang
+  have hr : localValue caller frame (if lang == .ts then "this" else "self") =
+      .ok (.object caller.checkerRef) := by
+    cases lang <;> rfl
+  have hf : readCheckerField caller (balanceConstructorName lang) =
+      .error (.unboundLocal (balanceConstructorName lang)) := hShape.1
+  have hm : caller.classMethods.lookup (balanceConstructorName lang) =
+      some (balanceStoredConstructor lang).1 := hLookup.1
+  have hc : closureAt caller (balanceStoredConstructor lang).1 =
+      .ok (balanceStoredConstructor lang).2 := hLookup.2
+  have hRead : readPropertyValue (balanceProgram lang).lang caller
+      (.object caller.checkerRef) (balanceConstructorName lang) =
+      .ok ⟨bound, .ok (.closure caller.nextClosure)⟩ := by
+    rw [balanceProgram_lang]
+    exact readCheckerMethod_bound hf hm hc
+  have he : DepthDerivesExpr (balanceProgram lang) caller frame
+      (.property (.local (if lang == .ts then "this" else "self")) (balanceConstructorName lang))
+      ⟨bound, .ok (.closure caller.nextClosure)⟩ 1 := .property (.localRead hr) hRead
+  have hv : localValue bound frame "initialContext" =
+      .ok (.object (balancePreparation lang).1.nextObject) := by
+    simp [bound, frame, balanceConstructorBoundEntry, balanceConstructorArgumentEntry,
+      localValue, readCell, allocClosure, allocCell, List.lookup]
+  have ha : DepthDerivesArgs (balanceProgram lang) bound frame
+      (.sequence (.local "initialContext") .empty)
+      ⟨bound, .ok [.object (balancePreparation lang).1.nextObject]⟩ 1 :=
+    .cons (.localRead hv) .empty
+  have hStored : closureAt bound caller.nextClosure = .ok method := by
+    simp [bound, caller, method, balanceConstructorBoundEntry, closureAt, allocClosure, List.lookup]
+  have hp : DepthBindsProvided (balanceProgram lang) bound (closureFrame method)
+      method.params method.pythonDefaults [.object (balancePreparation lang).1.nextObject]
+      (balanceConstructorBodyEntry lang b).1 (balanceConstructorBodyEntry lang b).2 1 := by
+    change DepthBindsProvided (balanceProgram lang) bound (closureFrame method)
+      (balanceStoredConstructor lang).2.params method.pythonDefaults _ _ _ 1
+    rw [hShape.2.1]
+    exact .cons (by simp) .empty
+  have h := evalStoredCall_eq he ha hStored hp (k := 99) (by decide) (by decide) (by decide)
+  simpa only [balanceProgram_lang] using h
+
+/-- Every bounded seed reaches the actual parsed constructor body at depth 99.
+    No premise assumes body success and no post-construction representation
+    is concluded until the remaining reset/helper/body execution is proved. -/
+theorem targetConstruct_balance_body (lang : TargetLang) {b : Int}
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S) :
+    targetConstruct (balanceProgram lang) (canonicalBalanceSeed lang b) = (do
+      let body ← execStmt 99 (balanceProgram lang)
+        (balanceConstructorBodyEntry lang b).1 (balanceConstructorBodyEntry lang b).2
+        (balanceStoredConstructor lang).2.body
+      let result ← closureResult lang body
+      match result.result with
+      | .ok _ => pure result.machine
+      | .error e => throw (.sourceException e)) := by
+  rw [targetConstruct_balance_call lang hb]
+  unfold targetConstructorCall
+  simp only [balanceProgram_lang]
+  change (do
+    let result ← evalExpr 100 (balanceProgram lang)
+      (balanceConstructorArgumentEntry lang b).1 (balanceConstructorArgumentEntry lang b).2
+      (.call (.property (.local (if lang == TargetLang.ts then "this" else "self"))
+        (balanceConstructorName lang)) (.sequence (.local "initialContext") .empty))
+    match result.result with
+    | .ok _ => pure result.machine
+    | .error e => throw (TargetError.sourceException e) : Except TargetError TargetMachine) = _
+  rw [balanceConstructorCall_eq_body]
+  cases hBody : execStmt 99 (balanceProgram lang)
+      (balanceConstructorBodyEntry lang b).1 (balanceConstructorBodyEntry lang b).2
+      (balanceStoredConstructor lang).2.body <;> rfl
+
 set_option maxRecDepth 4096 in
 /-- One-key numeric context cloning needs host budget two, uniformly in b.
     Freshness records the physical frame; this theorem neither runs nor
@@ -245,5 +421,143 @@ theorem checkedConstructor_witness {program lang b}
   | ok m =>
       simp only [he, Except.toOption, Option.map, Option.some.injEq] at h
       exact ⟨m, rfl, balanceRepCheck_sound h⟩
+
+/-- The actual prepared step closure, retained independently of BalanceRep. -/
+def balanceStepLookup (lang : TargetLang) : Option (ClosureRef × TargetClosure) := do
+  let ref ← (balancePreparation lang).1.classMethods.lookup "step"
+  let closure ← (closureAt (balancePreparation lang).1 ref).toOption
+  pure (ref, closure)
+
+def balanceStoredStep (lang : TargetLang) : ClosureRef × TargetClosure :=
+  (balanceStepLookup lang).getD (0, ⟨"", [], [], .empty, [], none⟩)
+
+/-- Generic AST selectors preserve all actual branches and sibling nodes. -/
+def firstStmt (body : TargetStmt) : TargetStmt :=
+  match body with | .sequence first _ => first | _ => .empty
+
+def restStmt (body : TargetStmt) : TargetStmt :=
+  match body with | .sequence _ rest => rest | _ => .empty
+
+def ifYesStmt (body : TargetStmt) : TargetStmt :=
+  match body with | .ifThenElse _ yes _ => yes | _ => .empty
+
+def stepBusyPrefixCheck (lang : TargetLang) (body : TargetStmt) : Bool :=
+  match body with
+  | .sequence (.ifThenElse cond _ no) _ =>
+      cond == .property (.local (if lang == .ts then "this" else "self"))
+        (if lang == .ts then "#busy" else "_busy") && no == .empty
+  | _ => false
+
+/-- Structural inversion works on a variable AST, never by reducing a
+    computed prepared heap or comparing its large body/remainder. -/
+theorem stepBusyPrefixCheck_shape {lang body} (h : stepBusyPrefixCheck lang body = true) :
+    body = .sequence (firstStmt body) (restStmt body) ∧
+    firstStmt body = .ifThenElse
+      (.property (.local (if lang == .ts then "this" else "self"))
+        (if lang == .ts then "#busy" else "_busy")) (ifYesStmt (firstStmt body)) .empty := by
+  cases body with
+  | sequence first rest =>
+      cases first with
+      | ifThenElse cond yes no =>
+          change ((cond == .property (.local (if lang == .ts then "this" else "self"))
+            (if lang == .ts then "#busy" else "_busy")) && (no == .empty)) = true at h
+          simp only [Bool.and_eq_true] at h
+          have hc := (beq_iff_eq).mp h.1
+          have hn := (beq_iff_eq).mp h.2
+          subst cond no
+          exact ⟨rfl, rfl⟩
+      | _ => simp [stepBusyPrefixCheck] at h
+  | _ => simp [stepBusyPrefixCheck] at h
+
+def balanceStepBusyPrefix (lang : TargetLang) : TargetStmt :=
+  firstStmt (balanceStoredStep lang).2.body
+
+def balanceStepAfterBusy (lang : TargetLang) : TargetStmt :=
+  restStmt (balanceStoredStep lang).2.body
+
+def balanceStepBusyThrow (lang : TargetLang) : TargetStmt :=
+  ifYesStmt (balanceStepBusyPrefix lang)
+
+/-- Only the reached prefix form is reflected; actual throw/remainder ASTs
+    are preserved by the generic structural selectors. -/
+def stepLookupBusyPrefixCheck (lang : TargetLang)
+    (found : Option (ClosureRef × TargetClosure)) : Bool :=
+  match found with
+  | none => false
+  | some (_, closure) => stepBusyPrefixCheck lang closure.body
+
+/-- Invert a variable lookup so closed reflection only computes the lookup once. -/
+theorem stepLookupBusyPrefixCheck_shape {lang found fallback}
+    (h : stepLookupBusyPrefixCheck lang found = true) :
+    found.isSome = true ∧ stepBusyPrefixCheck lang (found.getD fallback).2.body = true := by
+  cases found with
+  | none => simp [stepLookupBusyPrefixCheck] at h
+  | some value => exact ⟨rfl, h⟩
+
+def balanceStepBusyPrefixCheck (lang : TargetLang) : Bool :=
+  stepLookupBusyPrefixCheck lang (balanceStepLookup lang)
+
+set_option maxRecDepth 65536 in
+set_option maxHeartbeats 10000000 in
+theorem balanceStepBusyPrefixCheck_true (lang : TargetLang) :
+    balanceStepBusyPrefixCheck lang = true := by
+  cases lang with
+  | ts =>
+      unfold balanceStepBusyPrefixCheck balanceStepLookup balancePreparation
+      rw [balanceProgram_of_parse BalancePrograms.balanceTsProgram_source]
+      decide +kernel
+  | python =>
+      unfold balanceStepBusyPrefixCheck balanceStepLookup balancePreparation
+      rw [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]
+      decide +kernel
+
+/-- Exact first-statement shape of both prepared source-bound step methods.
+    Structural inversion retains every node of the actual body. Constructor
+    preservation of the method store remains a separate obligation. -/
+theorem balanceStepBusyPrefix_shape (lang : TargetLang) :
+    (balanceStepLookup lang).isSome = true ∧
+    (balanceStoredStep lang).2.body =
+      .sequence (balanceStepBusyPrefix lang) (balanceStepAfterBusy lang) ∧
+    balanceStepBusyPrefix lang =
+      .ifThenElse (.property (.local (if lang == .ts then "this" else "self"))
+        (if lang == .ts then "#busy" else "_busy")) (balanceStepBusyThrow lang) .empty := by
+  have h := stepLookupBusyPrefixCheck_shape
+    (fallback := (0, ⟨"", [], [], .empty, [], none⟩)) (balanceStepBusyPrefixCheck_true lang)
+  exact ⟨h.1, stepBusyPrefixCheck_shape h.2⟩
+
+/-- The source step's first busy-check takes its idle branch with rank two.
+    The receiver and idle bit are explicit preconditions; no source guard,
+    effect, sanitizer or verdict behavior is inferred from this prefix. -/
+theorem balanceStep_idle_prefix {lang m f}
+    (hr : f.receiver = some m.checkerRef) (hi : m.checker.busy = false) :
+    DepthDerivesStmt (balanceProgram lang) m f (balanceStepBusyPrefix lang)
+      ⟨m, f, .normal⟩ 2 := by
+  rw [(balanceStepBusyPrefix_shape lang).2.2]
+  have hLocal : localValue m f (if lang == .ts then "this" else "self") =
+      .ok (.object m.checkerRef) := by
+    cases lang <;> simp [localValue, hr]
+  have hRead : readPropertyValue (balanceProgram lang).lang m (.object m.checkerRef)
+      (if lang == .ts then "#busy" else "_busy") = .ok ⟨m, .ok (.bool false)⟩ := by
+    cases lang <;>
+      simp [readPropertyValue, readCheckerField, hi, Bind.bind, Pure.pure, Except.bind, Except.pure] <;>
+      rfl
+  have hExpr : DepthDerivesExpr (balanceProgram lang) m f
+      (.property (.local (if lang == .ts then "this" else "self"))
+        (if lang == .ts then "#busy" else "_busy")) ⟨m, .ok (.bool false)⟩ 1 :=
+    .property (.localRead hLocal) hRead
+  exact .ifFalse hExpr rfl .empty
+
+/-- Safe signed amounts have an exact entry equation even for an arbitrary
+    preheap. Actual method provenance and the three step branches remain
+    separate obligations; this theorem concludes no successful verdict. -/
+theorem targetStep_balance_entry (lang : TargetLang) (m : TargetMachine) {n : Int}
+    (hn : -Harmonia.Applications.Kadmos.S ≤ n ∧ n ≤ Harmonia.Applications.Kadmos.S) :
+    targetStep (balanceProgram lang) m (canonicalDebitRequest lang n) = (do
+      let result ← evalExpr 100 (balanceProgram lang)
+        (debitCallEntry lang m n).1 (debitCallEntry lang m n).2 (debitCallExpression lang)
+      match result.result with
+      | .ok verdict => pure ⟨result.machine, verdict⟩
+      | .error e => throw (.sourceException e)) :=
+  targetStepWithFuel_eq_debitEntry (balanceProgram_lang lang) (signed_natAbs hn)
 
 end Harmonia.Applications.Kadmos.Generated

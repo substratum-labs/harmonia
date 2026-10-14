@@ -1345,6 +1345,58 @@ termination_by rank
 decreasing_by all_goals omega
 end
 
+/-- Once provided arguments are bound, invocation is exactly execution of
+    the stored body followed by its control translation. Body success is not
+    assumed, and no additional fuel edge occurs at `callClosure`. -/
+theorem callClosure_eq_of_provided {program m ref closure values final ff rank k}
+    (hc : closureAt m ref = .ok closure)
+    (hp : DepthBindsProvided program m (closureFrame closure) closure.params
+      closure.pythonDefaults values final ff rank)
+    (hk : rank < k) :
+    callClosure k program m ref values = (do
+      let body ← execStmt k program final ff closure.body
+      closureResult program.lang body) := by
+  simp only [callClosure, hc, Bind.bind, Except.bind]
+  change (do
+    let bindings ← bindCallParams k program m (closureFrame closure)
+      closure.params closure.pythonDefaults values
+    match bindings.result with
+    | .error e => pure ⟨bindings.machine, .error e⟩
+    | .ok _ => do
+      let result ← execStmt k program bindings.machine bindings.frame closure.body
+      closureResult program.lang result : Except TargetError ExprOutcome) = _
+  simp only [bindProvided_adequate hp hk, Bind.bind, Pure.pure, Except.bind, Except.pure]
+
+/-- Peel only the reached callee/argument/binding phases from an actual stored
+    closure call. The unknown parsed body and all its outcomes remain on the
+    RHS; its recursion-depth obligation is separate from these phases. -/
+theorem evalStoredCall_eq
+    {program m f callee args middle bound ref values closure final ff re ra rp k}
+    (he : DepthDerivesExpr program m f callee ⟨middle, .ok (.closure ref)⟩ re)
+    (ha : DepthDerivesArgs program middle f args ⟨bound, .ok values⟩ ra)
+    (hc : closureAt bound ref = .ok closure)
+    (hp : DepthBindsProvided program bound (closureFrame closure) closure.params
+      closure.pythonDefaults values final ff rp)
+    (hke : re < k) (hka : ra < k) (hkp : rp < k) :
+    evalExpr (k + 1) program m f (.call callee args) = (do
+      let body ← execStmt k program final ff closure.body
+      closureResult program.lang body) := by
+  simp only [evalExpr, evalExpr_adequate he hke, evalArgs_adequate ha hka,
+    Bind.bind, Pure.pure, Except.bind, Except.pure]
+  exact callClosure_eq_of_provided hc hp hkp
+
+/-- Method access allocates an actual receiver-bound copy of a stored closure;
+    object/cell allocation in the caller does not become a helper primitive. -/
+theorem readCheckerMethod_bound {lang m name error methodRef method}
+    (hf : readCheckerField m name = .error error)
+    (hm : m.classMethods.lookup name = some methodRef)
+    (hc : closureAt m methodRef = .ok method) :
+    readPropertyValue lang m (.object m.checkerRef) name =
+      .ok ⟨(allocClosure m { method with receiver := some m.checkerRef }).1,
+        .ok (.closure m.nextClosure)⟩ := by
+  simp [readPropertyValue, hf, hm, hc, allocClosure, Functor.map, Except.map]
+  rfl
+
 /-- Adequacy forces any two supported paths of the same expression to have
     the same result, even if their derivation ranks differ. -/
 theorem DepthDerivesExpr.deterministic {program m f expr out₁ out₂ r₁ r₂}

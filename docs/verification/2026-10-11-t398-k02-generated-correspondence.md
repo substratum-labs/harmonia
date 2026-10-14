@@ -809,3 +809,45 @@ The five universal declarations `targetConstruct_sound`, `step_guard_reject`, `s
 Independent physical read-only `codex exec` review used **gpt-6.1-sol/medium**, session `01a13918-bf9d-7f90-abd0-1a9a10d54498`, exit 0. Verdict before repair: **REVISE**, zero Critical, one Important, zero Minor. It found that ordinary expression syntax admitted TS optional receiver chains as writable property/index targets, including `a?.b.c = true;`. The owner reproduced four kernel failures (property, index, call receiver chain and full assignment certificate), added the independent writable-chain grammar/check/soundness, and observed all four GREEN. Three positive kernel checks retain optional reads, index-key optional reads and call-argument optional reads; a declarative theorem excludes the invalid target. The fresh fifteen-command suite above then passed on the repaired six postimages. No new reviewer ACCEPT verdict is inferred from the owner's repair checks. No second review was dispatched for this test-backed repair.
 
 Review limitations are resolved as follows: the previously pending portable listing and receipt are now refreshed from the repaired strict scan, with exactly 8,707 unique entries and dependency-set checks; emitted runtime/hosted Linux evidence remains unverified for this checkpoint; whole-source grammar and universal correspondence remain required open gates. These are not waived requirements or deferred minor findings. The repaired source postimages were held fixed through final verification. Existing Foundation audit reports 52 theorems and observed `[propext, Quot.sound]`; historical World compatibility reports 9,749 theorems / 13,541 declarations and observed/allowed `[propext, Quot.sound, Classical.choice]` separately. Inventory remains 21 product modules / 37 test-audit modules / 64 certified closure modules / 28 test targets / 33 World inventory modules.
+
+## Stored-body and reached step-prefix equations — 2026-10-14
+
+**T-398 and Tasks 2A/2B/3/4 remain IN_PROGRESS.** Continuation from local property checkpoint `03aed98bd3feecf30943db0dba94b941f3688d03`, in the same isolated branch/worktree. No push, PR merge or unrelated-worktree modification is part of this checkpoint.
+
+`callClosure_eq_of_provided` and `evalStoredCall_eq` peel actual callee/argument/provided-parameter derivations from invocation, preserving the unknown stored body, all body control/error outcomes and the executor's exact depth edges. `callClosure` adds no fuel decrement. These equations have no body-success premise or conclusion. Primitive checker method binding allocates the actual receiver-bound closure.
+
+Closed kernel certificates establish actual prepared constructor lookup for both languages, exclude the getter fallback, and certify qualified name and the single source parameter/default. Symbolic source-bound allocation plus callee/argument/binding paths then prove `targetConstruct_balance_body` for every bounded b: the canonical target constructor equals execution of the actual stored constructor body at depth 99, with exact fresh caller/parameter cells, captures and receiver. Reset/helper/body success, HeapWF preservation and BalanceRep of the final heap remain open.
+
+`TargetSemantics` appends the physical canonical DEBIT payload/request/cell recipe, call expression and `targetStepWithFuel_eq_debitEntry`. Every prior declaration is byte-preserved. `targetStep_balance_entry` covers all safe signed n in both languages, leaves the actual generated step call on the RHS, and preserves source exceptions/outer target errors. It concludes no successful verdict and requires no fabricated preheap representation.
+
+The prepared actual `step` closure's first busy-check statement is selected together with its untouched throw branch and remainder. A small closed kernel prefix check plus generic structural inversion proves the exact source-bound AST decomposition and excludes selector fallbacks. `balanceStep_idle_prefix` proves the reached idle branch at rank 2 from explicit receiver/idle preconditions; retained tests derive unfueled runs and execution at depth 3. This is the busy prefix only: it does not establish constructor preservation of the step method store or the amount guard/effect/bounds/invariant/finalizer paths.
+
+RED interface probes for stored calls, actual constructor lookup/body entry, canonical DEBIT entry and source step prefix failed before implementation. GREEN production/test roots are included below. Several coarse prefix reductions were deliberately interrupted with owned CLI processes; private evaluator checks were diagnostics, and separate private TS/Python kernel probes completed. None of those interruptions or evaluator outputs is a universal execution proof or an impossibility result. Final evidence is the repaired certified production/test roots and strict scan below. No private IO/metaprogram probe is imported or staged.
+
+Final strict Generated scan: **8,759 theorems / 12,041 declarations**, observed [propext, Quot.sound], allowed [propext, Quot.sound]. Exactly 8,759 unique portable theorem entries were extracted and every dependency set checked. Zero sorry/admit/sorryAx/custom axiom/Classical.choice in the slice; no policy weakening or toolchain upgrade. Historical World compatibility reports 9,819 / 13,643, observed [propext, Quot.sound, Classical.choice], allowed [propext, Quot.sound, Classical.choice], separately. Foundation gates passed with their existing policy unchanged. Emitted artifacts, compiler pin and runtime assumptions are unchanged; emitted native-runtime and hosted Linux checks were not rerun or inferred.
+
+Nineteen final owner CLI commands ran serially (one Lake build active at a time); heavy TS/Python witnesses were built individually before aggregate roots. Every command exited 0.
+
+| Command | Exit |
+| --- | ---: |
+| `lake build` | 0 |
+| `lake build kadmosGeneratedK02SimulationTest` | 0 |
+| `lake build HarmoniaTests.KadmosGeneratedK02ConstructorProofTS` | 0 |
+| `lake build HarmoniaTests.KadmosGeneratedK02ConstructorProofPython` | 0 |
+| `lake build kadmosGeneratedK02ConstructorProofTest` | 0 |
+| `lake build HarmoniaTests.KadmosGeneratedK02BalanceStepProofCases` | 0 |
+| `lake build HarmoniaTests.KadmosGeneratedK02BalanceStepProofTS` | 0 |
+| `lake build HarmoniaTests.KadmosGeneratedK02BalanceStepProofPython` | 0 |
+| `lake build kadmosGeneratedK02BalanceStepProofTest` | 0 |
+| `lake build kadmosGeneratedK02SemanticsTest` | 0 |
+| `lake build kadmosGeneratedK02BalanceTSStepTest` | 0 |
+| `lake build foundationsTest foundationsAudit foundationsAuditRejection` | 0 |
+| `lake build kadmosGeneratedK02Audit` | 0 |
+| `python3 scripts/check_kadmos_generated_k02_audit.py` | 0 |
+| `python3 scripts/test_kadmos_generated_k02_audit.py` | 0 |
+| `python3 scripts/check_kadmos_generated_k02_artifacts.py` | 0 |
+| `python3 scripts/test_kadmos_generated_k02_artifacts.py` | 0 |
+| `lake build kadmosGeneratedK02AuditRejection` | 0 |
+| `lake build kadmosWorldAudit` | 0 |
+
+`targetConstruct_sound`, `step_guard_reject`, `step_accept`, `step_bounds_reject` and `k02_balance_one_call` remain open, as do independent checked whole-source admission and full reached-path/provenance obligations. No placeholder declaration, weakened universal theorem or fake correspondence target is added. This is a partial prerequisite checkpoint, not Stage 3c completion or merge readiness. Independent physical read-only `codex exec` review used **gpt-6.1-sol/medium**, session `01a13975-218d-7aa2-a1c1-e401fd7b11c6`, exit 0: **ACCEPT for this local partial checkpoint / REJECT Stage 3c completion**, zero Critical, Important or Minor findings. It checked source/spec/plan, byte preservation, forbidden tokens, all nineteen receipt logs, and exact portable-list/log dependency equality (8,759 unique entries). It ran no Lean/Lake/builds, runtime or network checks; serial execution and build-time postimage identity remain owner evidence. The six frozen source hashes are unchanged through verification/review. No code repair was requested. Native runtime, hosted Linux, checked whole-source admission, full constructor/branch paths and universal correspondence remain unestablished here.

@@ -80,3 +80,36 @@ example (lang : TargetLang) {b : Int}
 
 #print axioms balancePreparation_heapWF
 #print axioms balancePreparation_frameWF
+
+-- Method provenance comes from the executed canonical module/class prefix.
+theorem kadmos_generated_prepared_constructor_lookup (lang : TargetLang) :
+    (balanceConstructorLookup lang).isSome = true :=
+  balanceConstructorLookup_total lang
+
+theorem kadmos_generated_prepared_constructor_shape (lang : TargetLang) :
+    readCheckerField (balancePreparation lang).1 (balanceConstructorName lang) =
+      .error (.unboundLocal (balanceConstructorName lang)) ∧
+    (balanceStoredConstructor lang).2.params =
+      [⟨balanceConstructorParam lang, some .null⟩] ∧
+    (balanceStoredConstructor lang).2.qualifiedName =
+      "WorldChecker." ++ balanceConstructorName lang :=
+  balanceStoredConstructor_shape lang
+
+#print axioms kadmos_generated_prepared_constructor_lookup
+#print axioms kadmos_generated_prepared_constructor_shape
+
+-- Every bounded seed reaches this actual stored body at depth 99.
+-- The equation does not assume or conclude body/constructor success.
+theorem kadmos_generated_constructor_body_all_balances (lang : TargetLang) {b : Int}
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S) :
+    targetConstruct (balanceProgram lang) (canonicalBalanceSeed lang b) = (do
+      let body ← execStmt 99 (balanceProgram lang)
+        (balanceConstructorBodyEntry lang b).1 (balanceConstructorBodyEntry lang b).2
+        (balanceStoredConstructor lang).2.body
+      let result ← closureResult lang body
+      match result.result with
+      | .ok _ => pure result.machine
+      | .error e => throw (.sourceException e)) :=
+  targetConstruct_balance_body lang hb
+
+#print axioms kadmos_generated_constructor_body_all_balances

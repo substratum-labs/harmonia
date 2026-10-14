@@ -818,3 +818,31 @@ theorem kadmos_generated_property_assignment_sound {program m f receiver name va
   execPropertyAssign_sound hr hv he
 
 #print axioms kadmos_generated_property_assignment_sound
+
+-- Body success is deliberately not a premise of these invocation equations.
+theorem kadmos_generated_closure_body_equation
+    {program m ref closure values final ff rank k}
+    (hc : closureAt m ref = .ok closure)
+    (hp : DepthBindsProvided program m (closureFrame closure) closure.params
+      closure.pythonDefaults values final ff rank)
+    (hk : rank < k) :
+    callClosure k program m ref values = (do
+      let body ← execStmt k program final ff closure.body
+      closureResult program.lang body) :=
+  callClosure_eq_of_provided hc hp hk
+
+theorem kadmos_generated_stored_call_body_equation
+    {program m f callee args middle bound ref values closure final ff re ra rp k}
+    (he : DepthDerivesExpr program m f callee ⟨middle, .ok (.closure ref)⟩ re)
+    (ha : DepthDerivesArgs program middle f args ⟨bound, .ok values⟩ ra)
+    (hc : closureAt bound ref = .ok closure)
+    (hp : DepthBindsProvided program bound (closureFrame closure) closure.params
+      closure.pythonDefaults values final ff rp)
+    (hke : re < k) (hka : ra < k) (hkp : rp < k) :
+    evalExpr (k + 1) program m f (.call callee args) = (do
+      let body ← execStmt k program final ff closure.body
+      closureResult program.lang body) :=
+  evalStoredCall_eq he ha hc hp hke hka hkp
+
+#print axioms kadmos_generated_closure_body_equation
+#print axioms kadmos_generated_stored_call_body_equation
