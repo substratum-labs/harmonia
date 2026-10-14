@@ -742,3 +742,79 @@ theorem kadmos_generated_builtin_invalid_arity {lang m} :
       .error (.unsupportedHostPrimitive .jsIsSafeInteger) := by rfl
 
 #print axioms kadmos_generated_property_method_allocates
+
+-- Parsed constructors publish through a receiver, not an ideal field macro.
+theorem kadmos_generated_property_assignment_depth {program m f name ref final}
+    (hr : localValue m f "self" = .ok (.object ref))
+    (hw : (if ref == m.checkerRef then writeCheckerField m name (.bool true)
+      else writeOwn m ref name (.bool true)) = .ok final) :
+    DepthDerivesStmt program m f
+      (.assign (.property (.local "self") name) (.bool true))
+      ⟨final, f, .normal⟩ 1 :=
+  .assignProperty (.localRead hr) (.bool true) hw
+
+theorem kadmos_generated_property_assignment_adequate {program m f name ref final}
+    (hr : localValue m f "self" = .ok (.object ref))
+    (hw : (if ref == m.checkerRef then writeCheckerField m name (.bool true)
+      else writeOwn m ref name (.bool true)) = .ok final) :
+    execStmt 2 program m f
+      (.assign (.property (.local "self") name) (.bool true)) =
+        .ok ⟨final, f, .normal⟩ :=
+  execStmt_adequate (kadmos_generated_property_assignment_depth hr hw) (by decide)
+
+theorem kadmos_generated_property_assignment_runs {program m f name ref final}
+    (hr : localValue m f "self" = .ok (.object ref))
+    (hw : (if ref == m.checkerRef then writeCheckerField m name (.bool true)
+      else writeOwn m ref name (.bool true)) = .ok final) :
+    StmtRuns program m f
+      (.assign (.property (.local "self") name) (.bool true))
+      ⟨final, f, .normal⟩ :=
+  stmt_path_runs (kadmos_generated_property_assignment_depth hr hw)
+
+theorem kadmos_generated_property_assignment_busy_slot {program m f receiver flag}
+    (hr : localValue m f receiver = .ok (.object m.checkerRef)) :
+    DepthDerivesStmt program m f
+      (.assign (.property (.local receiver)
+        (if program.lang == .ts then "#busy" else "_busy")) (.bool flag))
+      ⟨{ m with checker := { m.checker with busy := flag } }, f, .normal⟩ 1 := by
+  apply DepthDerivesStmt.assignProperty (.localRead hr) (.bool flag)
+  cases program.lang <;> simp [writeCheckerField]
+
+theorem kadmos_generated_property_assignment_busy_slot_adequate {program m f receiver flag}
+    (hr : localValue m f receiver = .ok (.object m.checkerRef)) :
+    execStmt 2 program m f
+      (.assign (.property (.local receiver)
+        (if program.lang == .ts then "#busy" else "_busy")) (.bool flag)) =
+      .ok ⟨{ m with checker := { m.checker with busy := flag } }, f, .normal⟩ :=
+  execStmt_adequate (kadmos_generated_property_assignment_busy_slot hr) (by decide)
+
+theorem kadmos_generated_property_assignment_receiver_error {program m f receiver expr error rank}
+    (hr : DepthDerivesExpr program m f receiver ⟨m, .error error⟩ rank) :
+    DepthDerivesStmt program m f (.assign (.property receiver "#busy") expr)
+      ⟨m, f, .raised error⟩ (1 + rank) :=
+  .assignPropertyReceiverRaised hr
+
+theorem kadmos_generated_property_assignment_rhs_error {program m f receiver base expr error rr rv}
+    (hr : DepthDerivesExpr program m f receiver ⟨m, .ok base⟩ rr)
+    (hv : DepthDerivesExpr program m f expr ⟨m, .error error⟩ rv) :
+    DepthDerivesStmt program m f (.assign (.property receiver "field") expr)
+      ⟨m, f, .raised error⟩ (1 + max rr rv) :=
+  .assignPropertyValueRaised hr hv
+
+theorem kadmos_generated_property_assignment_invalid_receiver {program m f} :
+    DepthDerivesStmt program m f
+      (.assign (.property (.bool false) "field") (.bool true))
+      ⟨m, f, .raised (.exception "TypeError" "invalid property assignment")⟩ 1 :=
+  .assignPropertyInvalid (.bool false) (.bool true) trivial
+
+#print axioms kadmos_generated_property_assignment_runs
+#print axioms kadmos_generated_property_assignment_busy_slot_adequate
+
+theorem kadmos_generated_property_assignment_sound {program m f receiver name value out k}
+    (hr : ScalarSyntax receiver) (hv : ScalarSyntax value)
+    (he : execStmt k program m f (.assign (.property receiver name) value) = .ok out) :
+    ∃ rank, DepthDerivesStmt program m f (.assign (.property receiver name) value) out rank ∧
+      rank < k :=
+  execPropertyAssign_sound hr hv he
+
+#print axioms kadmos_generated_property_assignment_sound

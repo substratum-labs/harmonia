@@ -14,6 +14,7 @@ inductive StmtCertificate where
   | doExpr (exprSpan : SourceSpan)
   | localBinding (exprSpan : SourceSpan)
   | augmentLocal (exprSpan : SourceSpan)
+  | assignment (targetSpan valueSpan : SourceSpan)
   | ifThen (condSpan bodySpan : SourceSpan) (body : StmtCertificate)
   | ifThenIndented (condSpan bodySpan : SourceSpan)
       (indent : String) (body : StmtCertificate)
@@ -66,6 +67,13 @@ def validateStmtCertificate (lang : TargetLang) (source : String)
            | .ts => span.text source == exprSpan.text source ++ ";"
            | .python => span.text source == exprSpan.text source) &&
           validateFunctionExpr lang (exprSpan.text source) value
+    | .assign target value, .assignment targetSpan valueSpan =>
+        spanWithin span targetSpan && spanWithin span valueSpan &&
+          targetSpan.stop ≤ valueSpan.start &&
+          span.text source == targetSpan.text source ++ " = " ++
+            valueSpan.text source ++ statementTerminator lang &&
+          validateAssignmentTarget lang (targetSpan.text source) target &&
+          validateFunctionExpr lang (valueSpan.text source) value
     | .letLocal name mutable value, .localBinding exprSpan =>
         lang == .ts && spanWithin span exprSpan &&
           expressionIdentifierCheck .ts name &&
@@ -114,6 +122,7 @@ theorem StmtDerives.syntax {lang control source span stmt}
   cases h with
   | ofSyntax _ hSyntax _ => exact hSyntax
 
+set_option maxHeartbeats 2000000 in
 theorem validateStmtCertificate_sound {lang source span stmt cert}
     (h : validateStmtCertificate lang source span stmt cert = true) :
     StmtDerives lang (statementControl stmt) source span stmt := by
@@ -229,6 +238,20 @@ theorem validateStmtCertificate_sound {lang source span stmt cert}
               simp at hSource
               rw [hSource]
               exact .pythonDo (validateFunctionExpr_sound hValue)
+      | _ => simp [validateStmtCertificate] at h
+  | assignment targetSpan valueSpan =>
+      cases stmt with
+      | assign target value =>
+          simp only [validateStmtCertificate, spanWithin, Bool.and_eq_true,
+            beq_iff_eq] at h
+          rcases h with ⟨⟨⟨hBoundsStart, hBoundsStop⟩, hLayout⟩,
+            ⟨⟨⟨⟨⟨hTargetWithin, hValueWithin⟩, hOrder⟩, hSource⟩,
+              hTarget⟩, hValue⟩⟩
+          refine StmtDerives.ofSyntax
+            ⟨(by simpa using hBoundsStart), (by simpa using hBoundsStop)⟩ ?_ hLayout
+          rw [hSource]
+          exact .assignment (validateAssignmentTarget_sound hTarget)
+            (validateFunctionExpr_sound hValue)
       | _ => simp [validateStmtCertificate] at h
   | localBinding exprSpan =>
       cases stmt with

@@ -35,6 +35,8 @@ inductive ResumeFrame where
   | stmtSequence (rest : TargetStmt)
   | stmtReturn | stmtThrow
   | stmtAssignField (name : String)
+  | stmtAssignPropertyReceiver (name : String) (value : TargetExpr)
+  | stmtAssignPropertyValue (receiver : TargetValue) (name : String)
   | stmtLetLocal (name : String) (mutable : Bool)
   | stmtAssignLocal (name : String) (globals : List (String × CellRef))
   | stmtDoExpr
@@ -116,6 +118,12 @@ def DirectHostDispatch (id : BuiltinId) (receiver : Option TargetValue) : Prop :
   match receiver with
   | none => id ≠ .next ∧ id ≠ .tuple ∧ id ≠ .list
   | some _ => id ≠ .arrayFind ∧ id ≠ .arraySome ∧ id ≠ .arrayMap
+
+/-- Invalid property assignment still evaluates its RHS before reporting
+    the source TypeError. This is a tag predicate, not an executor premise. -/
+def NonObjectValue : TargetValue → Prop
+  | .object _ => False
+  | _ => True
 
 /-- No evaluator or depth budget occurs in a transition premise. The binary
     primitive is the existing basic operation, never a generated helper body.
@@ -277,6 +285,27 @@ inductive SmallStep (program : TargetProgram) : TargetConfig → TargetConfig �
   | stmtAssignLocalRaised {m f c name globals value} :
       SmallStep program ⟨m, f, .exit (.raised value), .stmtAssignLocal name globals :: c⟩
         ⟨m, f, .exit (.raised value), c⟩
+  | stmtAssignPropertyEnter {m f c receiver name expr} :
+      SmallStep program ⟨m, f, .exec (.assign (.property receiver name) expr), c⟩
+        ⟨m, f, .eval receiver, .stmtAssignPropertyReceiver name expr :: c⟩
+  | stmtAssignPropertyReceiverFinish {m f c name expr value} :
+      SmallStep program ⟨m, f, .value value, .stmtAssignPropertyReceiver name expr :: c⟩
+        ⟨m, f, .eval expr, .stmtAssignPropertyValue value name :: c⟩
+  | stmtAssignPropertyReceiverRaised {m f c name expr error} :
+      SmallStep program ⟨m, f, .exit (.raised error), .stmtAssignPropertyReceiver name expr :: c⟩
+        ⟨m, f, .exit (.raised error), c⟩
+  | stmtAssignPropertyValueRaised {m f c name receiver error} :
+      SmallStep program ⟨m, f, .exit (.raised error), .stmtAssignPropertyValue receiver name :: c⟩
+        ⟨m, f, .exit (.raised error), c⟩
+  | stmtAssignPropertyFinish {m final f c name ref value}
+      (hWrite : (if ref == m.checkerRef then writeCheckerField m name value
+        else writeOwn m ref name value) = .ok final) :
+      SmallStep program ⟨m, f, .value value, .stmtAssignPropertyValue (.object ref) name :: c⟩
+        ⟨final, f, .exit .normal, c⟩
+  | stmtAssignPropertyInvalid {m f c name receiver value}
+      (hTag : NonObjectValue receiver) :
+      SmallStep program ⟨m, f, .value value, .stmtAssignPropertyValue receiver name :: c⟩
+        ⟨m, f, .exit (.raised (.exception "TypeError" "invalid property assignment")), c⟩
   | stmtDoExprEnter {m f c expr} :
       SmallStep program ⟨m, f, .exec (.doExpr expr), c⟩
         ⟨m, f, .eval expr, .stmtDoExpr :: c⟩
@@ -595,6 +624,29 @@ inductive DepthDerivesStmt (program : TargetProgram) :
       (hExpr : DepthDerivesExpr program m f expr ⟨final, .error value⟩ rank) :
       DepthDerivesStmt program m f (.assign (.local name) expr)
         ⟨final, f, .raised value⟩ (1 + rank)
+  | assignProperty {m f receiver name expr middle written final ref value rr rv}
+      (hReceiver : DepthDerivesExpr program m f receiver ⟨middle, .ok (.object ref)⟩ rr)
+      (hValue : DepthDerivesExpr program middle f expr ⟨written, .ok value⟩ rv)
+      (hWrite : (if ref == written.checkerRef then writeCheckerField written name value
+        else writeOwn written ref name value) = .ok final) :
+      DepthDerivesStmt program m f (.assign (.property receiver name) expr)
+        ⟨final, f, .normal⟩ (1 + max rr rv)
+  | assignPropertyReceiverRaised {m f receiver name expr final error rank}
+      (hReceiver : DepthDerivesExpr program m f receiver ⟨final, .error error⟩ rank) :
+      DepthDerivesStmt program m f (.assign (.property receiver name) expr)
+        ⟨final, f, .raised error⟩ (1 + rank)
+  | assignPropertyValueRaised {m f receiver name expr middle final base error rr rv}
+      (hReceiver : DepthDerivesExpr program m f receiver ⟨middle, .ok base⟩ rr)
+      (hValue : DepthDerivesExpr program middle f expr ⟨final, .error error⟩ rv) :
+      DepthDerivesStmt program m f (.assign (.property receiver name) expr)
+        ⟨final, f, .raised error⟩ (1 + max rr rv)
+  | assignPropertyInvalid {m f receiver name expr middle final base value rr rv}
+      (hReceiver : DepthDerivesExpr program m f receiver ⟨middle, .ok base⟩ rr)
+      (hValue : DepthDerivesExpr program middle f expr ⟨final, .ok value⟩ rv)
+      (hTag : NonObjectValue base) :
+      DepthDerivesStmt program m f (.assign (.property receiver name) expr)
+        ⟨final, f, .raised (.exception "TypeError" "invalid property assignment")⟩
+        (1 + max rr rv)
   | doExpr {m f expr final value rank}
       (hExpr : DepthDerivesExpr program m f expr ⟨final, .ok value⟩ rank) :
       DepthDerivesStmt program m f (.doExpr expr) ⟨final, f, .normal⟩ (1 + rank)
@@ -812,6 +864,21 @@ theorem stmt_path_runs_cont {program machine frame stmt outcome rank}
   | assignLocalRaised he =>
       exact ((Runs.single .stmtAssignLocalEnter).trans (expr_path_runs_cont he _)).trans
         (.single .stmtAssignLocalRaised)
+  | assignProperty hr hv hw =>
+      exact ((((Runs.single .stmtAssignPropertyEnter).trans
+        (expr_path_runs_cont hr _)).trans (.single .stmtAssignPropertyReceiverFinish)).trans
+          (expr_path_runs_cont hv _)).trans (.single (.stmtAssignPropertyFinish hw))
+  | assignPropertyReceiverRaised hr =>
+      exact ((Runs.single .stmtAssignPropertyEnter).trans
+        (expr_path_runs_cont hr _)).trans (.single .stmtAssignPropertyReceiverRaised)
+  | assignPropertyValueRaised hr hv =>
+      exact ((((Runs.single .stmtAssignPropertyEnter).trans
+        (expr_path_runs_cont hr _)).trans (.single .stmtAssignPropertyReceiverFinish)).trans
+          (expr_path_runs_cont hv _)).trans (.single .stmtAssignPropertyValueRaised)
+  | assignPropertyInvalid hr hv ht =>
+      exact ((((Runs.single .stmtAssignPropertyEnter).trans
+        (expr_path_runs_cont hr _)).trans (.single .stmtAssignPropertyReceiverFinish)).trans
+          (expr_path_runs_cont hv _)).trans (.single (.stmtAssignPropertyInvalid ht))
   | doExpr he =>
       exact ((Runs.single .stmtDoExprEnter).trans (expr_path_runs_cont he _)).trans
         (.single .stmtDoExprFinish)
@@ -1137,6 +1204,39 @@ theorem execStmt_adequate {program machine frame stmt outcome rank k}
           have hk : r < k := by omega
           simp [execStmt, evalExpr_adequate he hk, hl, ha, allocCell,
             Bind.bind, Pure.pure, Except.bind, Except.pure]
+  | @assignProperty m f receiver name expr middle written final ref value rr rv hReceiver hValue hWrite =>
+      cases k with
+      | zero => exact False.elim (by omega)
+      | succ k =>
+          have hrr : rr < k := by omega
+          have hrv : rv < k := by omega
+          simp only [execStmt, evalExpr_adequate hReceiver hrr,
+            evalExpr_adequate hValue hrv, Bind.bind, Except.bind, Pure.pure, Except.pure]
+          split at hWrite <;> simp_all
+  | @assignPropertyReceiverRaised m f receiver name expr final error rank hReceiver =>
+      cases k with
+      | zero => exact False.elim (by omega)
+      | succ k =>
+          have hk : rank < k := by omega
+          simp [execStmt, evalExpr_adequate hReceiver hk,
+            Bind.bind, Except.bind, Pure.pure, Except.pure]
+  | @assignPropertyValueRaised m f receiver name expr middle final base error rr rv hReceiver hValue =>
+      cases k with
+      | zero => exact False.elim (by omega)
+      | succ k =>
+          have hrr : rr < k := by omega
+          have hrv : rv < k := by omega
+          simp [execStmt, evalExpr_adequate hReceiver hrr,
+            evalExpr_adequate hValue hrv, Bind.bind, Except.bind, Pure.pure, Except.pure]
+  | @assignPropertyInvalid m f receiver name expr middle final base value rr rv hReceiver hValue hTag =>
+      cases k with
+      | zero => exact False.elim (by omega)
+      | succ k =>
+          have hrr : rr < k := by omega
+          have hrv : rv < k := by omega
+          simp only [execStmt, evalExpr_adequate hReceiver hrr,
+            evalExpr_adequate hValue hrv, Bind.bind, Except.bind, Pure.pure, Except.pure]
+          cases base <;> simp_all [NonObjectValue]
   | @ifTrue m f cond yes no middle value out rc rb hc ht hb
   | @ifFalse m f cond yes no middle value out rc rb hc ht hb =>
       cases k with
@@ -1391,6 +1491,63 @@ theorem evalProperty_sound {program m f receiver key out k}
               | ok value =>
                   simp only [evalExpr, hv, Bind.bind, Pure.pure, Except.bind, Except.pure] at he
                   exact ⟨1 + r, .property hd he, by omega⟩
+
+/-- Reverse adequacy for ordered property assignment with scalar children.
+    Outer executor errors remain errors; successful source exceptions retain
+    the heap produced by the last evaluated child. -/
+theorem execPropertyAssign_sound {program m f receiver name value out k}
+    (hr : ScalarSyntax receiver) (hv : ScalarSyntax value)
+    (he : execStmt k program m f (.assign (.property receiver name) value) = .ok out) :
+    ∃ rank, DepthDerivesStmt program m f (.assign (.property receiver name) value) out rank ∧
+      rank < k := by
+  cases k with
+  | zero => simp [execStmt] at he
+  | succ k =>
+      cases er : evalExpr k program m f receiver with
+      | error e => simp [execStmt, er, Bind.bind, Except.bind] at he
+      | ok base =>
+          obtain ⟨rr, dr, br⟩ := evalScalar_sound hr er
+          rcases base with ⟨middle, base⟩
+          cases base with
+          | error e =>
+              simp only [execStmt, er, Bind.bind, Pure.pure, Except.bind,
+                Except.pure, Except.ok.injEq] at he
+              cases he
+              exact ⟨1 + rr, .assignPropertyReceiverRaised dr, by omega⟩
+          | ok base =>
+              cases ev : evalExpr k program middle f value with
+              | error e => simp [execStmt, er, ev, Bind.bind, Except.bind] at he
+              | ok rhs =>
+                  obtain ⟨rv, dv, bv⟩ := evalScalar_sound hv ev
+                  rcases rhs with ⟨written, rhs⟩
+                  cases rhs with
+                  | error e =>
+                      simp only [execStmt, er, ev, Bind.bind, Pure.pure, Except.bind,
+                        Except.pure, Except.ok.injEq] at he
+                      cases he
+                      exact ⟨1 + max rr rv, .assignPropertyValueRaised dr dv, by omega⟩
+                  | ok rhs =>
+                      cases base with
+                      | object ref =>
+                          cases ew : (if ref == written.checkerRef then
+                            writeCheckerField written name rhs else writeOwn written ref name rhs) with
+                          | error e =>
+                              cases hc : ref == written.checkerRef <;>
+                                simp_all [execStmt, Bind.bind, Except.bind]
+                          | ok final =>
+                              have ho : out = ⟨final, f, .normal⟩ := by
+                                cases hc : ref == written.checkerRef <;>
+                                  simp only [hc, Bool.false_eq_true,
+                                    ↓reduceIte] at ew <;>
+                                  simpa [execStmt, er, ev, hc, ew, Bind.bind, Pure.pure,
+                                    Except.bind, Except.pure] using he.symm
+                              subst out
+                              exact ⟨1 + max rr rv, .assignProperty dr dv ew, by omega⟩
+                      | _ =>
+                          simp only [execStmt, er, ev, Bind.bind, Pure.pure, Except.bind,
+                            Except.pure, Except.ok.injEq] at he
+                          cases he
+                          exact ⟨1 + max rr rv, .assignPropertyInvalid dr dv trivial, by omega⟩
 
 /-- Scalar syntax preserves the heap. Property reads are excluded because
     binding a generated method allocates a fresh receiver-bound closure. -/

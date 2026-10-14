@@ -806,6 +806,46 @@ private def splitLastFormat (source separator : String) :
       some (joinSourceWith separator (first :: rest).reverse, last)
   | _ => none
 
+def writableReceiverChainCheck : TargetExpr → Bool
+  | .optionalProperty _ _ => false
+  | .property receiver _ | .index receiver _ | .call receiver _
+  | .nonNull receiver | .typeCast receiver _ => writableReceiverChainCheck receiver
+  | _ => true
+
+theorem writableReceiverChainCheck_sound {expr}
+    (h : writableReceiverChainCheck expr = true) : WritableReceiverChain expr := by
+  induction expr <;> simp_all [writableReceiverChainCheck, WritableReceiverChain]
+
+def validateAssignmentTarget (lang : TargetLang) (source : String) : AssignTarget → Bool
+  | .local name => expressionIdentifierCheck lang name && source == name
+  | .property receiver name => validateFunctionExpr lang source (.property receiver name) &&
+      (lang != .ts || writableReceiverChainCheck receiver)
+  | .index receiver key => validateFunctionExpr lang source (.index receiver key) &&
+      (lang != .ts || writableReceiverChainCheck receiver)
+  | .field _ | .tupleLocals _ => false
+
+theorem validateAssignmentTarget_sound {lang source target}
+    (h : validateAssignmentTarget lang source target = true) :
+    AssignmentTargetSyntax lang source target := by
+  cases target with
+  | «local» name =>
+      simp only [validateAssignmentTarget, Bool.and_eq_true, beq_iff_eq] at h
+      exact .local (expressionIdentifierCheck_sound h.1) h.2
+  | property receiver name =>
+      simp only [validateAssignmentTarget, Bool.and_eq_true] at h
+      refine .property (validateFunctionExpr_sound h.1) ?_
+      intro ht
+      have hw : writableReceiverChainCheck receiver = true := by simpa [ht] using h.2
+      exact writableReceiverChainCheck_sound hw
+  | index receiver key =>
+      simp only [validateAssignmentTarget, Bool.and_eq_true] at h
+      refine .index (validateFunctionExpr_sound h.1) ?_
+      intro ht
+      have hw : writableReceiverChainCheck receiver = true := by simpa [ht] using h.2
+      exact writableReceiverChainCheck_sound hw
+  | field name => simp [validateAssignmentTarget] at h
+  | tupleLocals names => simp [validateAssignmentTarget] at h
+
 def singleStatementCheck : TargetStmt → Bool
   | .sequence _ _ | .empty => false
   | _ => true

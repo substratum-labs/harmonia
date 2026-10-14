@@ -250,3 +250,133 @@ theorem kadmos_generated_python_certificate_owns_absolute_indent :
       (.ifThenElse (.bool true) (.sequence (.returnValue (.bool true)) .empty) .empty)
       (.ifThenIndented ⟨30,34⟩ ⟨40,51⟩ "    "
         (.final ⟨40,51⟩ (.returnExpr ⟨47,51⟩))) = false := by decide +kernel
+
+-- Constructor/reset publication assignments must derive their actual lvalues.
+theorem kadmos_generated_ts_busy_assignment_owned :
+    validateStmtCertificate .ts balanceTsSource ⟨9987,10005⟩
+      (.assign (.property (.local "this") "#busy") (.bool true))
+      (.assignment ⟨9987,9997⟩ ⟨10000,10004⟩) = true := by
+  decide +kernel
+
+theorem kadmos_generated_python_busy_assignment_owned :
+    validateStmtCertificate .python balancePySource ⟨10824,10841⟩
+      (.assign (.property (.local "self") "_busy") (.bool true))
+      (.assignment ⟨10824,10834⟩ ⟨10837,10841⟩) = true := by
+  decide +kernel
+
+theorem kadmos_generated_ts_context_assignment_owned :
+    validateStmtCertificate .ts balanceTsSource ⟨12062,12088⟩
+      (.assign (.property (.local "this") "#context") (.local "candidate"))
+      (.assignment ⟨12062,12075⟩ ⟨12078,12087⟩) = true := by
+  decide +kernel
+
+theorem kadmos_generated_python_context_assignment_owned :
+    validateStmtCertificate .python balancePySource ⟨12359,12385⟩
+      (.assign (.property (.local "self") "__context") (.local "candidate"))
+      (.assignment ⟨12359,12373⟩ ⟨12376,12385⟩) = true := by
+  decide +kernel
+
+theorem kadmos_generated_ts_assignment_wrong_private_field_rejected :
+    validateStmtCertificate .ts balanceTsSource ⟨9987,10005⟩
+      (.assign (.property (.local "this") "busy") (.bool true))
+      (.assignment ⟨9987,9997⟩ ⟨10000,10004⟩) = false := by
+  decide +kernel
+
+theorem kadmos_generated_python_assignment_wrong_receiver_rejected :
+    validateStmtCertificate .python balancePySource ⟨10824,10841⟩
+      (.assign (.property (.local "other") "_busy") (.bool true))
+      (.assignment ⟨10824,10834⟩ ⟨10837,10841⟩) = false := by
+  decide +kernel
+
+theorem kadmos_generated_assignment_child_span_alias_rejected :
+    validateStmtCertificate .ts balanceTsSource ⟨9987,10005⟩
+      (.assign (.property (.local "this") "#busy") (.bool true))
+      (.assignment ⟨9987,9997⟩ ⟨9987,9997⟩) = false := by
+  decide +kernel
+
+theorem kadmos_generated_ts_busy_assignment_derives :
+    StmtDerives .ts .function balanceTsSource ⟨9987,10005⟩
+      (.assign (.property (.local "this") "#busy") (.bool true)) :=
+  validateStmtCertificate_sound kadmos_generated_ts_busy_assignment_owned
+
+#print axioms kadmos_generated_ts_busy_assignment_derives
+
+theorem kadmos_generated_python_busy_assignment_derives :
+    StmtDerives .python .function balancePySource ⟨10824,10841⟩
+      (.assign (.property (.local "self") "_busy") (.bool true)) :=
+  validateStmtCertificate_sound kadmos_generated_python_busy_assignment_owned
+
+#print axioms kadmos_generated_python_busy_assignment_derives
+
+theorem kadmos_generated_ts_context_assignment_derives :
+    StmtDerives .ts .function balanceTsSource ⟨12062,12088⟩
+      (.assign (.property (.local "this") "#context") (.local "candidate")) :=
+  validateStmtCertificate_sound kadmos_generated_ts_context_assignment_owned
+
+#print axioms kadmos_generated_ts_context_assignment_derives
+
+theorem kadmos_generated_python_context_assignment_derives :
+    StmtDerives .python .function balancePySource ⟨12359,12385⟩
+      (.assign (.property (.local "self") "__context") (.local "candidate")) :=
+  validateStmtCertificate_sound kadmos_generated_python_context_assignment_owned
+
+#print axioms kadmos_generated_python_context_assignment_derives
+
+theorem kadmos_generated_ts_busy_assignment_raw_matches :
+    (parseTSBlock ((⟨9987,10005⟩ : SourceSpan).text balanceTsSource)).toOption =
+      some (.sequence (.assign (.property (.local "this") "#busy") (.bool true)) .empty) := by
+  decide +kernel
+
+theorem kadmos_generated_python_context_assignment_raw_matches :
+    (parsePythonBlock ((⟨12359,12385⟩ : SourceSpan).text balancePySource) 0).toOption =
+      some (.sequence (.assign (.property (.local "self") "__context")
+        (.local "candidate")) .empty) := by
+  decide +kernel
+
+-- Optional receiver chains are reads, never TS writable assignment targets.
+theorem kadmos_generated_ts_optional_property_assignment_rejected :
+    validateAssignmentTarget .ts "a?.b.c"
+      (.property (.optionalProperty (.local "a") "b") "c") = false := by
+  decide +kernel
+
+theorem kadmos_generated_ts_optional_index_assignment_rejected :
+    validateAssignmentTarget .ts "a?.b[0]"
+      (.index (.optionalProperty (.local "a") "b") (.integer 0)) = false := by
+  decide +kernel
+
+theorem kadmos_generated_ts_optional_call_assignment_rejected :
+    validateAssignmentTarget .ts "a?.b().c"
+      (.property (.call (.optionalProperty (.local "a") "b") .empty) "c") = false := by
+  decide +kernel
+
+theorem kadmos_generated_ts_optional_assignment_certificate_rejected :
+    validateStmtCertificate .ts "a?.b.c = true;" ⟨0,14⟩
+      (.assign (.property (.optionalProperty (.local "a") "b") "c") (.bool true))
+      (.assignment ⟨0,6⟩ ⟨9,13⟩) = false := by
+  decide +kernel
+
+theorem kadmos_generated_ts_optional_chain_read_retained :
+    validateFunctionExpr .ts "a?.b.c"
+      (.property (.optionalProperty (.local "a") "b") "c") = true := by
+  decide +kernel
+
+theorem kadmos_generated_ts_optional_index_key_assignment_retained :
+    validateAssignmentTarget .ts "a[b?.c]"
+      (.index (.local "a") (.optionalProperty (.local "b") "c")) = true := by
+  decide +kernel
+
+theorem kadmos_generated_ts_optional_call_argument_assignment_retained :
+    validateAssignmentTarget .ts "f(a?.b).c"
+      (.property (.call (.local "f")
+        (.sequence (.optionalProperty (.local "a") "b") .empty)) "c") = true := by
+  decide +kernel
+
+theorem kadmos_generated_ts_optional_assignment_not_grammatical :
+    ¬ AssignmentTargetSyntax .ts "a?.b.c"
+      (.property (.optionalProperty (.local "a") "b") "c") := by
+  intro h
+  cases h with
+  | property _ hWritable => exact hWritable rfl
+
+#print axioms kadmos_generated_ts_optional_assignment_not_grammatical
+#print axioms writableReceiverChainCheck_sound

@@ -773,3 +773,39 @@ The final suite used serial actual subprocesses: twelve commands exited 0, and t
 | `lake build kadmosWorldAudit` | 0 |
 
 A subsequent serial `lake env lean` interface probe exited 1 for all five absent names: `targetConstruct_sound`, `step_guard_reject`, `step_accept`, `step_bounds_reject` and `k02_balance_one_call`. This and the correspondence build are failed acceptance gates, not successful negative tests. Existing constructor/branch boundary facts remain finite evidence. No correspondence placeholder, weakened universal statement, task-complete ledger line, push or merge was added. The unfinished plan workspace is retained.
+
+## Property assignment syntax and reverse adequacy — 2026-10-13
+
+**T-398 and Tasks 2A/2B/3/4 remain IN_PROGRESS.** Physical owner resumed from `2b9997d0a7502e5b702fc7d06d597b205610c8bd` in the designated isolated `feat/t396-generated-correspondence` worktree and adopted the six modified Lean files explicitly named by Yong. No push, PR merge or unrelated-worktree change occurs in this checkpoint.
+
+The source grammar now distinguishes writable local/property/index lvalues from internal field and tuple targets. A separate declarative WritableReceiverChain premise excludes TS optional receiver chains through property/index/call/non-null/cast paths, with a structurally proved Boolean check; index keys and call arguments remain independent expressions. Because parentheses are erased by the AST, parenthesized optional receivers are conservatively excluded from this partial writable slice. Assignment certificates check complete statement spelling, language terminator, both child spans, ordering, enclosing bounds/layout, independently validated lvalue and RHS expressions. Four actual TS/Python busy/context publication spans derive their low-level property assignments; wrong receiver/private field and aliased child-span mutations are rejected. These are owned statement fragments, not whole-file checked syntax or program uniqueness.
+
+`TargetSimulation` adds ordered property assignment transitions, four ranked derivation cases, continuation runs and forward adequacy. `execPropertyAssign_sound` supplies reverse adequacy for `ScalarSyntax receiver` and `ScalarSyntax value`: every successful executor outcome has a derivation with rank below the supplied depth. Receiver-raised, RHS-raised, successful checker/own-object write and nonobject-TypeError paths retain the executor's exact order, heap, frame and control. The RHS is evaluated before invalid-receiver rejection. Outer target errors remain errors and cannot produce a successful derivation. Semantic rules contain primitive write/tag premises, not evaluator-success premises. `TargetSemantics` is unchanged.
+
+RED: actual serial `lake build kadmosGeneratedK02SimulationTest` exited 1 at line 818 with unknown `execPropertyAssign_sound`; the failed elaboration temporarily reported `sorryAx` for its dependent test. GREEN: the repaired target exits 0 and the universal scalar-property-assignment test prints `[propext, Quot.sound]`. The final strict imported-environment scan has **8,707 theorems / 11,957 declarations**, observed [propext, Quot.sound], whitelist [propext, Quot.sound]. The refreshed portable listing has exactly 8,707 distinct theorem entries and every dependency was checked against that whitelist. The six source postimages contain zero `sorry`, `admit`, `sorryAx`, custom axioms or `Classical.choice`.
+
+All fifteen final owner commands below ran as actual subprocesses, with exactly one `lake build` active at a time; each exited 0. Existing closed constructor/branch facts remain finite kernel evidence, not universal correspondence. The only replayed warning is the existing Bridge.Certificate unnecessarySimpa warning. Foundation and historical World policies remain unchanged; World may allow/report `Classical.choice` separately and is not the Generated certificate. Artifact/inventory mutations and audit rejection roots were rerun. Toolchain remains `leanprover/lean4:v4.16.0`; emitted artifacts and host contracts are unchanged. Separate JavaScript parser diagnostics rejected unparenthesized optional-chain assignment (node --check exit 1) and accepted the parenthesized receiver (exit 0); these are review reproductions, not emitted-checker runtime verification. Emitted native-runtime and hosted Linux checks were not rerun or inferred.
+
+| Command | Exit |
+| --- | ---: |
+| `lake build` | 0 |
+| `lake build kadmosGeneratedK02SourceGrammarTest` | 0 |
+| `lake build kadmosGeneratedK02SourceValidatorTest` | 0 |
+| `lake build kadmosGeneratedK02StatementCertificateTest` | 0 |
+| `lake build kadmosGeneratedK02SimulationTest` | 0 |
+| `lake build kadmosGeneratedK02ConstructorProofTest` | 0 |
+| `lake build kadmosGeneratedK02BalanceStepProofTest` | 0 |
+| `lake build foundationsTest foundationsAudit foundationsAuditRejection` | 0 |
+| `lake build kadmosGeneratedK02Audit` | 0 |
+| `python3 scripts/check_kadmos_generated_k02_audit.py` | 0 |
+| `python3 scripts/test_kadmos_generated_k02_audit.py` | 0 |
+| `python3 scripts/check_kadmos_generated_k02_artifacts.py` | 0 |
+| `python3 scripts/test_kadmos_generated_k02_artifacts.py` | 0 |
+| `lake build kadmosGeneratedK02AuditRejection` | 0 |
+| `lake build kadmosWorldAudit` | 0 |
+
+The five universal declarations `targetConstruct_sound`, `step_guard_reject`, `step_accept`, `step_bounds_reject`, and `k02_balance_one_call` remain open, along with checked whole-source admission and reached helper/loop/default semantics. No correspondence completion or merge readiness is claimed. Independent physical read-only CLI review and its test-driven repair are recorded below before this slice is committed.
+
+Independent physical read-only `codex exec` review used **gpt-6.1-sol/medium**, session `01a13918-bf9d-7f90-abd0-1a9a10d54498`, exit 0. Verdict before repair: **REVISE**, zero Critical, one Important, zero Minor. It found that ordinary expression syntax admitted TS optional receiver chains as writable property/index targets, including `a?.b.c = true;`. The owner reproduced four kernel failures (property, index, call receiver chain and full assignment certificate), added the independent writable-chain grammar/check/soundness, and observed all four GREEN. Three positive kernel checks retain optional reads, index-key optional reads and call-argument optional reads; a declarative theorem excludes the invalid target. The fresh fifteen-command suite above then passed on the repaired six postimages. No new reviewer ACCEPT verdict is inferred from the owner's repair checks. No second review was dispatched for this test-backed repair.
+
+Review limitations are resolved as follows: the previously pending portable listing and receipt are now refreshed from the repaired strict scan, with exactly 8,707 unique entries and dependency-set checks; emitted runtime/hosted Linux evidence remains unverified for this checkpoint; whole-source grammar and universal correspondence remain required open gates. These are not waived requirements or deferred minor findings. The repaired source postimages were held fixed through final verification. Existing Foundation audit reports 52 theorems and observed `[propext, Quot.sound]`; historical World compatibility reports 9,749 theorems / 13,541 declarations and observed/allowed `[propext, Quot.sound, Classical.choice]` separately. Inventory remains 21 product modules / 37 test-audit modules / 64 certified closure modules / 28 test targets / 33 World inventory modules.

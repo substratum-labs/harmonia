@@ -372,9 +372,44 @@ def suiteLinesWithin (indent bodySource : String) : Bool :=
     let significant := lines.filter pythonSignificantLine
     !significant.isEmpty && pythonSuiteHeaders significant
 
+/-- The supported TS writable receiver slice excludes optional chains through
+    postfix accesses/calls and erased casts. Parentheses are erased by the AST,
+    so parenthesized optional receivers are conservatively outside this slice.
+    Index keys and call arguments are independent expressions, not receivers. -/
+def WritableReceiverChain : TargetExpr → Prop
+  | .optionalProperty _ _ => False
+  | .property receiver _ | .index receiver _ | .call receiver _
+  | .nonNull receiver | .typeCast receiver _ => WritableReceiverChain receiver
+  | _ => True
+
+/-- Only source expressions with actual writable target syntax become lvalues.
+    Internal checker fields are not surface assignment targets. -/
+inductive AssignmentTargetSyntax : TargetLang → String → AssignTarget → Prop where
+  | local {lang source name}
+      (hName : ExpressionIdentifier lang name)
+      (hText : source = name) : AssignmentTargetSyntax lang source (.local name)
+  | property {lang source receiver name}
+      (hExpr : ExprSyntax lang source (.property receiver name))
+      (hWritable : lang = .ts → WritableReceiverChain receiver) :
+      AssignmentTargetSyntax lang source (.property receiver name)
+  | index {lang source receiver key}
+      (hExpr : ExprSyntax lang source (.index receiver key))
+      (hWritable : lang = .ts → WritableReceiverChain receiver) :
+      AssignmentTargetSyntax lang source (.index receiver key)
+
+def statementTerminator : TargetLang → String
+  | .ts => ";"
+  | .python => ""
+
 inductive StmtSyntax : TargetLang → SurfaceControl → String → TargetStmt → Prop where
   | empty (lang : TargetLang) (control : SurfaceControl) :
       StmtSyntax lang control "" .empty
+  | assignment {lang targetSource valueSource target value}
+      (hTarget : AssignmentTargetSyntax lang targetSource target)
+      (hValue : ExprSyntax lang valueSource value) :
+      StmtSyntax lang .function
+        (targetSource ++ " = " ++ valueSource ++ statementTerminator lang)
+        (.assign target value)
   | tsDo {exprSource : String} {expr : TargetExpr}
       (hExpr : ExprSyntax .ts exprSource expr) :
       StmtSyntax .ts .function (exprSource ++ ";") (.doExpr expr)
