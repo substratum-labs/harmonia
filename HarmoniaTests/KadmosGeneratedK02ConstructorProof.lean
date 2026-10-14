@@ -165,3 +165,61 @@ example (lang : TargetLang) (b : Int) :
 #print axioms balanceConstructor_reset_call_eq_body
 #print axioms balanceResetBodyEntry_snapshots
 #print axioms balanceConstructor_ts_snapshots_eq
+
+-- Six-write regression: missing or reordered allocations/field writes change
+-- this physical result for an arbitrary starting heap and initial state.
+example (m : TargetMachine) (initial : String) :
+    let final := balancePythonInitialized m initial
+    final.nextObject = m.nextObject + 2 ∧
+    final.checker.constructorSeed = none ∧ final.checker.state = initial ∧
+    final.checker.context = m.nextObject ∧ final.checker.history = m.nextObject + 1 ∧
+    final.checker.busy = false ∧ final.checker.undo = none := by
+  simp [balancePythonInitialized, allocObject]
+
+example (m : TargetMachine) (initial : String) (name : String) (ref : ClosureRef) :
+    (balancePythonInitialized m initial).classMethods.lookup name = m.classMethods.lookup name ∧
+    closureAt (balancePythonInitialized m initial) ref = closureAt m ref := ⟨rfl, rfl⟩
+
+example (b : Int) :
+    execStmt 99 (balanceProgram .python)
+      (balanceConstructorBodyEntry .python b).1 (balanceConstructorBodyEntry .python b).2
+      (balanceStoredConstructor .python).2.body =
+      execStmt 92 (balanceProgram .python)
+        (balancePythonInitialized (balanceConstructorBodyEntry .python b).1 "Ready")
+        (balanceConstructorBodyEntry .python b).2 balancePythonAfterInit :=
+  balanceConstructor_python_canonical_initialized b
+
+example (lang : TargetLang) :
+    snapshotTryCheck 4 (restStmt (restStmt (balanceStoredReset lang).2.body)) = true :=
+  balanceReset_snapshot_shape lang
+
+example (lang : TargetLang) :
+    snapshotTryCheck (if lang == .ts then 4 else 5)
+      (restStmt (balanceStepAfterBusy lang)) = true :=
+  balanceStep_snapshot_shape lang
+
+#print axioms balanceConstructor_python_initialized
+#print axioms balanceConstructorBodyEntry_python_initial
+#print axioms balanceConstructor_python_canonical_initialized
+#print axioms balancePythonInitialized_preserves_bindings
+#print axioms balanceConstructor_python_reset_call_eq_body
+#print axioms balanceConstructor_python_snapshots_eq
+#print axioms balanceReset_snapshots_eq
+#print axioms balanceStep_snapshots_eq
+#print axioms balanceReset_protected_shape
+#print axioms balanceStep_protected_shape
+#print axioms execTryCatchFinally_eq
+
+-- The actual suffix copies the canonical context to a fresh seed. Full reset
+-- execution must establish these physical receiver/host/context reads.
+example {m f b} (hr : f.receiver = some m.checkerRef)
+    (hd : localValue m f "dict" = .ok (.builtin .dict))
+    (ho : objectAt m m.checker.context = .ok (balanceHeapObject .python m b)) :
+    execStmt 6 (balanceProgram .python) m f (restStmt balancePythonAfterInit) =
+      .ok ⟨balancePythonSeedCopied m b, f, .normal⟩ :=
+  balanceConstructor_python_seed_copy hr hd ho (by decide)
+
+#print axioms hostDict_balance
+#print axioms balancePython_context_copy
+#print axioms balanceConstructor_python_seed_copy
+#print axioms balancePythonSeedCopied_preserves_bindings

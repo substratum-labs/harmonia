@@ -2169,4 +2169,12 @@ theorem targetStepWithFuel_eq_debitEntry {fuel program machine lang amount}
       debitCallEntry, debitCallExpression, Bind.bind, Pure.pure, Except.bind, Except.pure]
 
 
+/-- Empty literal allocation equation; the private collection evaluator is
+    unfolded here without changing its executable definition. -/
+theorem evalPythonEmptyList (k : Nat) {program m f} (hl : program.lang = .python) :
+    evalExpr (k + 2) program m f (.array .empty) =
+      .ok ⟨(allocObject m ⟨.pythonList, none, [], [], [], false, false⟩).1,
+        .ok (.object m.nextObject)⟩ := by
+  simp [evalExpr, evalArrayElems, hl, done, allocObject]
+
 end Harmonia.Applications.Kadmos.Generated

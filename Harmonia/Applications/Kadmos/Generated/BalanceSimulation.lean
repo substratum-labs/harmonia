@@ -1132,4 +1132,490 @@ theorem balanceConstructor_ts_snapshots_eq (b : Int) :
           dsimp only
           cases result.result <;> rfl
 
+/-- The six source initialization writes, including two fresh allocations.
+    This is the reached Python pre-reset machine, not a completed constructor. -/
+def balancePythonInitialized (m : TargetMachine) (initial : String) : TargetMachine :=
+  let seed := { m with checker := { m.checker with constructorSeed := none } }
+  let state := { seed with checker := { seed.checker with state := initial } }
+  let context := (allocObject state (literalObject .python state)).1
+  let context := { context with checker := { context.checker with context := state.nextObject } }
+  let history := (allocObject context ⟨.pythonList, none, [], [], [], false, false⟩).1
+  { history with checker := { history.checker with history := context.nextObject, busy := false, undo := none } }
+
+/-- Exactly the reset/copy sequence following Python's six initialization writes. -/
+def balancePythonAfterInit : TargetStmt :=
+  .sequence (.doExpr (.call (.property (.local "self") "reset")
+    (.sequence (.local (balanceConstructorParam .python)) .empty)))
+    (.sequence (.assign (.property (.local "self") "__constructor_seed")
+      (.call (.local "dict") (.sequence (.property (.local "self") "__context") .empty))) .empty)
+
+/-- Symbolic initialization: the only external read is the actual _INITIAL cell.
+    Every assignment is executed in source order at its own sequence depth. -/
+theorem balanceConstructor_python_initialized {m f initial k}
+    (hr : f.receiver = some m.checkerRef)
+    (hi : localValue m f "_INITIAL" = .ok (.string initial)) (hk : 10 ≤ k) :
+    execStmt k (balanceProgram .python) m f
+      (restStmt (balanceConstructorBodyTemplate .python)) =
+      execStmt (k - 6) (balanceProgram .python) (balancePythonInitialized m initial) f
+        balancePythonAfterInit := by
+  let m1 := { m with checker := { m.checker with constructorSeed := none } }
+  let m2 := { m1 with checker := { m1.checker with state := initial } }
+  let m3a := (allocObject m2 (literalObject .python m2)).1
+  let m3 := { m3a with checker := { m3a.checker with context := m2.nextObject } }
+  let m4a := (allocObject m3 ⟨.pythonList, none, [], [], [], false, false⟩).1
+  let m4 := { m4a with checker := { m4a.checker with history := m3.nextObject } }
+  let m5 := balanceSetBusy m4 false
+  let m6 := { m5 with checker := { m5.checker with undo := none } }
+  have receiver (a : TargetMachine) (ha : a.checkerRef = m.checkerRef) (j : Nat) :
+      evalExpr (j + 1) (balanceProgram .python) a f (.local "self") =
+        .ok ⟨a, .ok (.object m.checkerRef)⟩ := by
+    have h : localValue a f "self" = .ok (.object m.checkerRef) := by
+      simp [localValue, hr]
+    exact evalExpr_adequate (.localRead h) (by omega)
+  have h1 : execStmt (k - 1) (balanceProgram .python) m f
+      (.assign (.property (.local "self") "__constructor_seed") .null) =
+      .ok ⟨m1, f, .normal⟩ := by
+    have hf : k - 1 = (k - 3 + 1) + 1 := by omega
+    rw [hf]
+    exact execCheckerAssign_of_value (final := m) (receiver m rfl _)
+      (evalExpr_adequate DepthDerivesExpr.null (by omega)) (by rfl)
+  have h2 : execStmt (k - 2) (balanceProgram .python) m1 f
+      (.assign (.property (.local "self") "__state") (.local "_INITIAL")) =
+      .ok ⟨m2, f, .normal⟩ := by
+    have hf : k - 2 = (k - 4 + 1) + 1 := by omega
+    rw [hf]
+    have hv : localValue m1 f "_INITIAL" = .ok (.string initial) := hi
+    exact execCheckerAssign_of_value (final := m1) (receiver m1 rfl _)
+      (evalExpr_adequate (.localRead hv) (by omega)) (by rfl)
+  have h3 : execStmt (k - 3) (balanceProgram .python) m2 f
+      (.assign (.property (.local "self") "__context") (.object .empty)) =
+      .ok ⟨m3, f, .normal⟩ := by
+    have hf : k - 3 = (k - 5 + 1) + 1 := by omega
+    rw [hf]
+    have he := evalExpr_adequate (DepthDerivesExpr.objectEmpty
+      (program := balanceProgram .python) (m := m2) (f := f))
+      (k := k - 5 + 1) (by omega)
+    rw [balanceProgram_lang] at he
+    exact execCheckerAssign_of_value (final := m3a) (receiver m2 rfl _) he (by rfl)
+  have h4 : execStmt (k - 4) (balanceProgram .python) m3 f
+      (.assign (.property (.local "self") "__history") (.array .empty)) =
+      .ok ⟨m4, f, .normal⟩ := by
+    have hf : k - 4 = (k - 7 + 2) + 1 := by omega
+    rw [hf]
+    exact execCheckerAssign_of_value (final := m4a) (receiver m3 rfl _)
+      (evalPythonEmptyList_eq _ (balanceProgram_lang .python)) (by rfl)
+  have h5 : execStmt (k - 5) (balanceProgram .python) m4 f
+      (.assign (.property (.local "self") "_busy") (.bool false)) =
+      .ok ⟨m5, f, .normal⟩ :=
+    execStmt_adequate (balance_busy_write (lang := .python) (busy := false) hr) (by omega)
+  have h6 : execStmt (k - 6) (balanceProgram .python) m5 f
+      (.assign (.property (.local "self") "__undo") .null) =
+      .ok ⟨m6, f, .normal⟩ := by
+    have hf : k - 6 = (k - 8 + 1) + 1 := by omega
+    rw [hf]
+    exact execCheckerAssign_of_value (final := m5) (receiver m5 rfl _)
+      (evalExpr_adequate DepthDerivesExpr.null (by omega)) (by rfl)
+  change execStmt k _ _ _ (.sequence _ (.sequence _ (.sequence _
+    (.sequence _ (.sequence _ (.sequence _ balancePythonAfterInit)))))) = _
+  simp only [show (TargetLang.python == .ts) = false by decide,
+    Bool.false_eq_true, ↓reduceIte]
+  have e1 : k = (k - 1) + 1 := by omega
+  conv => lhs; rw [e1]
+  rw [execSequence_of_normal h1]
+  have e2 : k - 1 = (k - 2) + 1 := by omega
+  conv => lhs; rw [e2]
+  rw [execSequence_of_normal h2]
+  have e3 : k - 2 = (k - 3) + 1 := by omega
+  conv => lhs; rw [e3]
+  rw [execSequence_of_normal h3]
+  have e4 : k - 3 = (k - 4) + 1 := by omega
+  conv => lhs; rw [e4]
+  rw [execSequence_of_normal h4]
+  have e5 : k - 4 = (k - 5) + 1 := by omega
+  conv => lhs; rw [e5]
+  rw [execSequence_of_normal h5]
+  have e6 : k - 5 = (k - 6) + 1 := by omega
+  conv => lhs; rw [e6]
+  rw [execSequence_of_normal h6]
+  exact congrArg (fun machine => execStmt (k - 6) (balanceProgram .python) machine f
+    balancePythonAfterInit) (by rfl : m6 = balancePythonInitialized m initial)
+
+/-- Physical captured cell carrying the generated initial state. -/
+def balancePythonInitialCell : CellRef :=
+  71
+
+set_option maxRecDepth 65536 in
+set_option maxHeartbeats 10000000 in
+theorem balancePreparation_python_initial :
+    (balanceStoredConstructor .python).2.captures.lookup "_INITIAL" = some balancePythonInitialCell ∧
+    readCell (balancePreparation .python).1 balancePythonInitialCell = .ok (.string "Ready") ∧
+    balancePythonInitialCell < (balancePreparation .python).1.nextCell := by
+  unfold balancePythonInitialCell balanceStoredConstructor balanceConstructorLookup
+    balanceConstructorName balancePreparation
+  rw [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]
+  decide +kernel
+
+theorem balanceConstructorBodyEntry_python_initial (b : Int) :
+    localValue (balanceConstructorBodyEntry .python b).1 (balanceConstructorBodyEntry .python b).2
+      "_INITIAL" = .ok (.string "Ready") := by
+  obtain ⟨hc, hv, hf⟩ := balancePreparation_python_initial
+  exact localValue_constructor_capture
+    (m := (balancePreparation .python).1) (method := (balanceStoredConstructor .python).2)
+    (object := balanceHeapObject .python (balancePreparation .python).1 b)
+    (argument := .object (balancePreparation .python).1.nextObject)
+    (param := balanceConstructorParam .python) (ref := balancePythonInitialCell)
+    (name := "_INITIAL") (value := .string "Ready")
+    (by decide) (by decide) (by decide) hc hv hf
+
+theorem balanceConstructorBodyEntry_receiver (lang : TargetLang) (b : Int) :
+    (balanceConstructorBodyEntry lang b).2.receiver =
+      some (balanceConstructorBodyEntry lang b).1.checkerRef :=
+  constructorBody_receiver (balancePreparation lang).1 (balanceStoredConstructor lang).2
+    (balanceHeapObject lang (balancePreparation lang).1 b)
+    (.object (balancePreparation lang).1.nextObject) (balanceConstructorParam lang)
+
+/-- Canonical Python construction has executed all six writes at depth 92. -/
+theorem balanceConstructor_python_canonical_initialized (b : Int) :
+    execStmt 99 (balanceProgram .python)
+      (balanceConstructorBodyEntry .python b).1 (balanceConstructorBodyEntry .python b).2
+      (balanceStoredConstructor .python).2.body =
+      execStmt 92 (balanceProgram .python)
+        (balancePythonInitialized (balanceConstructorBodyEntry .python b).1 "Ready")
+        (balanceConstructorBodyEntry .python b).2 balancePythonAfterInit :=
+  (balanceConstructor_python_canonical_after_guard b).trans
+    (balanceConstructor_python_initialized
+      (m := (balanceConstructorBodyEntry .python b).1)
+      (f := (balanceConstructorBodyEntry .python b).2) (initial := "Ready") (k := 98)
+      (balanceConstructorBodyEntry_receiver .python b)
+      (balanceConstructorBodyEntry_python_initial b) (by decide))
+
+/-- Initialization changes checker fields and allocates objects only. -/
+theorem balancePythonInitialized_preserves_bindings (m : TargetMachine) (initial : String) :
+    (balancePythonInitialized m initial).classMethods = m.classMethods ∧
+    (balancePythonInitialized m initial).closures = m.closures ∧
+    (balancePythonInitialized m initial).globals = m.globals ∧
+    (balancePythonInitialized m initial).cells = m.cells ∧
+    (balancePythonInitialized m initial).nextClosure = m.nextClosure ∧
+    (balancePythonInitialized m initial).nextCell = m.nextCell :=
+  ⟨rfl, rfl, rfl, rfl, rfl, rfl⟩
+
+/-- The reached Python reset call binds from the post-initialization heap. -/
+def balancePythonResetBodyEntry (b : Int) : TargetMachine × TargetFrame :=
+  let m := balancePythonInitialized (balanceConstructorBodyEntry .python b).1 "Ready"
+  let active := { (balanceStoredReset .python).2 with receiver := some m.checkerRef }
+  let bound := (allocClosure m active).1
+  ((allocCell bound (.object (balancePreparation .python).1.nextObject) true).1,
+    { closureFrame active with locals := [(balanceConstructorParam .python, bound.nextCell)] })
+
+theorem balancePythonInitialized_reset_field (m : TargetMachine) (initial : String) :
+    readCheckerField (balancePythonInitialized m initial) "reset" = readCheckerField m "reset" := by
+  rfl
+
+/-- Field-independent reads survive all six writes and both allocations. -/
+theorem balancePythonInitialized_localValue (m : TargetMachine) (initial : String)
+    (f : TargetFrame) (name : String) :
+    localValue (balancePythonInitialized m initial) f name = localValue m f name := rfl
+
+theorem balancePythonInitialized_checkerRef (m : TargetMachine) (initial : String) :
+    (balancePythonInitialized m initial).checkerRef = m.checkerRef := rfl
+
+theorem balancePythonInitialized_idle (m : TargetMachine) (initial : String) :
+    (balancePythonInitialized m initial).checker.busy = false := rfl
+
+/-- Lift actual stored-method provenance through initialization, before using
+    any concrete preparation in definitional equality. -/
+theorem balancePythonInitialized_reset_store_of {m initial ref method}
+    (hf : readCheckerField m "reset" = .error (.unboundLocal "reset"))
+    (hm : m.classMethods.lookup "reset" = some ref)
+    (hc : closureAt m ref = .ok method) :
+    readCheckerField (balancePythonInitialized m initial) "reset" = .error (.unboundLocal "reset") ∧
+    (balancePythonInitialized m initial).classMethods.lookup "reset" = some ref ∧
+    closureAt (balancePythonInitialized m initial) ref = .ok method := by
+  refine ⟨(balancePythonInitialized_reset_field m initial).trans hf, ?_, ?_⟩
+  · exact (congrArg (fun methods => methods.lookup "reset")
+      (balancePythonInitialized_preserves_bindings m initial).1).trans hm
+  · have he : closureAt (balancePythonInitialized m initial) ref = closureAt m ref := rfl
+    exact he.trans hc
+
+theorem balancePythonInitialized_reset_store (b : Int) :
+    let m := balancePythonInitialized (balanceConstructorBodyEntry .python b).1 "Ready"
+    readCheckerField m "reset" = .error (.unboundLocal "reset") ∧
+    m.classMethods.lookup "reset" = some (balanceStoredReset .python).1 ∧
+    closureAt m (balanceStoredReset .python).1 = .ok (balanceStoredReset .python).2 := by
+  have h := balanceConstructorBodyEntry_reset_store .python b
+  exact balancePythonInitialized_reset_store_of h.1 h.2.1 h.2.2
+
+theorem balanceConstructor_python_reset_call_eq_body (b : Int) {k : Nat} (hk : 1 < k) :
+    evalExpr (k + 1) (balanceProgram .python)
+      (balancePythonInitialized (balanceConstructorBodyEntry .python b).1 "Ready")
+      (balanceConstructorBodyEntry .python b).2
+      (.call (.property (.local "self") "reset")
+        (.sequence (.local (balanceConstructorParam .python)) .empty)) = (do
+      let body ← execStmt k (balanceProgram .python)
+        (balancePythonResetBodyEntry b).1 (balancePythonResetBodyEntry b).2
+        (balanceStoredReset .python).2.body
+      closureResult .python body) := by
+  have hs := balancePythonInitialized_reset_store b
+  have hr := (balanceConstructorBodyEntry_receiver .python b).trans
+    (congrArg some (balancePythonInitialized_checkerRef
+      (balanceConstructorBodyEntry .python b).1 "Ready").symm)
+  have ha := (balancePythonInitialized_localValue (balanceConstructorBodyEntry .python b).1
+    "Ready" (balanceConstructorBodyEntry .python b).2 (balanceConstructorParam .python)).trans
+      (balanceConstructorBodyEntry_argument .python b)
+  exact evalReceiverObjectCall_eq (lang := .python) hr hs.1 hs.2.1 hs.2.2
+    (balanceStoredReset_shape .python).2.1 ha hk
+
+theorem balancePythonResetBodyEntry_receiver (b : Int) :
+    (balancePythonResetBodyEntry b).2.receiver = some (balancePythonResetBodyEntry b).1.checkerRef :=
+  receiverCallBody_receiver
+    (balancePythonInitialized (balanceConstructorBodyEntry .python b).1 "Ready")
+    (balanceStoredReset .python).2 (.object (balancePreparation .python).1.nextObject)
+    (balanceConstructorParam .python)
+
+theorem balancePythonResetBodyEntry_idle (b : Int) :
+    (balancePythonResetBodyEntry b).1.checker.busy = false :=
+  (receiverCallBody_busy
+    (balancePythonInitialized (balanceConstructorBodyEntry .python b).1 "Ready")
+    (balanceStoredReset .python).2 (.object (balancePreparation .python).1.nextObject)).trans
+      (balancePythonInitialized_idle (balanceConstructorBodyEntry .python b).1 "Ready")
+
+/-- Python reaches reset snapshots at depth 87, then joins the actual copy suffix.
+    The reset result and all source/target error outcomes are retained. -/
+theorem balanceConstructor_python_snapshots_eq (b : Int) :
+    execStmt 99 (balanceProgram .python)
+      (balanceConstructorBodyEntry .python b).1 (balanceConstructorBodyEntry .python b).2
+      (balanceStoredConstructor .python).2.body = (do
+      let resetBody ← execStmt 87 (balanceProgram .python)
+        (balanceSetBusy (balancePythonResetBodyEntry b).1 true) (balancePythonResetBodyEntry b).2
+        (restStmt (restStmt (balanceStoredReset .python).2.body))
+      let called ← closureResult .python resetBody
+      let head : StmtOutcome := match called.result with
+        | .error e => ⟨called.machine, (balanceConstructorBodyEntry .python b).2, .raised e⟩
+        | .ok _ => ⟨called.machine, (balanceConstructorBodyEntry .python b).2, .normal⟩
+      match head.control with
+      | .normal =>
+          execStmt 91 (balanceProgram .python) head.machine head.frame
+            (restStmt balancePythonAfterInit)
+      | _ => pure head) := by
+  have hCall := balanceConstructor_python_reset_call_eq_body b (k := 89) (by decide)
+  have hSnapshots : execStmt 89 (balanceProgram .python)
+      (balancePythonResetBodyEntry b).1 (balancePythonResetBodyEntry b).2
+      (balanceStoredReset .python).2.body =
+      execStmt 87 (balanceProgram .python)
+        (balanceSetBusy (balancePythonResetBodyEntry b).1 true) (balancePythonResetBodyEntry b).2
+        (restStmt (restStmt (balanceStoredReset .python).2.body)) :=
+    balanceReset_idle_entry (lang := .python)
+      (balancePythonResetBodyEntry_receiver b) (balancePythonResetBodyEntry_idle b)
+      (k := 88) (by decide)
+  have hCall' := hCall.trans (congrArg (fun execution => do
+    let body ← execution
+    closureResult .python body) hSnapshots)
+  exact (balanceConstructor_python_canonical_initialized b).trans
+    (execSequenceDoCall_eq _ hCall')
+
+/-- Drop sequence heads without inspecting generated helper/try bodies. -/
+def dropStmts : Nat → TargetStmt → TargetStmt
+  | 0, stmt => stmt
+  | n + 1, stmt => dropStmts n (restStmt stmt)
+
+/-- Exact snapshot spine ending in the actual try/catch/finally and empty tail.
+    No helper subtree is compared, evaluated, replaced or discarded. -/
+def snapshotTryCheck : Nat → TargetStmt → Bool
+  | 0, .sequence (.tryCatchFinally _ _ _ _ _) .empty => true
+  | n + 1, .sequence _ rest => snapshotTryCheck n rest
+  | _, _ => false
+
+theorem snapshotTryCheck_sequence {n stmt} (h : snapshotTryCheck (n + 1) stmt = true) :
+    stmt = .sequence (firstStmt stmt) (restStmt stmt) ∧
+    snapshotTryCheck n (restStmt stmt) = true := by
+  cases stmt <;> simp_all [snapshotTryCheck, firstStmt, restStmt]
+
+set_option maxRecDepth 65536 in
+set_option maxHeartbeats 10000000 in
+/-- The stored reset snapshots have four heads, followed by the actual protected body. -/
+theorem balanceReset_snapshot_shape (lang : TargetLang) :
+    snapshotTryCheck 4 (restStmt (restStmt (balanceStoredReset lang).2.body)) = true := by
+  cases lang with
+  | ts =>
+      unfold balanceStoredReset balanceResetLookup balancePreparation
+      rw [balanceProgram_of_parse BalancePrograms.balanceTsProgram_source]
+      decide +kernel
+  | python =>
+      unfold balanceStoredReset balanceResetLookup balancePreparation
+      rw [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]
+      decide +kernel
+
+set_option maxRecDepth 65536 in
+set_option maxHeartbeats 10000000 in
+/-- Python step additionally saves undo; the source ordering is retained. -/
+theorem balanceStep_snapshot_shape (lang : TargetLang) :
+    snapshotTryCheck (if lang == .ts then 4 else 5)
+      (restStmt (balanceStepAfterBusy lang)) = true := by
+  cases lang with
+  | ts =>
+      unfold balanceStepAfterBusy balanceStoredStep balanceStepLookup balancePreparation
+      rw [balanceProgram_of_parse BalancePrograms.balanceTsProgram_source]
+      decide +kernel
+  | python =>
+      unfold balanceStepAfterBusy balanceStoredStep balanceStepLookup balancePreparation
+      rw [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]
+      decide +kernel
+
+/-- One actual snapshot sibling at its exact budget, with all exits retained. -/
+theorem execSnapshot_eq {n stmt} (h : snapshotTryCheck (n + 1) stmt = true)
+    (k : Nat) (program : TargetProgram) (m : TargetMachine) (f : TargetFrame) :
+    execStmt (k + 1) program m f stmt = (do
+      let head ← execStmt k program m f (firstStmt stmt)
+      match head.control with
+      | .normal => execStmt k program head.machine head.frame (restStmt stmt)
+      | _ => pure head) := by
+  conv => lhs; rw [(snapshotTryCheck_sequence h).1]
+  exact execSequence_eq _ _ _ _ _ _
+
+theorem balanceReset_snapshots_eq (lang : TargetLang) (k : Nat) (m : TargetMachine)
+    (f : TargetFrame) :
+    let snapshots := restStmt (restStmt (balanceStoredReset lang).2.body)
+    execStmt (k + 1) (balanceProgram lang) m f snapshots = (do
+      let head ← execStmt k (balanceProgram lang) m f (firstStmt snapshots)
+      match head.control with
+      | .normal => execStmt k (balanceProgram lang) head.machine head.frame (restStmt snapshots)
+      | _ => pure head) :=
+  execSnapshot_eq (balanceReset_snapshot_shape lang) k (balanceProgram lang) m f
+
+theorem balanceStep_snapshots_eq (lang : TargetLang) (k : Nat) (m : TargetMachine)
+    (f : TargetFrame) :
+    let snapshots := restStmt (balanceStepAfterBusy lang)
+    execStmt (k + 1) (balanceProgram lang) m f snapshots = (do
+      let head ← execStmt k (balanceProgram lang) m f (firstStmt snapshots)
+      match head.control with
+      | .normal => execStmt k (balanceProgram lang) head.machine head.frame (restStmt snapshots)
+      | _ => pure head) := by
+  cases lang with
+  | ts => exact execSnapshot_eq (balanceStep_snapshot_shape .ts) k (balanceProgram .ts) m f
+  | python => exact execSnapshot_eq (balanceStep_snapshot_shape .python) k (balanceProgram .python) m f
+
+/-- Captured protected syntax, selected without traversing its generated bodies. -/
+structure ProtectedSyntax where
+  body : TargetStmt
+  catchType : Option String
+  binder : Option String
+  handler : TargetStmt
+  cleanup : TargetStmt
+
+def protectedSyntax (stmt : TargetStmt) : ProtectedSyntax :=
+  match stmt with
+  | .tryCatchFinally body ty binder handler cleanup => ⟨body, ty, binder, handler, cleanup⟩
+  | _ => ⟨.empty, none, none, .empty, .empty⟩
+
+def ProtectedSyntax.stmt (p : ProtectedSyntax) : TargetStmt :=
+  .tryCatchFinally p.body p.catchType p.binder p.handler p.cleanup
+
+theorem snapshotTryCheck_drop {n stmt} (h : snapshotTryCheck n stmt = true) :
+    snapshotTryCheck 0 (dropStmts n stmt) = true := by
+  induction n generalizing stmt with
+  | zero => exact h
+  | succ n ih => exact ih (snapshotTryCheck_sequence h).2
+
+theorem snapshotTryCheck_protected {stmt} (h : snapshotTryCheck 0 stmt = true) :
+    stmt = .sequence (protectedSyntax (firstStmt stmt)).stmt .empty := by
+  cases stmt <;> simp_all [snapshotTryCheck]
+  rename_i head tail
+  cases head <;> try simp_all [snapshotTryCheck]
+  cases tail <;> simp_all [snapshotTryCheck, firstStmt, protectedSyntax, ProtectedSyntax.stmt]
+
+theorem balanceReset_protected_shape (lang : TargetLang) :
+    let tail := dropStmts 4 (restStmt (restStmt (balanceStoredReset lang).2.body))
+    tail = .sequence (protectedSyntax (firstStmt tail)).stmt .empty :=
+  snapshotTryCheck_protected (snapshotTryCheck_drop (balanceReset_snapshot_shape lang))
+
+theorem balanceStep_protected_shape (lang : TargetLang) :
+    let tail := dropStmts (if lang == .ts then 4 else 5) (restStmt (balanceStepAfterBusy lang))
+    tail = .sequence (protectedSyntax (firstStmt tail)).stmt .empty :=
+  snapshotTryCheck_protected (snapshotTryCheck_drop (balanceStep_snapshot_shape lang))
+
+/-- Snapshot termination selects this actual protected source subtree. -/
+theorem execProtectedSyntax_eq (k : Nat) (program : TargetProgram) (m : TargetMachine)
+    (f : TargetFrame) (p : ProtectedSyntax) :
+    execStmt (k + 1) program m f p.stmt = (do
+      let attempted ← execStmt k program m f p.body
+      let handled ← match attempted.control with
+        | .raised errorValue =>
+            if controlCaught p.catchType (.raised errorValue) then do
+              let bound := bindCatchFrame attempted.machine attempted.frame p.binder errorValue
+              let caught ← execStmt k program bound.1 bound.2 p.handler
+              pure { caught with frame := { caught.frame with control := .normal } }
+            else pure attempted
+        | _ => pure attempted
+      let finalized ← execStmt k program handled.machine handled.frame p.cleanup
+      match finalized.control with
+      | .normal => pure ⟨finalized.machine, finalized.frame, handled.control⟩
+      | _ => pure finalized) :=
+  execTryCatchFinally_eq k program m f p.body p.catchType p.binder p.handler p.cleanup
+
+/-- Python's real shallow dict host copies the canonical one-field context. -/
+theorem hostDict_balance {m b ref}
+    (ho : objectAt m ref = .ok (balanceHeapObject .python m b)) :
+    hostCall .python m .dict none [.object ref] =
+      .ok ⟨(allocObject m (balanceHeapObject .python m b)).1, .ok (.object m.nextObject)⟩ := by
+  unfold hostCall
+  dsimp only
+  rw [ho]
+  rfl
+
+/-- Actual dict(self.__context), reused by reset snapshots and the constructor
+    seed-copy suffix. It requires physical reads, not a reset-success premise. -/
+theorem balancePython_context_copy {m f b}
+    (hr : f.receiver = some m.checkerRef)
+    (hd : localValue m f "dict" = .ok (.builtin .dict))
+    (ho : objectAt m m.checker.context = .ok (balanceHeapObject .python m b)) :
+    DepthDerivesExpr (balanceProgram .python) m f
+      (.call (.local "dict") (.sequence (.property (.local "self") "__context") .empty))
+      ⟨(allocObject m (balanceHeapObject .python m b)).1, .ok (.object m.nextObject)⟩ 3 := by
+  have hs : localValue m f "self" = .ok (.object m.checkerRef) := by
+    simp [localValue, hr]
+  have hp : readPropertyValue (balanceProgram .python).lang m (.object m.checkerRef)
+      "__context" = .ok ⟨m, .ok (.object m.checker.context)⟩ := by
+    rw [balanceProgram_lang]
+    simp [readPropertyValue, readCheckerField, Bind.bind, Pure.pure, Except.bind, Except.pure]
+    rfl
+  apply DepthDerivesExpr.callBuiltin (.localRead hd)
+    (.cons (.property (.localRead hs) hp) .empty) (by decide)
+  rw [balanceProgram_lang]
+  exact hostDict_balance ho
+
+/-- Physical final seed copy: fresh dict allocation followed by the source field write. -/
+def balancePythonSeedCopied (m : TargetMachine) (b : Int) : TargetMachine :=
+  let copied := (allocObject m (balanceHeapObject .python m b)).1
+  { copied with checker := { copied.checker with constructorSeed := some m.nextObject } }
+
+/-- Execute the actual post-reset Python seed-copy suffix at every adequate budget.
+    Full constructor soundness must establish these receiver/dict/context reads. -/
+theorem balanceConstructor_python_seed_copy {m f b k}
+    (hr : f.receiver = some m.checkerRef)
+    (hd : localValue m f "dict" = .ok (.builtin .dict))
+    (ho : objectAt m m.checker.context = .ok (balanceHeapObject .python m b))
+    (hk : 6 ≤ k) :
+    execStmt k (balanceProgram .python) m f (restStmt balancePythonAfterInit) =
+      .ok ⟨balancePythonSeedCopied m b, f, .normal⟩ := by
+  have hs : localValue m f "self" = .ok (.object m.checkerRef) := by
+    simp [localValue, hr]
+  have hCopy := balancePython_context_copy hr hd ho
+  have hWrite : DepthDerivesStmt (balanceProgram .python) m f
+      (.assign (.property (.local "self") "__constructor_seed")
+        (.call (.local "dict") (.sequence (.property (.local "self") "__context") .empty)))
+      ⟨balancePythonSeedCopied m b, f, .normal⟩ 4 :=
+    .assignProperty (.localRead hs) hCopy (by
+      simp [balancePythonSeedCopied, allocObject, writeCheckerField])
+  exact execStmt_adequate (.sequenceNormal hWrite .empty) (by omega)
+
+theorem balancePythonSeedCopied_preserves_bindings (m : TargetMachine) (b : Int) :
+    (balancePythonSeedCopied m b).classMethods = m.classMethods ∧
+    (balancePythonSeedCopied m b).closures = m.closures ∧
+    (balancePythonSeedCopied m b).globals = m.globals ∧
+    (balancePythonSeedCopied m b).cells = m.cells ∧
+    (balancePythonSeedCopied m b).checker.context = m.checker.context ∧
+    (balancePythonSeedCopied m b).checker.history = m.checker.history ∧
+    (balancePythonSeedCopied m b).checker.busy = m.checker.busy :=
+  ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+
 end Harmonia.Applications.Kadmos.Generated

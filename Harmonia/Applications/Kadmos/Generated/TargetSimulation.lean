@@ -1962,4 +1962,121 @@ theorem closureAt_allocClosure_other {m : TargetMachine} {closure : TargetClosur
   have hb : (ref == m.nextClosure) = false := beq_eq_false_iff_ne.mpr hn
   simp [closureAt, allocClosure, List.lookup, hb]
 
+/-- Empty Python list literals allocate a real fresh list, even with no elements. -/
+theorem evalPythonEmptyList_eq (k : Nat) {program m f} (hl : program.lang = .python) :
+    evalExpr (k + 2) program m f (.array .empty) =
+      .ok ⟨(allocObject m ⟨.pythonList, none, [], [], [], false, false⟩).1,
+        .ok (.object m.nextObject)⟩ := by
+  exact evalPythonEmptyList k hl
+
+/-- Ordered receiver/RHS evaluation followed by an actual checker field write. -/
+theorem execCheckerAssign_of_value {k program m f receiver name expr middle final value updated}
+    (hr : evalExpr k program m f receiver =
+      .ok ⟨middle, .ok (.object final.checkerRef)⟩)
+    (hv : evalExpr k program middle f expr = .ok ⟨final, .ok value⟩)
+    (hw : writeCheckerField final name value = .ok updated) :
+    execStmt (k + 1) program m f (.assign (.property receiver name) expr) =
+      .ok ⟨updated, f, .normal⟩ := by
+  simp only [execStmt]
+  rw [hr]
+  dsimp only [Bind.bind, Except.bind]
+  rw [hv]
+  dsimp only [Bind.bind, Except.bind]
+  simp only [BEq.beq, decide_true, ite_true]
+  rw [hw]
+  rfl
+
+/-- Older captured cells survive caller/parameter allocations constructively. -/
+theorem localValue_constructor_capture {m : TargetMachine} {method : TargetClosure}
+    {object : HeapObject} {argument : TargetValue} {param name : String} {ref : CellRef} {value : TargetValue}
+    (ht : name ≠ "this") (hs : name ≠ "self") (hn : name ≠ param)
+    (hc : method.captures.lookup name = some ref)
+    (hv : readCell m ref = .ok value) (hf : ref < m.nextCell) :
+    let caller := (allocCell (allocObject m object).1 argument true).1
+    let bound := (allocClosure caller { method with receiver := some caller.checkerRef }).1
+    localValue (allocCell bound argument true).1
+      { closureFrame { method with receiver := some bound.checkerRef } with
+        locals := [(param, bound.nextCell)] } name = .ok value := by
+  have h0 : ref ≠ m.nextCell := Nat.ne_of_lt hf
+  have h1 : ref ≠ m.nextCell + 1 := Nat.ne_of_lt (Nat.lt_trans hf (Nat.lt_succ_self _))
+  have hnp : (name == param) = false := beq_eq_false_iff_ne.mpr hn
+  have hb0 : (ref == m.nextCell) = false := beq_eq_false_iff_ne.mpr h0
+  have hb1 : (ref == m.nextCell + 1) = false := beq_eq_false_iff_ne.mpr h1
+  simp only [readCell] at hv
+  simpa [localValue, ht, hs, hc, closureFrame, allocCell, allocObject,
+    allocClosure, readCell, List.lookup, hnp, hb0, hb1] using hv
+
+/-- The exact constructor allocation recipe preserves its receiver address.
+    Prove this before instantiating the opaque physical preparation. -/
+theorem constructorBody_receiver (m : TargetMachine) (method : TargetClosure)
+    (object : HeapObject) (argument : TargetValue) (param : String) :
+    let caller := (allocCell (allocObject m object).1 argument true).1
+    let bound := (allocClosure caller { method with receiver := some caller.checkerRef }).1
+    ({ closureFrame { method with receiver := some bound.checkerRef } with
+      locals := [(param, bound.nextCell)] } : TargetFrame).receiver =
+        some (allocCell bound argument true).1.checkerRef := rfl
+
+/-- The supplied receiver-call recipe likewise retains the physical receiver. -/
+theorem receiverCallBody_receiver (m : TargetMachine) (method : TargetClosure)
+    (argument : TargetValue) (param : String) :
+    let active := { method with receiver := some m.checkerRef }
+    let bound := (allocClosure m active).1
+    ({ closureFrame active with locals := [(param, bound.nextCell)] } : TargetFrame).receiver =
+      some (allocCell bound argument true).1.checkerRef := rfl
+
+theorem receiverCallBody_busy (m : TargetMachine) (method : TargetClosure)
+    (argument : TargetValue) :
+    let active := { method with receiver := some m.checkerRef }
+    let bound := (allocClosure m active).1
+    (allocCell bound argument true).1.checker.busy = m.checker.busy := rfl
+
+/-- Compose a receiver call with its constructor suffix without normalizing
+    the concrete generated program during control-case analysis. -/
+theorem execSequenceDoCall_eq {k program m f expr suffix lang}
+    (execution : Except TargetError StmtOutcome)
+    (h : evalExpr k program m f expr = (do
+      let body ← execution
+      closureResult lang body)) :
+    execStmt (k + 2) program m f (.sequence (.doExpr expr) suffix) = (do
+      let body ← execution
+      let called ← closureResult lang body
+      let head : StmtOutcome := match called.result with
+        | .error e => ⟨called.machine, f, .raised e⟩
+        | .ok _ => ⟨called.machine, f, .normal⟩
+      match head.control with
+      | .normal => execStmt (k + 1) program head.machine head.frame suffix
+      | _ => pure head) := by
+  rw [execSequence_eq, execDoExpr_eq, h]
+  cases execution with
+  | error e => rfl
+  | ok out =>
+      dsimp only [Bind.bind, Except.bind]
+      cases hc : closureResult lang out with
+      | error e => rfl
+      | ok result =>
+          dsimp only [Bind.bind, Except.bind]
+          cases result.result <;> rfl
+
+/-- The executor's full protected-body equation, including caught control
+    clearing and finalizer override. Both target errors and source exits remain. -/
+theorem execTryCatchFinally_eq (k : Nat) (program : TargetProgram) (m : TargetMachine)
+    (f : TargetFrame) (body : TargetStmt) (catchType binder : Option String)
+    (handler cleanup : TargetStmt) :
+    execStmt (k + 1) program m f (.tryCatchFinally body catchType binder handler cleanup) = (do
+      let attempted ← execStmt k program m f body
+      let handled ← match attempted.control with
+        | .raised errorValue =>
+            if controlCaught catchType (.raised errorValue) then do
+              let bound := bindCatchFrame attempted.machine attempted.frame binder errorValue
+              let caught ← execStmt k program bound.1 bound.2 handler
+              pure { caught with frame := { caught.frame with control := .normal } }
+            else pure attempted
+        | _ => pure attempted
+      let finalized ← execStmt k program handled.machine handled.frame cleanup
+      match finalized.control with
+      | .normal => pure ⟨finalized.machine, finalized.frame, handled.control⟩
+      | _ => pure finalized) := by
+  rw [execStmt]
+  cases binder <;> rfl
+
 end Harmonia.Applications.Kadmos.Generated
