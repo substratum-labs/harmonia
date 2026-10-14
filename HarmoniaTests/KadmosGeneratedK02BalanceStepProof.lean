@@ -461,3 +461,94 @@ example (lang : TargetLang) (m : TargetMachine) (f : TargetFrame) (b : Int) :
   resetOverlayPairBinding_reads lang m f (integerValue lang b)
 
 #print axioms resetOverlayPairBinding_reads
+
+-- Symbolic safe-domain execution must discharge the actual TS loop guard.
+#check balanceReset_ts_overlay_body_safe
+#check resetTsOverlayGuard_execute
+
+-- A live, nonvacuous TS environment exercises both the actual guard and write
+-- for symbolic safe signed values, including the negative half of the domain.
+def resetTsBodyTestMachine (b : Int) : TargetMachine :=
+  { resetOverlayTestMachine .ts b with
+    objects := (5, { literalObject .ts TargetMachine.empty with
+      own := [("hasOwn", ⟨some (.builtin .objectHasOwn), none, none, true, true, true⟩),
+        ("entries", ⟨some (.builtin .objectEntries), none, none, true, true, true⟩)] }) ::
+      (6, { literalObject .ts TargetMachine.empty with
+      own := [("isSafeInteger", ⟨some (.builtin .jsIsSafeInteger), none, none, true, true, true⟩)] }) ::
+      (resetOverlayTestMachine .ts b).objects,
+    cells := [(5, .object 5), (6, .object 6), (7, .object 2), (8, .object 3)] ++
+      (resetOverlayTestMachine .ts b).cells,
+    globals := [("Object", 5), ("Number", 6), ("world", 7), ("contextDefinitions", 8)],
+    nextCell := 9, nextObject := 7 }
+
+def resetTsBodyTest_physical (b : Int) :
+    ResetTsOverlayPhysical (resetTsBodyTestMachine b) resetOverlayTestFrame b := by
+  refine ⟨5, 2, 3, 3, 4, 6, rfl, rfl, rfl, rfl, rfl, rfl, ?_, rfl, rfl, rfl, rfl, rfl⟩
+  exact ⟨⟨some (.object 4), none, none, true, true, true⟩, rfl⟩
+
+example (b : Int) (hb : b.natAbs ≤ 9007199254740991) :
+    execStmt 10 (balanceProgram .ts) (resetTsBodyTestMachine b) resetOverlayTestFrame
+      (resetLoopBody (balanceResetOverlayLoop .ts)) =
+        .ok ⟨balanceOverlayUpdated .ts (resetTsBodyTestMachine b) 1 b, resetOverlayTestFrame, .normal⟩ :=
+  balanceReset_ts_overlay_body_safe (resetTsBodyTest_physical b) rfl rfl hb
+
+example :
+    execStmt 10 (balanceProgram .ts) (resetTsBodyTestMachine (-9007199254740991)) resetOverlayTestFrame
+      (resetLoopBody (balanceResetOverlayLoop .ts)) =
+        .ok ⟨balanceOverlayUpdated .ts (resetTsBodyTestMachine (-9007199254740991)) 1 (-9007199254740991),
+          resetOverlayTestFrame, .normal⟩ :=
+  balanceReset_ts_overlay_body_safe (resetTsBodyTest_physical _) rfl rfl (by decide)
+
+#print axioms balanceReset_ts_overlay_body_shape
+#print axioms resetTsOverlayGuard_execute
+#print axioms balanceReset_ts_overlay_body_safe
+#print axioms balanceReset_ts_overlay_loop_safe
+
+-- Inspect the actual post-body candidate, rather than just its normal control.
+example (b : Int) (hb : b.natAbs ≤ 9007199254740991) :
+    resetOverlaySuccessCheck .ts b
+      (execStmt 10 (balanceProgram .ts) (resetTsBodyTestMachine b) resetOverlayTestFrame
+        (resetLoopBody (balanceResetOverlayLoop .ts))) :=
+  balanceReset_ts_overlay_body_success (resetTsBodyTest_physical b) rfl rfl hb
+
+#print axioms balanceOverlayUpdated_candidate_read
+#print axioms balanceReset_ts_overlay_body_success
+
+-- Run the actual TS Object.entries loop with fresh pair bindings and an outer
+-- frame containing old name/value bindings, then inspect the restored frame.
+def resetTsLoopTestMachine (b : Int) : TargetMachine :=
+  { resetTsBodyTestMachine b with
+    objects := (7, balanceHeapObject .ts TargetMachine.empty b) :: (resetTsBodyTestMachine b).objects,
+    cells := (9, .object 7) :: (resetTsBodyTestMachine b).cells,
+    globals := ("overrides", 9) :: (resetTsBodyTestMachine b).globals,
+    nextCell := 10, nextObject := 8 }
+
+def resetTsLoopTest_physical (b : Int) :
+    let source := resetIterableMachine .ts (resetTsLoopTestMachine b) b
+    let bound := resetOverlayPairBinding .ts source resetOverlayTestFrame (integerValue .ts b)
+    ResetTsOverlayPhysical bound.1 bound.2 b := by
+  refine ⟨5, 2, 3, 3, 4, 6, rfl, rfl, rfl, rfl, rfl, rfl, ?_, rfl, rfl, rfl, rfl, rfl⟩
+  exact ⟨⟨some (.object 4), none, none, true, true, true⟩, rfl⟩
+
+theorem resetTsLoopTest_execute (b : Int) (hb : b.natAbs ≤ 9007199254740991) :
+    execStmt 12 (balanceProgram .ts) (resetTsLoopTestMachine b) resetOverlayTestFrame
+      (balanceResetOverlayLoop .ts) =
+        .ok ⟨balanceOverlayUpdated .ts
+          (resetOverlayPairBinding .ts (resetIterableMachine .ts (resetTsLoopTestMachine b) b)
+            resetOverlayTestFrame (integerValue .ts b)).1 1 b,
+          resetOverlayTestFrame, .normal⟩ := by
+  exact balanceReset_ts_seed_loop_safe rfl rfl rfl rfl
+    (resetTsLoopTest_physical b) rfl rfl hb
+
+example (b : Int) (hb : b.natAbs ≤ 9007199254740991) :
+    resetOverlaySuccessCheck .ts b
+      (execStmt 12 (balanceProgram .ts) (resetTsLoopTestMachine b) resetOverlayTestFrame
+        (balanceResetOverlayLoop .ts)) := by
+  rw [resetTsLoopTest_execute b hb]
+  unfold resetOverlaySuccessCheck
+  simp only [Except.toOption, Option.map, Option.some.injEq, Prod.mk.injEq]
+  exact ⟨True.intro, balanceOverlayUpdated_candidate_read rfl rfl⟩
+
+#print axioms resetTsLoopTest_execute
+
+#print axioms balanceReset_ts_seed_loop_safe

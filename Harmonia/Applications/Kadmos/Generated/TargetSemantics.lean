@@ -2343,4 +2343,31 @@ theorem execForDo_one_pair {program m source final f ff listRef pairRef list pai
     rw [hb]
     rfl
 
+
+/-- Unfold exactly two Python tuple elements while retaining their expression
+    execution. This equation exposes real allocation and object replacement;
+    it does not add a host tuple primitive or change interpreter behavior. -/
+theorem evalTupleTwo_eq {k program m f left right}
+    (hlang : program.lang = .python) :
+    evalExpr (k + 4) program m f (.tuple (.sequence left (.sequence right .empty))) =
+      (do
+        let fresh := (allocObject m ⟨.pythonTuple, none, [], [], [], false, false⟩).1
+        let v1 ← evalExpr (k + 2) program fresh f left
+        match v1.result with
+        | .error e => pure (⟨v1.machine, .error e⟩ : ExprOutcome)
+        | .ok value1 => do
+          let o1 ← objectAt v1.machine m.nextObject
+          let n1 ← replaceObject v1.machine m.nextObject {o1 with items := o1.items ++ [value1]}
+          let v2 ← evalExpr (k + 1) program n1 f right
+          match v2.result with
+          | .error e => pure (⟨v2.machine, .error e⟩ : ExprOutcome)
+          | .ok value2 => do
+            let o2 ← objectAt v2.machine m.nextObject
+            let n2 ← replaceObject v2.machine m.nextObject {o2 with items := o2.items ++ [value2]}
+            pure (⟨n2, .ok (.object m.nextObject)⟩ : ExprOutcome)) := by
+  rw [evalExpr]
+  simp only [hlang]
+  simp only [evalArrayElems]
+  rfl
+
 end Harmonia.Applications.Kadmos.Generated

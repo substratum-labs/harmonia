@@ -3654,6 +3654,702 @@ theorem balanceReset_ts_overlay_zero_check :
   decide +kernel
 
 
+def resetTsOverlayHasOwn : TargetExpr :=
+  .call (.property (.local "Object") "hasOwn")
+    (.sequence (.property (.local "world") "context") (.sequence (.local "name") .empty))
+def resetTsOverlayStringTest : TargetExpr :=
+  .binary .strictEq
+    (.property (.nonNull (.index (.local "contextDefinitions") (.local "name"))) "type")
+    (.string "string")
+def resetTsOverlayNumberTest : TargetExpr :=
+  .binary .strictEq (.unary .typeof (.local "value")) (.string "number")
+def resetTsOverlaySafeCall : TargetExpr :=
+  .call (.property (.local "Number") "isSafeInteger") (.sequence (.local "value") .empty)
+def resetTsOverlayGuard : TargetExpr :=
+  .orElse (.unary .not resetTsOverlayHasOwn)
+    (.unary .not (.conditional resetTsOverlayStringTest
+      (.binary .strictEq (.unary .typeof (.local "value")) (.string "string"))
+      (.andThen resetTsOverlayNumberTest resetTsOverlaySafeCall)))
+
+theorem balanceReset_ts_overlay_body_shape :
+    resetLoopBody (balanceResetOverlayLoop .ts) =
+      .sequence (.ifThenElse resetTsOverlayGuard
+        (ifYesStmt (firstStmt (resetLoopBody (balanceResetOverlayLoop .ts)))) .empty)
+        (.sequence (balanceResetOverlayWrite .ts) .empty) := by
+  unfold balanceResetOverlayWrite balanceResetOverlayLoop
+    balanceResetMiddleStmt balanceResetProtected balanceResetSnapshots
+    balanceStoredReset balanceResetLookup balancePreparation
+  rw [balanceProgram_of_parse BalancePrograms.balanceTsProgram_source]
+  decide +kernel
+
+theorem resetTsOverlaySafeCall_execute {m f b number k}
+    (hv : localValue m f "value" = .ok (integerValue .ts b))
+    (hn : localValue m f "Number" = .ok (.object number))
+    (hp : readPropertyValue .ts m (.object number) "isSafeInteger" =
+      .ok ⟨m, .ok (.builtin .jsIsSafeInteger)⟩)
+    (hb : b.natAbs ≤ 9007199254740991) :
+    evalExpr (k + 3) (balanceProgram .ts) m f resetTsOverlaySafeCall =
+      .ok ⟨m, .ok (.bool true)⟩ := by
+  apply evalExpr_adequate (.callBuiltin (.property (.localRead hn)
+    (by simpa only [balanceProgram_lang] using hp))
+    (.cons (.localRead hv) .empty) (by decide) ?_) (by omega)
+  rw [balanceProgram_lang]
+  change Except.ok (⟨m, .ok (.bool (decide (b.natAbs ≤ 9007199254740991)))⟩ : ExprOutcome) = _
+  simp only [hb, decide_true]
+
+theorem resetTsOverlayNumberTest_execute {m f b k}
+    (hv : localValue m f "value" = .ok (integerValue .ts b)) :
+    evalExpr (k + 3) (balanceProgram .ts) m f resetTsOverlayNumberTest =
+      .ok ⟨m, .ok (.bool true)⟩ := by
+  have hv' := evalExpr_adequate (program := balanceProgram .ts) (.localRead hv)
+    (k := k + 1) (by omega)
+  have ht : evalExpr (k + 2) (balanceProgram .ts) m f
+      (.unary .typeof (.local "value")) = .ok ⟨m, .ok (.string "number")⟩ := by
+    rw [evalExpr, hv']; rfl
+  unfold resetTsOverlayNumberTest
+  rw [evalExpr, ht]
+  simp only [Bind.bind, Except.bind]
+  rw [evalExpr_adequate (DepthDerivesExpr.string "number") (by omega)]
+  rw [balanceProgram_lang]; rfl
+
+-- Physical table reads, rather than successful expression execution, are premises.
+theorem resetTsOverlayGuard_execute {m f b object world context definitions definition number k}
+    (hv : localValue m f "value" = .ok (integerValue .ts b))
+    (hn : localValue m f "name" = .ok (.string "balance"))
+    (hObject : localValue m f "Object" = .ok (.object object))
+    (hHas : readPropertyValue .ts m (.object object) "hasOwn" =
+      .ok ⟨m, .ok (.builtin .objectHasOwn)⟩)
+    (hWorld : localValue m f "world" = .ok (.object world))
+    (hContext : readPropertyValue .ts m (.object world) "context" =
+      .ok ⟨m, .ok (.object context)⟩)
+    (hOwn : ∃ descriptor, readOwn m context "balance" = .ok (some descriptor))
+    (hDefs : localValue m f "contextDefinitions" = .ok (.object definitions))
+    (hDef : readPropertyValue .ts m (.object definitions) "balance" =
+      .ok ⟨m, .ok (.object definition)⟩)
+    (hType : readPropertyValue .ts m (.object definition) "type" =
+      .ok ⟨m, .ok (.string "integer")⟩)
+    (hNumber : localValue m f "Number" = .ok (.object number))
+    (hSafe : readPropertyValue .ts m (.object number) "isSafeInteger" =
+      .ok ⟨m, .ok (.builtin .jsIsSafeInteger)⟩)
+    (hb : b.natAbs ≤ 9007199254740991) :
+    evalExpr (k + 8) (balanceProgram .ts) m f resetTsOverlayGuard =
+      .ok ⟨m, .ok (.bool false)⟩ := by
+  have has : evalExpr (k + 6) (balanceProgram .ts) m f resetTsOverlayHasOwn =
+      .ok ⟨m, .ok (.bool true)⟩ := by
+    apply evalExpr_adequate (.callBuiltin
+      (.property (.localRead hObject) (by simpa only [balanceProgram_lang] using hHas))
+      (.cons (.property (.localRead hWorld) (by simpa only [balanceProgram_lang] using hContext))
+        (.cons (.localRead hn) .empty)) (by decide) ?_) (by omega)
+    rw [balanceProgram_lang]
+    unfold hostCall
+    change (do let own ← readOwn m context "balance"; pure (⟨m, .ok (.bool own.isSome)⟩ : ExprOutcome)) = _
+    obtain ⟨descriptor, hd⟩ := hOwn
+    rw [hd]; rfl
+  have st : evalExpr (k + 5) (balanceProgram .ts) m f resetTsOverlayStringTest =
+      .ok ⟨m, .ok (.bool false)⟩ := by
+    have idx : evalExpr (k + 2) (balanceProgram .ts) m f
+        (.index (.local "contextDefinitions") (.local "name")) =
+          .ok ⟨m, .ok (.object definition)⟩ := by
+      rw [evalExpr, evalExpr_adequate (.localRead hDefs) (by omega)]
+      simp only [Bind.bind, Except.bind]
+      rw [evalExpr_adequate (.localRead hn) (by omega)]
+      simpa only [Bind.bind, Except.bind, balanceProgram_lang] using hDef
+    have non : evalExpr (k + 3) (balanceProgram .ts) m f
+        (.nonNull (.index (.local "contextDefinitions") (.local "name"))) =
+          .ok ⟨m, .ok (.object definition)⟩ := by
+      rw [evalExpr, idx]
+    have prop : evalExpr (k + 4) (balanceProgram .ts) m f
+        (.property (.nonNull (.index (.local "contextDefinitions") (.local "name"))) "type") =
+          .ok ⟨m, .ok (.string "integer")⟩ := by
+      rw [evalExpr, non]
+      simpa only [Bind.bind, Except.bind, balanceProgram_lang] using hType
+    unfold resetTsOverlayStringTest
+    rw [evalExpr, prop]
+    simp only [Bind.bind, Except.bind]
+    rw [evalExpr_adequate (DepthDerivesExpr.string "string") (by omega)]
+    rw [balanceProgram_lang]; rfl
+  have num := resetTsOverlayNumberTest_execute (k := k + 1) hv
+  have safe := resetTsOverlaySafeCall_execute (k := k + 1) hv hNumber hSafe hb
+  have and : evalExpr (k + 5) (balanceProgram .ts) m f
+      (.andThen resetTsOverlayNumberTest resetTsOverlaySafeCall) =
+        .ok ⟨m, .ok (.bool true)⟩ := by
+    rw [evalExpr, num]
+    simpa only [Bind.bind, Except.bind, sourceTruthy, balanceProgram_lang,
+      Bool.true_eq, if_true] using safe
+  have cond : evalExpr (k + 6) (balanceProgram .ts) m f
+      (.conditional resetTsOverlayStringTest
+        (.binary .strictEq (.unary .typeof (.local "value")) (.string "string"))
+        (.andThen resetTsOverlayNumberTest resetTsOverlaySafeCall)) =
+        .ok ⟨m, .ok (.bool true)⟩ := by
+    rw [evalExpr, st]
+    simpa only [Bind.bind, Except.bind, sourceTruthy, balanceProgram_lang,
+      Bool.false_eq_true, if_false] using and
+  unfold resetTsOverlayGuard
+  have notHas : evalExpr (k + 7) (balanceProgram .ts) m f
+      (.unary .not resetTsOverlayHasOwn) = .ok ⟨m, .ok (.bool false)⟩ := by
+    rw [evalExpr, has]; rfl
+  have notCond : evalExpr (k + 7) (balanceProgram .ts) m f
+      (.unary .not (.conditional resetTsOverlayStringTest
+        (.binary .strictEq (.unary .typeof (.local "value")) (.string "string"))
+        (.andThen resetTsOverlayNumberTest resetTsOverlaySafeCall))) =
+          .ok ⟨m, .ok (.bool false)⟩ := by
+    rw [evalExpr, cond]; rfl
+  rw [evalExpr, notHas]
+  simpa only [Bind.bind, Except.bind, sourceTruthy, balanceProgram_lang,
+    Bool.false_eq_true, if_false] using notCond
+
+/-- Physical environment required by the pinned TS overlay guard. These fields
+    describe heap/local lookups, not execution of the guard or loop body. -/
+structure ResetTsOverlayPhysical (m : TargetMachine) (f : TargetFrame) (b : Int) where
+  object : ObjRef
+  world : ObjRef
+  context : ObjRef
+  definitions : ObjRef
+  definition : ObjRef
+  number : ObjRef
+  valueRead : localValue m f "value" = .ok (integerValue .ts b)
+  nameRead : localValue m f "name" = .ok (.string "balance")
+  objectRead : localValue m f "Object" = .ok (.object object)
+  hasOwnRead : readPropertyValue .ts m (.object object) "hasOwn" =
+    .ok ⟨m, .ok (.builtin .objectHasOwn)⟩
+  worldRead : localValue m f "world" = .ok (.object world)
+  contextRead : readPropertyValue .ts m (.object world) "context" =
+    .ok ⟨m, .ok (.object context)⟩
+  ownRead : ∃ descriptor, readOwn m context "balance" = .ok (some descriptor)
+  definitionsRead : localValue m f "contextDefinitions" = .ok (.object definitions)
+  definitionRead : readPropertyValue .ts m (.object definitions) "balance" =
+    .ok ⟨m, .ok (.object definition)⟩
+  typeRead : readPropertyValue .ts m (.object definition) "type" =
+    .ok ⟨m, .ok (.string "integer")⟩
+  numberRead : localValue m f "Number" = .ok (.object number)
+  safeRead : readPropertyValue .ts m (.object number) "isSafeInteger" =
+    .ok ⟨m, .ok (.builtin .jsIsSafeInteger)⟩
+
+/-- Complete execution of the actual TS overlay body for any safe signed b.
+    Table/builtin premises are physical lookups; no body-success premise remains.
+    Negative safe values pass this body and are rejected later by bounds. -/
+theorem balanceReset_ts_overlay_body_safe {m f ref old b k}
+    (h : ResetTsOverlayPhysical m f b)
+    (hc : localValue m f "candidate" = .ok (.object ref))
+    (ho : objectAt m ref = .ok (balanceHeapObject .ts m old))
+    (hb : b.natAbs ≤ 9007199254740991) :
+    execStmt (k + 10) (balanceProgram .ts) m f
+      (resetLoopBody (balanceResetOverlayLoop .ts)) =
+        .ok ⟨balanceOverlayUpdated .ts m ref b, f, .normal⟩ := by
+  have guard := resetTsOverlayGuard_execute (k := k) h.valueRead h.nameRead
+    h.objectRead h.hasOwnRead h.worldRead h.contextRead h.ownRead
+    h.definitionsRead h.definitionRead h.typeRead h.numberRead h.safeRead hb
+  have head : execStmt (k + 9) (balanceProgram .ts) m f
+      (.ifThenElse resetTsOverlayGuard
+        (ifYesStmt (firstStmt (resetLoopBody (balanceResetOverlayLoop .ts)))) .empty) =
+        .ok ⟨m, f, .normal⟩ := by
+    rw [execIf_of_false guard rfl]
+    exact execStmt_adequate .empty (by omega)
+  rw [balanceReset_ts_overlay_body_shape, execSequence_of_normal head]
+  rw [execSequence_of_normal (balanceReset_overlay_write_ts_execute
+    (k := k + 5) hc h.nameRead h.valueRead (writeOwn_balance_existing ho))]
+  exact execStmt_adequate .empty (by omega)
+
+/-- The generic one-entry TS loop now needs only physical iterable/table facts;
+    execution of its guard, cast, write and iterator tail is discharged. -/
+theorem balanceReset_ts_overlay_loop_safe
+    {m source f listRef pairRef list pair ref old b k}
+    (he : evalExpr (k + 11) (balanceProgram .ts) m f (resetOverlayIterable .ts) =
+      .ok ⟨source, .ok (.object listRef)⟩)
+    (hl : objectAt source listRef = .ok list)
+    (hk : list.kind = .jsArray) (hi : list.items = [.object pairRef])
+    (hp : objectAt source pairRef = .ok pair)
+    (hv : pair.items = [.string "balance", integerValue .ts b])
+    (h : let bound := resetOverlayPairBinding .ts source f (integerValue .ts b)
+      ResetTsOverlayPhysical bound.1 bound.2 b)
+    (hc : let bound := resetOverlayPairBinding .ts source f (integerValue .ts b)
+      localValue bound.1 bound.2 "candidate" = .ok (.object ref))
+    (ho : let bound := resetOverlayPairBinding .ts source f (integerValue .ts b)
+      objectAt bound.1 ref = .ok (balanceHeapObject .ts bound.1 old))
+    (hb : b.natAbs ≤ 9007199254740991) :
+    execStmt (k + 12) (balanceProgram .ts) m f (balanceResetOverlayLoop .ts) =
+      .ok ⟨balanceOverlayUpdated .ts
+        (resetOverlayPairBinding .ts source f (integerValue .ts b)).1 ref b, f, .normal⟩ := by
+  apply balanceReset_overlay_loop_execute (k := k + 9) he hl hk hi hp hv
+  · intro hlang; cases hlang
+  · intro hlang; cases hlang
+  · exact balanceReset_ts_overlay_body_safe h hc ho hb
+def resetSafeTupleObject (items : List TargetValue) : HeapObject :=
+  ⟨.pythonTuple, none, [], items, [], false, false⟩
+def resetSafeTupleStage (m : TargetMachine) (items : List TargetValue) : TargetMachine :=
+  { (allocObject m (resetSafeTupleObject [])).1 with objects :=
+    ((allocObject m (resetSafeTupleObject [])).1.objects.map fun e =>
+      (e.1, if e.1 == m.nextObject then resetSafeTupleObject items else e.2)) }
+def resetSafeTupleMachine (m : TargetMachine) : TargetMachine :=
+  { resetSafeTupleStage m [.builtin .int] with objects :=
+    ((resetSafeTupleStage m [.builtin .int]).objects.map fun e =>
+      (e.1, if e.1 == m.nextObject then resetSafeTupleObject [.builtin .int, .builtin .float] else e.2)) }
+
+theorem resetSafeTuple_execute {m f k}
+    (hi : localValue m f "int" = .ok (.builtin .int))
+    (hf : localValue m f "float" = .ok (.builtin .float)) :
+    evalExpr (k + 4) (balanceProgram .python) m f
+      (.tuple (.sequence (.local "int") (.sequence (.local "float") .empty))) =
+      .ok ⟨resetSafeTupleMachine m, .ok (.object m.nextObject)⟩ := by
+  let m0 := (allocObject m (resetSafeTupleObject [])).1
+  let m1 := resetSafeTupleStage m [.builtin .int]
+  have hi0 : localValue m0 f "int" = .ok (.builtin .int) := hi
+  have hf1 : localValue m1 f "float" = .ok (.builtin .float) := hf
+  have ho0 : objectAt m0 m.nextObject = .ok (resetSafeTupleObject []) :=
+    objectAt_allocObject_fresh m (resetSafeTupleObject [])
+  have ho1 : objectAt m1 m.nextObject = .ok (resetSafeTupleObject [.builtin .int]) := by
+    simp [m1, resetSafeTupleStage, allocObject, objectAt, List.lookup]
+  rw [evalTupleTwo_eq (balanceProgram_lang .python)]
+  change (do
+    let v1 ← evalExpr (k + 2) (balanceProgram .python) m0 f (.local "int")
+    match v1.result with
+    | .error e => pure (⟨v1.machine, .error e⟩ : ExprOutcome)
+    | .ok value1 => do
+      let o1 ← objectAt v1.machine m.nextObject
+      let n1 ← replaceObject v1.machine m.nextObject {o1 with items := o1.items ++ [value1]}
+      let v2 ← evalExpr (k + 1) (balanceProgram .python) n1 f (.local "float")
+      match v2.result with
+      | .error e => pure (⟨v2.machine, .error e⟩ : ExprOutcome)
+      | .ok value2 => do
+        let o2 ← objectAt v2.machine m.nextObject
+        let n2 ← replaceObject v2.machine m.nextObject {o2 with items := o2.items ++ [value2]}
+        pure (⟨n2, .ok (.object m.nextObject)⟩ : ExprOutcome)) = _
+  rw [evalExpr_adequate (.localRead hi0) (by omega)]
+  simp only [Bind.bind, Except.bind]
+  rw [ho0]
+  simp only [replaceObject, ho0, Bind.bind, Except.bind, Pure.pure, Except.pure]
+  change (do
+    let v2 ← evalExpr (k + 1) (balanceProgram .python) m1 f (.local "float")
+    match v2.result with
+    | .error e => pure (⟨v2.machine, .error e⟩ : ExprOutcome)
+    | .ok value2 => do
+      let o2 ← objectAt v2.machine m.nextObject
+      let n2 ← replaceObject v2.machine m.nextObject {o2 with items := o2.items ++ [value2]}
+      pure (⟨n2, .ok (.object m.nextObject)⟩ : ExprOutcome)) = _
+  rw [evalExpr_adequate (.localRead hf1) (by omega)]
+  simp only [Bind.bind, Except.bind]
+  rw [ho1]
+  simp only [replaceObject, ho1, Bind.bind, Except.bind, Pure.pure, Except.pure]
+  rfl
+def resetPythonSafeFloat : TargetExpr :=
+  .call (.local "float") (.sequence (.local "value") .empty)
+def resetPythonSafeFinite : TargetExpr :=
+  .call (.property (.local "math") "isfinite") (.sequence (.local "value") .empty)
+def resetPythonSafeIntegral : TargetExpr :=
+  .call (.property resetPythonSafeFloat "is_integer") .empty
+def resetPythonSafeAbs : TargetExpr :=
+  .call (.local "abs") (.sequence resetPythonSafeFloat .empty)
+def resetPythonSafeBound : TargetExpr :=
+  .binary .le resetPythonSafeAbs (.local "_MAX_INTEGER")
+
+theorem resetPythonSafeFloat_execute {m f b k}
+    (hv : localValue m f "value" = .ok (integerValue .python b))
+    (hf : localValue m f "float" = .ok (.builtin .float))
+    (hb : b.natAbs ≤ 9007199254740991) :
+    evalExpr (k + 3) (balanceProgram .python) m f resetPythonSafeFloat =
+      .ok ⟨m, .ok (.number .pyFloat b)⟩ := by
+  exact evalExpr_adequate (.callBuiltin (.localRead hf)
+    (.cons (.localRead hv) .empty) (by decide)
+    (by simpa only [balanceProgram_lang, integerValue] using host_float_exact m b hb)) (by omega)
+
+theorem resetPythonSafeIntegral_execute {m f b k}
+    (hv : localValue m f "value" = .ok (integerValue .python b))
+    (hf : localValue m f "float" = .ok (.builtin .float))
+    (hb : b.natAbs ≤ 9007199254740991) :
+    evalExpr (k + 5) (balanceProgram .python) m f resetPythonSafeIntegral =
+      .ok ⟨m, .ok (.bool true)⟩ := by
+  have hfloat : DepthDerivesExpr (balanceProgram .python) m f resetPythonSafeFloat
+      ⟨m, .ok (.number .pyFloat b)⟩ 2 :=
+    .callBuiltin (.localRead hf) (.cons (.localRead hv) .empty) (by decide)
+      (by simpa only [balanceProgram_lang, integerValue] using host_float_exact m b hb)
+  exact evalExpr_adequate (.callBoundBuiltin
+    (.property hfloat (by rw [balanceProgram_lang]; rfl)) .empty (by decide)
+    (by rw [balanceProgram_lang]; rfl)) (by omega)
+
+theorem resetPythonSafeAbs_execute {m f b k}
+    (hv : localValue m f "value" = .ok (integerValue .python b))
+    (hf : localValue m f "float" = .ok (.builtin .float))
+    (ha : localValue m f "abs" = .ok (.builtin .abs))
+    (hb : b.natAbs ≤ 9007199254740991) :
+    evalExpr (k + 5) (balanceProgram .python) m f resetPythonSafeAbs =
+      .ok ⟨m, .ok (.number .pyFloat (Int.ofNat b.natAbs))⟩ := by
+  have hfloat : DepthDerivesExpr (balanceProgram .python) m f resetPythonSafeFloat
+      ⟨m, .ok (.number .pyFloat b)⟩ 2 :=
+    .callBuiltin (.localRead hf) (.cons (.localRead hv) .empty) (by decide)
+      (by simpa only [balanceProgram_lang, integerValue] using host_float_exact m b hb)
+  exact evalExpr_adequate (.callBuiltin (.localRead ha) (.cons hfloat .empty)
+    (by decide) (by rw [balanceProgram_lang]; rfl)) (by omega)
+
+theorem resetPythonSafeBound_execute {m f b k}
+    (hv : localValue m f "value" = .ok (integerValue .python b))
+    (hf : localValue m f "float" = .ok (.builtin .float))
+    (ha : localValue m f "abs" = .ok (.builtin .abs))
+    (hm : localValue m f "_MAX_INTEGER" = .ok (integerValue .python 9007199254740991))
+    (hb : b.natAbs ≤ 9007199254740991) :
+    evalExpr (k + 6) (balanceProgram .python) m f resetPythonSafeBound =
+      .ok ⟨m, .ok (.bool true)⟩ := by
+  have hAbs := resetPythonSafeAbs_execute (k := k) hv hf ha hb
+  unfold resetPythonSafeBound
+  rw [evalExpr, hAbs]
+  simp only [Bind.bind, Except.bind]
+  rw [evalExpr_adequate (.localRead hm) (by omega), balanceProgram_lang]
+  have hb' : Int.ofNat b.natAbs ≤ (9007199254740991 : Int) := Int.ofNat_le.mpr hb
+  change Except.ok (⟨m, .ok (.bool (decide (Int.ofNat b.natAbs ≤ (9007199254740991 : Int))))⟩ : ExprOutcome) = _
+  simp only [hb', decide_true]
+
+/-- All numeric clauses of the source _safe_integer helper, with the actual
+    float conversion and receiver-bound is_integer call retained. -/
+theorem balanceReset_safe_integer_numeric_execute {m f b math k}
+    (hv : localValue m f "value" = .ok (integerValue .python b))
+    (hf : localValue m f "float" = .ok (.builtin .float))
+    (ha : localValue m f "abs" = .ok (.builtin .abs))
+    (hm : localValue m f "_MAX_INTEGER" = .ok (integerValue .python 9007199254740991))
+    (hMath : localValue m f "math" = .ok (.object math))
+    (hFinite : readPropertyValue .python m (.object math) "isfinite" =
+      .ok ⟨m, .ok (.builtin .isFinite)⟩)
+    (hb : b.natAbs ≤ 9007199254740991) :
+    evalExpr (k + 8) (balanceProgram .python) m f
+      (.andThen (.andThen resetPythonSafeFinite resetPythonSafeIntegral) resetPythonSafeBound) =
+        .ok ⟨m, .ok (.bool true)⟩ := by
+  have finite : evalExpr (k + 6) (balanceProgram .python) m f resetPythonSafeFinite =
+      .ok ⟨m, .ok (.bool true)⟩ := by
+    exact evalExpr_adequate (.callBuiltin (.property (.localRead hMath)
+      (by simpa only [balanceProgram_lang] using hFinite))
+      (.cons (.localRead hv) .empty) (by decide)
+      (by rw [balanceProgram_lang]; rfl)) (by omega)
+  have integral := resetPythonSafeIntegral_execute (k := k + 1) hv hf hb
+  have bound := resetPythonSafeBound_execute (k := k + 1) hv hf ha hm hb
+  have and : evalExpr (k + 7) (balanceProgram .python) m f
+      (.andThen resetPythonSafeFinite resetPythonSafeIntegral) =
+        .ok ⟨m, .ok (.bool true)⟩ := by
+    rw [evalExpr, finite]
+    simpa only [Bind.bind, Except.bind, sourceTruthy, balanceProgram_lang,
+      Bool.true_eq, if_true] using integral
+  rw [evalExpr, and]
+  simpa only [Bind.bind, Except.bind, sourceTruthy, balanceProgram_lang,
+    Bool.true_eq, if_true] using bound
+
+def resetPythonSafePrefix : TargetExpr :=
+  .binary .inObject (.call (.local "type") (.sequence (.local "value") .empty))
+    (.tuple (.sequence (.local "int") (.sequence (.local "float") .empty)))
+def resetPythonSafeExpr : TargetExpr :=
+  .andThen (.andThen (.andThen resetPythonSafePrefix resetPythonSafeFinite)
+    resetPythonSafeIntegral) resetPythonSafeBound
+
+theorem resetPythonSafePrefix_execute {m f b k}
+    (hv : localValue m f "value" = .ok (integerValue .python b))
+    (ht : localValue m f "type" = .ok (.builtin .type))
+    (hi : localValue m f "int" = .ok (.builtin .int))
+    (hf : localValue m f "float" = .ok (.builtin .float)) :
+    evalExpr (k + 5) (balanceProgram .python) m f resetPythonSafePrefix =
+      .ok ⟨resetSafeTupleMachine m, .ok (.bool true)⟩ := by
+  have typeCall : evalExpr (k + 4) (balanceProgram .python) m f
+      (.call (.local "type") (.sequence (.local "value") .empty)) =
+        .ok ⟨m, .ok (.builtin .int)⟩ := by
+    exact evalExpr_adequate (.callBuiltin (.localRead ht)
+      (.cons (.localRead hv) .empty) (by decide)
+      (by rw [balanceProgram_lang]; rfl)) (by omega)
+  unfold resetPythonSafePrefix
+  rw [evalExpr, typeCall]
+  simp only [Bind.bind, Except.bind]
+  rw [resetSafeTuple_execute hi hf, balanceProgram_lang]
+  have ho : objectAt (resetSafeTupleMachine m) m.nextObject =
+      .ok (resetSafeTupleObject [.builtin .int, .builtin .float]) := by
+    simp [resetSafeTupleMachine, resetSafeTupleStage, allocObject, objectAt, List.lookup]
+  simp [binaryValue, ho, resetSafeTupleObject, Bind.bind, Except.bind,
+    Pure.pure, Except.pure]
+
+/-- Physical lookups needed by the Python source helper. Its type tuple really
+    allocates; the math property is read in that resulting heap. -/
+structure ResetPythonSafePhysical (m : TargetMachine) (f : TargetFrame) (b : Int) where
+  math : ObjRef
+  valueRead : localValue m f "value" = .ok (integerValue .python b)
+  typeRead : localValue m f "type" = .ok (.builtin .type)
+  intRead : localValue m f "int" = .ok (.builtin .int)
+  floatRead : localValue m f "float" = .ok (.builtin .float)
+  absRead : localValue m f "abs" = .ok (.builtin .abs)
+  maxRead : localValue m f "_MAX_INTEGER" = .ok (integerValue .python 9007199254740991)
+  mathRead : localValue m f "math" = .ok (.object math)
+  finiteRead : readPropertyValue .python (resetSafeTupleMachine m) (.object math) "isfinite" =
+    .ok ⟨resetSafeTupleMachine m, .ok (.builtin .isFinite)⟩
+
+/-- Execute the complete source helper expression, not just a host surrogate.
+    All safe signed balances are accepted and the actual tuple allocation remains. -/
+theorem balanceReset_safe_integer_execute {m f b k}
+    (h : ResetPythonSafePhysical m f b)
+    (hb : b.natAbs ≤ 9007199254740991) :
+    evalExpr (k + 9) (balanceProgram .python) m f resetPythonSafeExpr =
+      .ok ⟨resetSafeTupleMachine m, .ok (.bool true)⟩ := by
+  let n := resetSafeTupleMachine m
+  have hv : localValue n f "value" = .ok (integerValue .python b) := h.valueRead
+  have hf : localValue n f "float" = .ok (.builtin .float) := h.floatRead
+  have ha : localValue n f "abs" = .ok (.builtin .abs) := h.absRead
+  have hm : localValue n f "_MAX_INTEGER" = .ok (integerValue .python 9007199254740991) := h.maxRead
+  have hMath : localValue n f "math" = .ok (.object h.math) := h.mathRead
+  have hPrefix := resetPythonSafePrefix_execute (k := k + 1)
+    h.valueRead h.typeRead h.intRead h.floatRead
+  have finite : evalExpr (k + 6) (balanceProgram .python) n f resetPythonSafeFinite =
+      .ok ⟨n, .ok (.bool true)⟩ := by
+    exact evalExpr_adequate (.callBuiltin (.property (.localRead hMath)
+      (by simpa only [balanceProgram_lang] using h.finiteRead))
+      (.cons (.localRead hv) .empty) (by decide)
+      (by rw [balanceProgram_lang]; rfl)) (by omega)
+  have integral := resetPythonSafeIntegral_execute (k := k + 2) hv hf hb
+  have bound := resetPythonSafeBound_execute (k := k + 2) hv hf ha hm hb
+  have first : evalExpr (k + 7) (balanceProgram .python) m f
+      (.andThen resetPythonSafePrefix resetPythonSafeFinite) = .ok ⟨n, .ok (.bool true)⟩ := by
+    rw [evalExpr, hPrefix]
+    simpa only [Bind.bind, Except.bind, sourceTruthy, balanceProgram_lang,
+      Bool.true_eq, if_true] using finite
+  have second : evalExpr (k + 8) (balanceProgram .python) m f
+      (.andThen (.andThen resetPythonSafePrefix resetPythonSafeFinite) resetPythonSafeIntegral) =
+        .ok ⟨n, .ok (.bool true)⟩ := by
+    rw [evalExpr, first]
+    simpa only [Bind.bind, Except.bind, sourceTruthy, balanceProgram_lang,
+      Bool.true_eq, if_true] using integral
+  unfold resetPythonSafeExpr
+  rw [evalExpr, second]
+  simpa only [Bind.bind, Except.bind, sourceTruthy, balanceProgram_lang,
+    Bool.true_eq, if_true] using bound
+
+/-- The selected helper is the closure installed by the actual Python module. -/
+def balancePythonSafeIntegerClosure : TargetClosure :=
+  ((do
+    let value ← localValue (balancePreparation .python).1 (balancePreparation .python).2 "_safe_integer"
+    match value with
+    | .closure ref => closureAt (balancePreparation .python).1 ref
+    | _ => throw TargetError.badDescriptor) : Except TargetError TargetClosure).toOption.getD
+      ⟨"missing", [], [], .empty, [], none⟩
+
+set_option maxRecDepth 65536 in
+set_option maxHeartbeats 10000000 in
+theorem balancePythonSafeInteger_body_shape :
+    balancePythonSafeIntegerClosure.body = .sequence (.returnValue resetPythonSafeExpr) .empty := by
+  unfold balancePythonSafeIntegerClosure balancePreparation
+  rw [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]
+  decide +kernel
+
+/-- Execute the real source-selected return and its sequence control, for all
+    safe signed values, with physical helper-frame premises only. -/
+theorem balancePythonSafeInteger_body_execute {m f b k}
+    (h : ResetPythonSafePhysical m f b)
+    (hb : b.natAbs ≤ 9007199254740991) :
+    execStmt (k + 11) (balanceProgram .python) m f balancePythonSafeIntegerClosure.body =
+      .ok ⟨resetSafeTupleMachine m, f, .returned (.bool true)⟩ := by
+  rw [balancePythonSafeInteger_body_shape, execStmt, execStmt,
+    balanceReset_safe_integer_execute h hb]
+  rfl
+
+/-- The physical argument cell and fresh helper frame used by _safe_integer. -/
+def resetPythonSafeCallEntry (m : TargetMachine) (closure : TargetClosure) (b : Int) :
+    TargetMachine × TargetFrame :=
+  ((allocCell m (integerValue .python b) true).1,
+    { closureFrame closure with locals := [("value", m.nextCell)] })
+
+def resetPythonSafeCall : TargetExpr :=
+  .call (.local "_safe_integer") (.sequence (.local "value") .empty)
+
+/-- Execute the actual stored Python helper through parameter binding, its
+    source body, and return translation. No helper-success premise is required. -/
+theorem balanceReset_safe_integer_call_execute {m f ref closure b k}
+    (hr : localValue m f "_safe_integer" = .ok (.closure ref))
+    (hv : localValue m f "value" = .ok (integerValue .python b))
+    (hc : closureAt m ref = .ok closure)
+    (hp : closure.params = [⟨"value", none⟩])
+    (hs : closure.body = balancePythonSafeIntegerClosure.body)
+    (h : let e := resetPythonSafeCallEntry m closure b
+      ResetPythonSafePhysical e.1 e.2 b)
+    (hb : b.natAbs ≤ 9007199254740991) :
+    evalExpr (k + 12) (balanceProgram .python) m f resetPythonSafeCall =
+      .ok ⟨resetSafeTupleMachine (resetPythonSafeCallEntry m closure b).1, .ok (.bool true)⟩ := by
+  have bindings : DepthBindsProvided (balanceProgram .python) m (closureFrame closure)
+      closure.params closure.pythonDefaults [integerValue .python b]
+      (resetPythonSafeCallEntry m closure b).1 (resetPythonSafeCallEntry m closure b).2 1 := by
+    rw [hp]
+    apply DepthBindsProvided.cons (rank := 0)
+    · rw [balanceProgram_lang]; rfl
+    · exact .empty
+  unfold resetPythonSafeCall
+  rw [evalStoredCall_eq (.localRead hr) (.cons (.localRead hv) .empty) hc bindings
+    (by omega) (by omega) (by omega), hs]
+  rw [balancePythonSafeInteger_body_execute h hb]
+  rfl
+
+
+/-- The updated candidate contains exactly b even when it is safe and negative.
+    This is a descriptor read, separate from later nonnegative validation. -/
+theorem balanceOverlayUpdated_candidate_read {lang m f ref old b}
+    (hc : localValue m f "candidate" = .ok (.object ref))
+    (ho : objectAt m ref = .ok (balanceHeapObject lang m old)) :
+    resetCandidateBalanceRead (balanceOverlayUpdated lang m ref b) f =
+      .ok (some (integerValue lang b)) := by
+  have hr : localValue (balanceOverlayUpdated lang m ref b) f "candidate" =
+      .ok (.object ref) := (localValue_fields_congr rfl rfl rfl).trans hc
+  have hp := balanceOverlayUpdated_objectAt ho (b := b)
+  simp [resetCandidateBalanceRead, hr, hp, balanceHeapObject, balanceDataDescriptor,
+    List.lookup, Bind.bind, Except.bind, Pure.pure, Except.pure]
+
+/-- Complete body control and descriptor-data postcondition for every safe
+    signed TS value. This does not claim constructor validation success. -/
+theorem balanceReset_ts_overlay_body_success {m f ref old b k}
+    (h : ResetTsOverlayPhysical m f b)
+    (hc : localValue m f "candidate" = .ok (.object ref))
+    (ho : objectAt m ref = .ok (balanceHeapObject .ts m old))
+    (hb : b.natAbs ≤ 9007199254740991) :
+    resetOverlaySuccessCheck .ts b
+      (execStmt (k + 10) (balanceProgram .ts) m f (resetLoopBody (balanceResetOverlayLoop .ts))) := by
+  rw [balanceReset_ts_overlay_body_safe h hc ho hb]
+  unfold resetOverlaySuccessCheck
+  simp only [Except.toOption, Option.map, Option.some.injEq, Prod.mk.injEq]
+  exact ⟨True.intro, balanceOverlayUpdated_candidate_read hc ho⟩
+
+
+
+/-- Supply Object.entries from physical lookups as well as discharging the body.
+    This is universal for safe b on a supplied one-key overrides object; the
+    preceding TS descriptor-copy false arm remains a separate obligation. -/
+theorem balanceReset_ts_seed_loop_safe {m f seed object ref old b k}
+    (hEntries : readPropertyValue .ts m (.object object) "entries" =
+      .ok ⟨m, .ok (.builtin .objectEntries)⟩)
+    (hObject : localValue m f "Object" = .ok (.object object))
+    (hSeed : localValue m f "overrides" = .ok (.object seed))
+    (hoSeed : objectAt m seed = .ok (balanceHeapObject .ts m b))
+    (h : let bound := resetOverlayPairBinding .ts (resetIterableMachine .ts m b) f (integerValue .ts b)
+      ResetTsOverlayPhysical bound.1 bound.2 b)
+    (hc : let bound := resetOverlayPairBinding .ts (resetIterableMachine .ts m b) f (integerValue .ts b)
+      localValue bound.1 bound.2 "candidate" = .ok (.object ref))
+    (ho : let bound := resetOverlayPairBinding .ts (resetIterableMachine .ts m b) f (integerValue .ts b)
+      objectAt bound.1 ref = .ok (balanceHeapObject .ts bound.1 old))
+    (hb : b.natAbs ≤ 9007199254740991) :
+    execStmt (k + 12) (balanceProgram .ts) m f (balanceResetOverlayLoop .ts) =
+      .ok ⟨balanceOverlayUpdated .ts
+        (resetOverlayPairBinding .ts (resetIterableMachine .ts m b) f (integerValue .ts b)).1 ref b,
+        f, .normal⟩ := by
+  have objects := resetIterableMachine_objects .ts m b
+  exact balanceReset_ts_overlay_loop_safe
+    (balanceReset_ts_iterable_execute (k := k + 7) hEntries hObject hSeed hoSeed)
+    objects.1 rfl rfl objects.2 rfl h hc ho hb
+
+def resetCandidateMiddleModel (lang : TargetLang) (stage : TargetMachine × TargetFrame) (seed : ObjRef) :
+    TargetMachine × TargetFrame :=
+  let e := snapshotBound lang (allocObject stage.1 (balanceHeapObject lang stage.1 100)).1
+    stage.2 "candidate" (.object stage.1.nextObject)
+  if lang == .ts then resetTsOverridesEntry e.1 e.2
+  else snapshotBound .python e.1 e.2 "ctx" (.object seed)
+
+theorem resetCandidateMiddleModel_object (lang : TargetLang) (stage : TargetMachine × TargetFrame) (seed : ObjRef) :
+    objectAt (resetCandidateMiddleModel lang stage seed).1 stage.1.nextObject =
+      .ok (balanceHeapObject lang (resetCandidateMiddleModel lang stage seed).1 100) := by
+  cases lang <;>
+    simp only [resetCandidateMiddleModel, resetTsOverridesEntry, snapshotBound,
+      Bool.false_eq_true, if_false, if_true, Prod.fst, objectAt_allocCell]
+  all_goals exact objectAt_allocObject_fresh _ _
+
+theorem balanceResetMiddleEntry_model (lang : TargetLang) (b : Int) :
+    balanceResetMiddleEntry lang b = resetCandidateMiddleModel lang
+      (balanceCanonicalResetStage lang b 3) (balancePreparation lang).1.nextObject := rfl
+
+theorem balanceResetMiddleEntry_candidate_object (lang : TargetLang) (b : Int) :
+    objectAt (balanceResetMiddleEntry lang b).1 (balanceCanonicalResetStage lang b 3).1.nextObject =
+      .ok (balanceHeapObject lang (balanceResetMiddleEntry lang b).1 100) := by
+  rw [balanceResetMiddleEntry_model]
+  exact resetCandidateMiddleModel_object lang (balanceCanonicalResetStage lang b 3)
+    (balancePreparation lang).1.nextObject
+def balanceResetMiddleCandidateCheck (lang : TargetLang) : Prop :=
+  localValue (balanceResetMiddleEntry lang 0).1 (balanceResetMiddleEntry lang 0).2 "candidate" =
+    .ok (.object (balanceCanonicalResetStage lang 0 3).1.nextObject)
+
+instance (lang : TargetLang) : Decidable (balanceResetMiddleCandidateCheck lang) := by
+  unfold balanceResetMiddleCandidateCheck
+  infer_instance
+
+theorem balanceResetMiddleCandidateCheck_zero (lang : TargetLang) : balanceResetMiddleCandidateCheck lang := by
+  cases lang <;>
+    unfold balanceResetMiddleCandidateCheck balanceResetMiddleEntry balanceResetCandidateEntry
+      balanceCanonicalResetStage balanceCanonicalResetEntry balanceResetBodyEntry
+      balancePythonResetBodyEntry balanceConstructorBodyEntry balanceConstructorBoundEntry
+      balanceConstructorArgumentEntry balanceStoredReset balanceResetLookup balanceStoredConstructor
+      balanceConstructorLookup balanceConstructorName balancePreparation
+  all_goals first
+    | (rw [balanceProgram_of_parse BalancePrograms.balanceTsProgram_source]; decide +kernel)
+    | (rw [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]; decide +kernel)
+
+theorem balanceResetMiddleEntry_candidate_read (lang : TargetLang) (b : Int) :
+    localValue (balanceResetMiddleEntry lang b).1 (balanceResetMiddleEntry lang b).2 "candidate" =
+      .ok (.object (balanceCanonicalResetStage lang b 3).1.nextObject) := by
+  rw [balanceResetMiddleEntry_localValue,
+    (balanceCanonicalResetStage_footprint lang b 3 (by decide)).2.2.2.2.1]
+  exact balanceResetMiddleCandidateCheck_zero lang
+/-- A candidate update at the physical middle entry. This selector is a heap
+    construction, not a claim that reset/overlay execution has reached it. -/
+def balanceResetUpdatedCandidateEntry (lang : TargetLang) (b : Int) : TargetMachine × TargetFrame :=
+  let e := balanceResetMiddleEntry lang b
+  (balanceOverlayUpdated lang e.1 (balanceCanonicalResetStage lang b 3).1.nextObject b, e.2)
+
+/-- Only the helper return is projected. Helper allocation remains inside the
+    interpreter result; an arbitrary final machine is not assumed unchanged. -/
+def resetHelperSuccessCheck (lang : TargetLang) (result : Except TargetError ExprOutcome) : Prop :=
+  (result.toOption.bind fun out => out.result.toOption) =
+    some (if lang == .ts then TargetValue.undefined else TargetValue.null)
+
+instance (lang : TargetLang) (result : Except TargetError ExprOutcome) :
+    Decidable (resetHelperSuccessCheck lang result) := by
+  unfold resetHelperSuccessCheck
+  infer_instance
+
+theorem resetHelperSuccessCheck_sound {lang result}
+    (h : resetHelperSuccessCheck lang result) :
+    ∃ m, result = .ok ⟨m, .ok (if lang == .ts then .undefined else .null)⟩ := by
+  cases result with
+  | error e => simp [resetHelperSuccessCheck, Except.toOption] at h
+  | ok out =>
+    rcases out with ⟨m, returned⟩
+    cases returned with
+    | error e => simp [resetHelperSuccessCheck, Except.toOption] at h
+    | ok value =>
+      simp only [resetHelperSuccessCheck, Except.toOption, Option.bind,
+        Option.some.injEq] at h
+      subst value
+      exact ⟨m, rfl⟩
+
+/-- Closed certificates of the actual bounds and invariant method calls on an
+    updated zero candidate. The invariant call runs the emitted Pratt parser
+    on the fixed balance >= 0 string. Neither call is yet universal in b. -/
+theorem balanceReset_helpers_zero_check (lang : TargetLang) (invariant : Bool) :
+    let e := balanceResetUpdatedCandidateEntry lang 0
+    resetHelperSuccessCheck lang
+      (evalExpr 100 (balanceProgram lang) e.1 e.2
+        (if invariant then resetInvariantCall lang else resetBoundsCall lang)) := by
+  cases lang <;> cases invariant <;>
+    unfold balanceResetUpdatedCandidateEntry balanceResetMiddleEntry balanceResetCandidateEntry
+      balanceCanonicalResetStage balanceCanonicalResetEntry balanceResetBodyEntry
+      balancePythonResetBodyEntry balanceConstructorBodyEntry balanceConstructorBoundEntry
+      balanceConstructorArgumentEntry balanceStoredReset balanceResetLookup balanceStoredConstructor
+      balanceConstructorLookup balanceConstructorName balancePreparation
+  all_goals first
+    | (rw [balanceProgram_of_parse BalancePrograms.balanceTsProgram_source]; decide +kernel)
+    | (rw [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]; decide +kernel)
+
+/-- Canonical candidate binding and existing-key update have the actual data
+    descriptor b for every integer. This remains a physical boundary fact. -/
+theorem balanceResetUpdatedCandidateEntry_read (lang : TargetLang) (b : Int) :
+    resetCandidateBalanceRead (balanceResetUpdatedCandidateEntry lang b).1
+      (balanceResetUpdatedCandidateEntry lang b).2 = .ok (some (integerValue lang b)) :=
+  balanceOverlayUpdated_candidate_read (balanceResetMiddleEntry_candidate_read lang b)
+    (balanceResetMiddleEntry_candidate_object lang b)
+
+/-- Instantiate the primitive range predicates on the canonical updated heap.
+    Execution of the bounds/invariant methods is not inferred from this lemma. -/
+theorem balanceResetUpdatedCandidateEntry_range {lang b}
+    (hb : 0 ≤ b ∧ b ≤ 9007199254740991) :
+    let e := balanceResetUpdatedCandidateEntry lang b
+    resetCandidateBalanceRead e.1 e.2 = .ok (some (integerValue lang b)) ∧
+    binaryValue lang e.1 .ge (integerValue lang b) (integerValue lang 0) = .ok (.ok (.bool true)) ∧
+    binaryValue lang e.1 .le (integerValue lang b) (integerValue lang 9007199254740991) =
+      .ok (.ok (.bool true)) :=
+  balanceOverlayUpdated_candidate_range (balanceResetMiddleEntry_candidate_read lang b)
+    (balanceResetMiddleEntry_candidate_object lang b) hb
+
 end CanonicalResetComposition
 
 end Harmonia.Applications.Kadmos.Generated

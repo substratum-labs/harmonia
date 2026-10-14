@@ -485,3 +485,114 @@ example (lang : TargetLang) (m : TargetMachine) (f : TargetFrame) (b : Int) (nam
   resetIterableMachine_localValue lang m f b name
 
 #print axioms resetIterableMachine_localValue
+
+-- A live helper frame proves the numeric premises are attainable for every b.
+-- The stored closure below retains the actual pinned _safe_integer source body.
+def resetSafeHelperTestFrame : TargetFrame :=
+  ⟨"safe-helper-test", [], [("value", 0)], [], none, .normal⟩
+
+def resetSafeHelperTestClosure : TargetClosure :=
+  ⟨"safe-helper-test._safe_integer", [⟨"value", none⟩], [none],
+    balancePythonSafeIntegerClosure.body, [], none⟩
+
+def resetSafeHelperTestMachine (b : Int) : TargetMachine :=
+  { TargetMachine.empty with
+    objects := [(1, { literalObject .python TargetMachine.empty with
+      own := [("isfinite", ⟨some (.builtin .isFinite), none, none, true, true, true⟩)] })],
+    closures := [(0, resetSafeHelperTestClosure)],
+    cells := [(0, integerValue .python b), (1, .builtin .type), (2, .builtin .int),
+      (3, .builtin .float), (4, .builtin .abs), (5, integerValue .python 9007199254740991),
+      (6, .object 1), (7, .closure 0)],
+    globals := [("type", 1), ("int", 2), ("float", 3), ("abs", 4), ("_MAX_INTEGER", 5),
+      ("math", 6), ("_safe_integer", 7)], nextCell := 8, nextObject := 2, nextClosure := 1 }
+
+def resetSafeHelperTest_physical (b : Int) :
+    ResetPythonSafePhysical (resetSafeHelperTestMachine b) resetSafeHelperTestFrame b :=
+  ⟨1, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+
+def resetSafeHelperTest_call_physical (b : Int) :
+    let e := resetPythonSafeCallEntry (resetSafeHelperTestMachine b) resetSafeHelperTestClosure b
+    ResetPythonSafePhysical e.1 e.2 b :=
+  ⟨1, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+
+example (b : Int) (hb : b.natAbs ≤ 9007199254740991) :
+    execStmt 11 (balanceProgram .python) (resetSafeHelperTestMachine b) resetSafeHelperTestFrame
+      balancePythonSafeIntegerClosure.body =
+        .ok ⟨resetSafeTupleMachine (resetSafeHelperTestMachine b), resetSafeHelperTestFrame,
+          .returned (.bool true)⟩ :=
+  balancePythonSafeInteger_body_execute (resetSafeHelperTest_physical b) hb
+
+example (b : Int) (hb : b.natAbs ≤ 9007199254740991) :
+    evalExpr 12 (balanceProgram .python) (resetSafeHelperTestMachine b) resetSafeHelperTestFrame
+      resetPythonSafeCall =
+        .ok ⟨resetSafeTupleMachine
+          (resetPythonSafeCallEntry (resetSafeHelperTestMachine b) resetSafeHelperTestClosure b).1,
+          .ok (.bool true)⟩ :=
+  balanceReset_safe_integer_call_execute rfl rfl rfl rfl rfl
+    (resetSafeHelperTest_call_physical b) hb
+
+-- Acceptance of negative safe integers here is not constructor bounds success.
+example :
+    execStmt 11 (balanceProgram .python) (resetSafeHelperTestMachine (-9007199254740991))
+      resetSafeHelperTestFrame balancePythonSafeIntegerClosure.body =
+        .ok ⟨resetSafeTupleMachine (resetSafeHelperTestMachine (-9007199254740991)),
+          resetSafeHelperTestFrame, .returned (.bool true)⟩ :=
+  balancePythonSafeInteger_body_execute (resetSafeHelperTest_physical _) (by decide)
+
+example :
+    execStmt 11 (balanceProgram .python) (resetSafeHelperTestMachine 9007199254740991)
+      resetSafeHelperTestFrame balancePythonSafeIntegerClosure.body =
+        .ok ⟨resetSafeTupleMachine (resetSafeHelperTestMachine 9007199254740991),
+          resetSafeHelperTestFrame, .returned (.bool true)⟩ :=
+  balancePythonSafeInteger_body_execute (resetSafeHelperTest_physical _) (by decide)
+
+#print axioms evalTupleTwo_eq
+#print axioms resetSafeTuple_execute
+#print axioms balanceReset_safe_integer_execute
+#print axioms balancePythonSafeInteger_body_shape
+#print axioms balancePythonSafeInteger_body_execute
+#print axioms balanceReset_safe_integer_call_execute
+
+example (b : Int) (hb : b.natAbs ≤ 9007199254740991) :
+    evalExpr 8 (balanceProgram .python) (resetSafeHelperTestMachine b) resetSafeHelperTestFrame
+      (.andThen (.andThen resetPythonSafeFinite resetPythonSafeIntegral) resetPythonSafeBound) =
+        .ok ⟨resetSafeHelperTestMachine b, .ok (.bool true)⟩ :=
+  balanceReset_safe_integer_numeric_execute rfl rfl rfl rfl rfl rfl hb
+
+#print axioms balanceReset_safe_integer_numeric_execute
+
+-- The canonical candidate read is universal; the following actual method-call
+-- regressions are deliberately closed at zero, including the fixed Pratt path.
+example (lang : TargetLang) (b : Int) :
+    resetCandidateBalanceRead (balanceResetUpdatedCandidateEntry lang b).1
+      (balanceResetUpdatedCandidateEntry lang b).2 = .ok (some (integerValue lang b)) :=
+  balanceResetUpdatedCandidateEntry_read lang b
+
+example (lang : TargetLang) (invariant : Bool) :
+    let e := balanceResetUpdatedCandidateEntry lang 0
+    resetHelperSuccessCheck lang
+      (evalExpr 100 (balanceProgram lang) e.1 e.2
+        (if invariant then resetInvariantCall lang else resetBoundsCall lang)) :=
+  balanceReset_helpers_zero_check lang invariant
+
+example (lang : TargetLang) (invariant : Bool) :
+    let e := balanceResetUpdatedCandidateEntry lang 0
+    ∃ m, evalExpr 100 (balanceProgram lang) e.1 e.2
+      (if invariant then resetInvariantCall lang else resetBoundsCall lang) =
+        .ok ⟨m, .ok (if lang == .ts then .undefined else .null)⟩ :=
+  resetHelperSuccessCheck_sound (balanceReset_helpers_zero_check lang invariant)
+
+example {lang b} (hb : 0 ≤ b ∧ b ≤ 9007199254740991) :
+    let e := balanceResetUpdatedCandidateEntry lang b
+    resetCandidateBalanceRead e.1 e.2 = .ok (some (integerValue lang b)) ∧
+    binaryValue lang e.1 .ge (integerValue lang b) (integerValue lang 0) = .ok (.ok (.bool true)) ∧
+    binaryValue lang e.1 .le (integerValue lang b) (integerValue lang 9007199254740991) =
+      .ok (.ok (.bool true)) :=
+  balanceResetUpdatedCandidateEntry_range hb
+
+#print axioms balanceResetMiddleEntry_candidate_object
+#print axioms balanceResetMiddleEntry_candidate_read
+#print axioms balanceResetUpdatedCandidateEntry_read
+#print axioms balanceResetUpdatedCandidateEntry_range
+#print axioms balanceReset_helpers_zero_check
+#print axioms resetHelperSuccessCheck_sound
