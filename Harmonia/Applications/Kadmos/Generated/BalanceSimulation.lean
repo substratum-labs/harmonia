@@ -3251,6 +3251,82 @@ theorem balanceReset_overlay_loop_shape (lang : TargetLang) :
   · rw [balanceProgram_of_parse BalancePrograms.balanceTsProgram_source]; decide +kernel
   · rw [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]; decide +kernel
 
+/-- Exact heap after descriptor enumeration and the Python list copy. -/
+def resetIterableMachine (lang : TargetLang) (m : TargetMachine) (b : Int) : TargetMachine :=
+  let entries := oneEntryMachine lang m "balance" (integerValue lang b)
+  if lang == .ts then entries
+  else (allocObject entries (oneEntryItems .python m)).1
+
+def resetIterableRef (lang : TargetLang) (m : TargetMachine) : ObjRef :=
+  m.nextObject + (if lang == .ts then 1 else 2)
+
+/-- All iterable/pair heap premises of the one-entry loop, for either language
+    and every payload. No freshness assumption about the old heap is needed. -/
+theorem resetIterableMachine_objects (lang : TargetLang) (m : TargetMachine) (b : Int) :
+    objectAt (resetIterableMachine lang m b) (resetIterableRef lang m) =
+      .ok (oneEntryItems lang m) ∧
+    objectAt (resetIterableMachine lang m b) m.nextObject =
+      .ok (oneEntryPair lang m "balance" (integerValue lang b)) := by
+  have h1 : m.nextObject ≠ m.nextObject + 1 := Nat.ne_of_lt (Nat.lt_succ_self _)
+  have h2 : m.nextObject ≠ m.nextObject + 2 :=
+    Nat.ne_of_lt (Nat.lt_trans (Nat.lt_succ_self _) (Nat.lt_succ_self _))
+  cases lang <;> simp [resetIterableMachine, resetIterableRef, oneEntryMachine,
+    oneEntryItems, oneEntryPair, objectAt, allocObject, List.lookup, beq_eq_false_iff_ne.mpr h1, beq_eq_false_iff_ne.mpr h2, Nat.add_assoc]
+
+theorem resetIterableMachine_localValue (lang : TargetLang) (m : TargetMachine)
+    (f : TargetFrame) (b : Int) (name : String) :
+    localValue (resetIterableMachine lang m b) f name = localValue m f name := by
+  apply localValue_fields_congr rfl
+  · cases lang <;> rfl
+  · cases lang <;> rfl
+
+/-- Object.entries enumerates the actual overrides object. Its provenance
+    after the TS descriptor-copy arm is a separate obligation. -/
+theorem balanceReset_ts_iterable_execute {m f ref object b k}
+    (hc : readPropertyValue .ts m (.object object) "entries" =
+      .ok ⟨m, .ok (.builtin .objectEntries)⟩)
+    (hg : localValue m f "Object" = .ok (.object object))
+    (hr : localValue m f "overrides" = .ok (.object ref))
+    (ho : objectAt m ref = .ok (balanceHeapObject .ts m b)) :
+    evalExpr (k + 4) (balanceProgram .ts) m f (resetOverlayIterable .ts) =
+      .ok ⟨resetIterableMachine .ts m b, .ok (.object (resetIterableRef .ts m))⟩ := by
+  have he : DepthDerivesExpr (balanceProgram .ts) m f
+      (.property (.local "Object") "entries") ⟨m, .ok (.builtin .objectEntries)⟩ 1 :=
+    .property (.localRead hg) (by simpa only [balanceProgram_lang] using hc)
+  have hh := hostEntries_one (lang := TargetLang.ts) ho (by rfl)
+  have h := evalExpr_adequate
+    (.callBuiltin he (.cons (.localRead hr) .empty) (by decide)
+      (by simpa only [balanceProgram_lang] using hh)) (k := k + 4) (by omega)
+  simpa only [resetOverlayIterable, resetIterableMachine, resetIterableRef,
+    balanceDataDescriptor, balanceHeapObject, ↓reduceIte, Nat.add_comm] using h
+
+/-- Python evaluates list(dict.items(ctx)), including its extra list object,
+    without inspecting or constraining the numeric payload. -/
+theorem balanceReset_python_iterable_of_seed {m f ref object b k}
+    (hd : localValue m f "dict" = .ok (.builtin .dict))
+    (hl : localValue m f "list" = .ok (.builtin .list))
+    (hr : localValue m f "ctx" = .ok (.object ref))
+    (ho : objectAt m ref = .ok object)
+    (hp : object.own = [("balance", balanceDataDescriptor .python b)]) :
+    evalExpr (k + 5) (balanceProgram .python) m f (resetOverlayIterable .python) =
+      .ok ⟨resetIterableMachine .python m b,
+        .ok (.object (resetIterableRef .python m))⟩ := by
+  have he : DepthDerivesExpr (balanceProgram .python) m f
+      (.property (.local "dict") "items") ⟨m, .ok (.builtin .dictItems)⟩ 1 :=
+    .property (.localRead hd) (by rw [balanceProgram_lang]; rfl)
+  have hh := hostEntries_one (lang := TargetLang.python) ho hp
+  have hi := evalExpr_adequate
+    (.callBuiltin he (.cons (.localRead hr) .empty) (by decide)
+      (by simpa only [balanceProgram_lang] using hh)) (k := k + 3) (by omega)
+  have ha : objectAt (oneEntryMachine .python m "balance" (integerValue .python b))
+      (m.nextObject + 1) = .ok (oneEntryItems .python m) := by
+    simpa only [oneEntryMachine, allocObject] using
+      objectAt_allocObject_fresh (allocObject m
+        (oneEntryPair .python m "balance" (integerValue .python b))).1 (oneEntryItems .python m)
+  have h := evalList_copy hl hi ha (.inl (by rfl))
+  simpa only [resetOverlayIterable, resetIterableMachine, resetIterableRef,
+    oneEntryMachine, oneEntryItems, allocObject, ↓reduceIte, Nat.add_assoc] using h
+
 /-- The first Python overlay guard requires a string key. The second guard
     owns the known-key test in the pinned source's context definition table. -/
 def resetPythonOverlayNameTest : TargetExpr :=
@@ -3333,6 +3409,36 @@ theorem balanceResetMiddleEntry_python_seed (b : Int) :
   simp only [List.lookup_cons, beq_eq_false_iff_ne.mpr (Ne.symm h.2.2.2.1), if_false,
     List.lookup_append, h.2.2.2.2, Option.or, beq_self_eq_true, if_true]
 
+/-- Seed-independent builtin reads are checked once at the closed entry. -/
+theorem balanceResetMiddle_python_list :
+    localValue (balanceResetMiddleEntry .python 0).1
+      (balanceResetMiddleEntry .python 0).2 "list" = .ok (.builtin .list) := by
+  unfold balanceResetMiddleEntry balanceResetCandidateEntry
+    balanceCanonicalResetStage balanceCanonicalResetEntry balanceResetBodyEntry
+    balancePythonResetBodyEntry balanceConstructorBodyEntry balanceConstructorBoundEntry
+    balanceConstructorArgumentEntry balanceStoredReset balanceResetLookup balanceStoredConstructor
+    balanceConstructorLookup balanceConstructorName balancePreparation
+  rw [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]
+  decide +kernel
+
+/-- Complete canonical Python iterable evaluation for every integer seed.
+    The bounded-domain premise is needed by the later body, not enumeration. -/
+theorem balanceReset_python_iterable_execute (b : Int) (k : Nat) :
+    let e := balanceResetMiddleEntry .python b
+    evalExpr (k + 5) (balanceProgram .python) e.1 e.2 (resetOverlayIterable .python) =
+      .ok ⟨resetIterableMachine .python e.1 b,
+        .ok (.object (resetIterableRef .python e.1))⟩ := by
+  have h := balanceResetMiddlePythonCheck_zero
+  unfold balanceResetMiddlePythonCheck at h
+  dsimp only at h
+  apply balanceReset_python_iterable_of_seed
+  · rw [balanceResetMiddleEntry_localValue .python b "dict"]; exact h.2.2.1
+  · rw [balanceResetMiddleEntry_localValue .python b "list"]
+    exact balanceResetMiddle_python_list
+  · rw [balanceResetMiddleEntry_localValue .python b "ctx"]; exact h.1
+  · exact balanceResetMiddleEntry_python_seed b
+  · rfl
+
 /-- Directly discharge all five plain-dict premises at the canonical entry. -/
 theorem balanceReset_python_canonical_plain_guard_skip (b : Int) (k : Nat) :
     let e := balanceResetMiddleEntry .python b
@@ -3349,10 +3455,51 @@ theorem balanceReset_python_canonical_plain_guard_skip (b : Int) (k : Nat) :
   · rw [balanceResetMiddleEntry_localValue .python b "dict"]; exact h.2.2.1
   · exact balanceResetMiddleEntry_python_seed b
   · rfl
+/-- The Python middle frame is independent of the supplied descriptor value. -/
+theorem balanceResetMiddleEntry_python_frame (b : Int) :
+    (balanceResetMiddleEntry .python b).2 = (balanceResetMiddleEntry .python 0).2 := by
+  have hs := balanceCanonicalResetStage_footprint .python b 3 (by decide)
+  have hn := balanceCanonicalResetStage_nextCell .python b 3 (by decide)
+  have hf : (balanceResetCandidateEntry .python b).2 =
+      (balanceResetCandidateEntry .python 0).2 := candidateBinding_frame_congr hs.2.1 hn
+  change { (balanceResetCandidateEntry .python b).2 with
+      locals := ("ctx", (balanceResetCandidateEntry .python b).1.nextCell) ::
+        (balanceResetCandidateEntry .python b).2.locals } =
+    { (balanceResetCandidateEntry .python 0).2 with
+      locals := ("ctx", (balanceResetCandidateEntry .python 0).1.nextCell) ::
+        (balanceResetCandidateEntry .python 0).2.locals }
+  have hc : (balanceResetCandidateEntry .python b).1.nextCell =
+      (balanceResetCandidateEntry .python 0).1.nextCell := by
+    change (balanceCanonicalResetStage .python b 3).1.nextCell + 1 =
+      (balanceCanonicalResetStage .python 0 3).1.nextCell + 1
+    rw [hn]
+  rw [hf, hc]
+
+theorem balanceResetMiddle_python_pair_fresh :
+    (balanceResetMiddleEntry .python 0).2.locals.lookup "name" = none ∧
+    (balanceResetMiddleEntry .python 0).2.locals.lookup "value" = none := by
+  unfold balanceResetMiddleEntry balanceResetCandidateEntry
+    balanceCanonicalResetStage balanceCanonicalResetEntry balanceResetBodyEntry
+    balancePythonResetBodyEntry balanceConstructorBodyEntry balanceConstructorBoundEntry
+    balanceConstructorArgumentEntry balanceStoredReset balanceResetLookup balanceStoredConstructor
+    balanceConstructorLookup balanceConstructorName balancePreparation
+  rw [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]
+  decide +kernel
+
 /-- The physical two-cell binding used by one fresh overlay iteration. -/
 def resetOverlayPairBinding (lang : TargetLang) (m : TargetMachine) (f : TargetFrame)
     (value : TargetValue) : TargetMachine × TargetFrame :=
   forPairBound lang m f (.string "balance") value
+
+/-- The actual destructuring reads expose the key and arbitrary value. -/
+theorem resetOverlayPairBinding_reads (lang : TargetLang) (m : TargetMachine)
+    (f : TargetFrame) (value : TargetValue) :
+    let bound := resetOverlayPairBinding lang m f value
+    localValue bound.1 bound.2 "name" = .ok (.string "balance") ∧
+    localValue bound.1 bound.2 "value" = .ok value := by
+  have hn : m.nextCell ≠ m.nextCell + 1 := Nat.ne_of_lt (Nat.lt_succ_self _)
+  simp [resetOverlayPairBinding, forPairBound, allocCell, localValue,
+    readCell, List.lookup, beq_eq_false_iff_ne.mpr hn]
 
 /-- Execute the source-selected one-entry overlay loop, including its real
     destructuring, body depth, empty iterator tail, and language frame behavior.
@@ -3381,6 +3528,37 @@ theorem balanceReset_overlay_loop_execute {lang m source final f ff listRef pair
     (by rw [balanceProgram_lang]; exact hb)
   simpa only [balanceProgram_lang] using h
 
+/-- Canonical Python loop execution with every iterable, pair and freshness
+    premise discharged for all b. Only execution of the source body remains. -/
+theorem balanceReset_python_canonical_loop_execute {b k final ff}
+    (hb : let e := balanceResetMiddleEntry .python b
+      execStmt (k + 4) (balanceProgram .python)
+        (resetOverlayPairBinding .python (resetIterableMachine .python e.1 b)
+          e.2 (integerValue .python b)).1
+        (resetOverlayPairBinding .python (resetIterableMachine .python e.1 b)
+          e.2 (integerValue .python b)).2
+        (resetLoopBody (balanceResetOverlayLoop .python)) = .ok ⟨final, ff, .normal⟩) :
+    let e := balanceResetMiddleEntry .python b
+    execStmt (k + 6) (balanceProgram .python) e.1 e.2 (balanceResetOverlayLoop .python) =
+      .ok ⟨final, ff, .normal⟩ := by
+  let e := balanceResetMiddleEntry .python b
+  have ho := resetIterableMachine_objects .python e.1 b
+  apply balanceReset_overlay_loop_execute (k := k + 3)
+    (list := oneEntryItems .python e.1)
+    (pair := oneEntryPair .python e.1 "balance" (integerValue .python b))
+    (pairRef := e.1.nextObject) (value := integerValue .python b)
+  · exact balanceReset_python_iterable_execute b k
+  · exact ho.1
+  · rfl
+  · rfl
+  · exact ho.2
+  · rfl
+  · intro _; rw [balanceResetMiddleEntry_python_frame b]
+    exact balanceResetMiddle_python_pair_fresh.1
+  · intro _; rw [balanceResetMiddleEntry_python_frame b]
+    exact balanceResetMiddle_python_pair_fresh.2
+  · exact hb
+
 /-- Project only the candidate's data descriptor after a loop. -/
 def resetCandidateBalanceRead (m : TargetMachine) (f : TargetFrame) :
     Except TargetError (Option TargetValue) := do
@@ -3392,6 +3570,32 @@ def resetCandidateBalanceRead (m : TargetMachine) (f : TargetFrame) :
       | some descriptor => pure descriptor.value
       | none => throw .badDescriptor
   | _ => throw .badDescriptor
+
+/-- Universal range predicates on the actual updated candidate descriptor.
+    These are primitive evaluations, not execution of the bounds/invariant
+    methods or of the generated Pratt evaluator. -/
+theorem balanceOverlayUpdated_candidate_range {lang m f ref old b}
+    (hc : localValue m f "candidate" = .ok (.object ref))
+    (ho : objectAt m ref = .ok (balanceHeapObject lang m old))
+    (hb : 0 ≤ b ∧ b ≤ 9007199254740991) :
+    let updated := balanceOverlayUpdated lang m ref b
+    resetCandidateBalanceRead updated f = .ok (some (integerValue lang b)) ∧
+    binaryValue lang updated .ge (integerValue lang b) (integerValue lang 0) =
+      .ok (.ok (.bool true)) ∧
+    binaryValue lang updated .le (integerValue lang b) (integerValue lang 9007199254740991) =
+      .ok (.ok (.bool true)) := by
+  have hr : localValue (balanceOverlayUpdated lang m ref b) f "candidate" =
+      .ok (.object ref) := (localValue_fields_congr rfl rfl rfl).trans hc
+  have hp := balanceOverlayUpdated_objectAt ho (b := b)
+  refine ⟨?_, ?_, ?_⟩
+  · simp [resetCandidateBalanceRead, hr, hp, balanceHeapObject, balanceDataDescriptor,
+      List.lookup, Bind.bind, Except.bind, Pure.pure, Except.pure]
+  · cases lang <;>
+      change Except.ok (Except.ok (TargetValue.bool (decide (0 ≤ b)))) = _ <;>
+      simp only [hb.1, decide_true]
+  · cases lang <;>
+      change Except.ok (Except.ok (TargetValue.bool (decide (b ≤ 9007199254740991)))) = _ <;>
+      simp only [hb.2, decide_true]
 
 /-- A decidable closed check of execution control and candidate data. -/
 def resetOverlaySuccessCheck (lang : TargetLang) (b : Int)

@@ -446,3 +446,42 @@ example (b : Int) (k : Nat) :
 #print axioms balanceResetMiddlePythonCheck_zero
 #print axioms balanceResetMiddleEntry_python_seed
 #print axioms balanceReset_python_canonical_plain_guard_skip
+
+-- Enumeration does not impose the safe-integer restriction on the payload.
+example (b : Int) (k : Nat) :
+    let e := balanceResetMiddleEntry .python b
+    evalExpr (k + 5) (balanceProgram .python) e.1 e.2 (resetOverlayIterable .python) =
+      .ok ⟨resetIterableMachine .python e.1 b,
+        .ok (.object (resetIterableRef .python e.1))⟩ :=
+  balanceReset_python_iterable_execute b k
+
+example (lang : TargetLang) (m : TargetMachine) (b : Int) :
+    objectAt (resetIterableMachine lang m b) (resetIterableRef lang m) =
+      .ok (oneEntryItems lang m) ∧
+    objectAt (resetIterableMachine lang m b) m.nextObject =
+      .ok (oneEntryPair lang m "balance" (integerValue lang b)) :=
+  resetIterableMachine_objects lang m b
+
+#print axioms balanceReset_python_iterable_execute
+#print axioms resetIterableMachine_objects
+
+-- The range checks inspect the descriptor after the actual existing-key write.
+example {lang m f ref old b}
+    (hc : localValue m f "candidate" = .ok (.object ref))
+    (ho : objectAt m ref = .ok (balanceHeapObject lang m old))
+    (hb : 0 ≤ b ∧ b ≤ 9007199254740991) :
+    let updated := balanceOverlayUpdated lang m ref b
+    resetCandidateBalanceRead updated f = .ok (some (integerValue lang b)) ∧
+    binaryValue lang updated .ge (integerValue lang b) (integerValue lang 0) =
+      .ok (.ok (.bool true)) ∧
+    binaryValue lang updated .le (integerValue lang b) (integerValue lang 9007199254740991) =
+      .ok (.ok (.bool true)) :=
+  balanceOverlayUpdated_candidate_range hc ho hb
+
+#print axioms balanceOverlayUpdated_candidate_range
+
+example (lang : TargetLang) (m : TargetMachine) (f : TargetFrame) (b : Int) (name : String) :
+    localValue (resetIterableMachine lang m b) f name = localValue m f name :=
+  resetIterableMachine_localValue lang m f b name
+
+#print axioms resetIterableMachine_localValue

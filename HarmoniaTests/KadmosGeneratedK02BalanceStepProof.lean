@@ -423,3 +423,41 @@ example :
     balanceConstructorLookup balanceConstructorName balancePreparation
   rw [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]
   decide +kernel
+
+-- This interface discharges the real iterable and iterator tail for all b;
+-- the body premise remains explicit and is not a constructor certificate.
+example {b k final ff}
+    (hb : let e := balanceResetMiddleEntry .python b
+      execStmt (k + 4) (balanceProgram .python)
+        (resetOverlayPairBinding .python (resetIterableMachine .python e.1 b)
+          e.2 (integerValue .python b)).1
+        (resetOverlayPairBinding .python (resetIterableMachine .python e.1 b)
+          e.2 (integerValue .python b)).2
+        (resetLoopBody (balanceResetOverlayLoop .python)) = .ok ⟨final, ff, .normal⟩) :
+    let e := balanceResetMiddleEntry .python b
+    execStmt (k + 6) (balanceProgram .python) e.1 e.2 (balanceResetOverlayLoop .python) =
+      .ok ⟨final, ff, .normal⟩ :=
+  balanceReset_python_canonical_loop_execute hb
+
+example {m f ref object b k}
+    (hc : readPropertyValue .ts m (.object object) "entries" =
+      .ok ⟨m, .ok (.builtin .objectEntries)⟩)
+    (hg : localValue m f "Object" = .ok (.object object))
+    (hr : localValue m f "overrides" = .ok (.object ref))
+    (ho : objectAt m ref = .ok (balanceHeapObject .ts m b)) :
+    evalExpr (k + 4) (balanceProgram .ts) m f (resetOverlayIterable .ts) =
+      .ok ⟨resetIterableMachine .ts m b, .ok (.object (resetIterableRef .ts m))⟩ :=
+  balanceReset_ts_iterable_execute hc hg hr ho
+
+#print axioms hostEntries_one
+#print axioms evalList_copy
+#print axioms balanceReset_python_canonical_loop_execute
+#print axioms balanceReset_ts_iterable_execute
+
+example (lang : TargetLang) (m : TargetMachine) (f : TargetFrame) (b : Int) :
+    let bound := resetOverlayPairBinding lang m f (integerValue lang b)
+    localValue bound.1 bound.2 "name" = .ok (.string "balance") ∧
+    localValue bound.1 bound.2 "value" = .ok (integerValue lang b) :=
+  resetOverlayPairBinding_reads lang m f (integerValue lang b)
+
+#print axioms resetOverlayPairBinding_reads

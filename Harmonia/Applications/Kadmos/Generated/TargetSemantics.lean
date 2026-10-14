@@ -1872,6 +1872,84 @@ structure TargetSeed where
   accessor : Bool
   deriving DecidableEq, Repr
 
+/-- Physical allocations of an enumerable one-entry iterable. Python's
+    outer `list` call makes a third object; TS uses the entries array directly. -/
+def oneEntryPair (lang : TargetLang) (m : TargetMachine) (key : String)
+    (value : TargetValue) : HeapObject :=
+  ⟨if lang == .ts then .jsArray else .pythonTuple,
+    if lang == .ts then some m.objectPrototype else none,
+    [], [.string key, value], [], false, false⟩
+
+def oneEntryItems (lang : TargetLang) (m : TargetMachine) : HeapObject :=
+  ⟨if lang == .ts then .jsArray else .pythonList,
+    if lang == .ts then some m.objectPrototype else none,
+    [], [.object m.nextObject], [], false, false⟩
+
+def oneEntryMachine (lang : TargetLang) (m : TargetMachine) (key : String)
+    (value : TargetValue) : TargetMachine :=
+  (allocObject (allocObject m (oneEntryPair lang m key value)).1
+    (oneEntryItems lang m)).1
+
+private theorem makeEntries_one (lang : TargetLang) (m : TargetMachine)
+    (key : String) (value : TargetValue) :
+    makeEntries lang m [(key, ⟨some value, none, none, true, true, true⟩)] =
+      .ok ((allocObject m (oneEntryPair lang m key value)).1, [.object m.nextObject]) := by
+  cases lang <;> rfl
+
+/-- No numeric bound is needed to enumerate a descriptor payload. -/
+theorem hostEntries_one {lang m ref object key value}
+    (ho : objectAt m ref = .ok object)
+    (hd : object.own = [(key, ⟨some value, none, none, true, true, true⟩)]) :
+    hostCall lang m (if lang == .ts then .objectEntries else .dictItems) none [.object ref] =
+      .ok ⟨oneEntryMachine lang m key value, .ok (.object (m.nextObject + 1))⟩ := by
+  cases lang with
+  | ts =>
+    change (do
+      let obj ← objectAt m ref
+      let data ← makeEntries .ts m obj.own
+      let allocated := allocObject data.1
+        ⟨.jsArray, some data.1.objectPrototype, [], data.2, [], false, false⟩
+      pure (done allocated.1 (.object allocated.2))) = _
+    rw [ho]
+    change (do
+      let data ← makeEntries .ts m object.own
+      let allocated := allocObject data.1
+        ⟨.jsArray, some data.1.objectPrototype, [], data.2, [], false, false⟩
+      pure (done allocated.1 (.object allocated.2))) = _
+    rw [hd, makeEntries_one]
+    rfl
+  | python =>
+    change (do
+      let obj ← objectAt m ref
+      let data ← makeEntries .python m obj.own
+      let allocated := allocObject data.1
+        ⟨.pythonList, none, [], data.2, [], false, false⟩
+      pure (done allocated.1 (.object allocated.2))) = _
+    rw [ho]
+    change (do
+      let data ← makeEntries .python m object.own
+      let allocated := allocObject data.1
+        ⟨.pythonList, none, [], data.2, [], false, false⟩
+      pure (done allocated.1 (.object allocated.2))) = _
+    rw [hd, makeEntries_one]
+    rfl
+
+/-- The real Python list builtin copies an already evaluated list/tuple. -/
+theorem evalList_copy {program m f expr source ref object k}
+    (hl : localValue m f "list" = .ok (.builtin .list))
+    (he : evalExpr (k + 2) program m f expr = .ok ⟨source, .ok (.object ref)⟩)
+    (ho : objectAt source ref = .ok object)
+    (hk : object.kind = .pythonList ∨ object.kind = .pythonTuple) :
+    evalExpr (k + 4) program m f
+      (.call (.local "list") (.sequence expr .empty)) =
+      .ok ⟨(allocObject source ⟨.pythonList, none, [], object.items, [], false, false⟩).1,
+        .ok (.object source.nextObject)⟩ := by
+  simp only [evalExpr, hl, evalArgValues, he, Bind.bind, Except.bind,
+    Pure.pure, Except.pure, done]
+  have hng : object.kind ≠ .pythonGenerator := by
+    rcases hk with h | h <;> simp [h]
+  simp [consumeIterable, ho, hk, hng, done, Bind.bind, Except.bind, Pure.pure, Except.pure]
+
 def canonicalBalanceSeed (lang : TargetLang) (balance : Int) : TargetSeed :=
   ⟨lang, if lang == .ts then .ordinaryRecord else .exactDict,
     balance, [], false, false⟩
