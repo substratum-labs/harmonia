@@ -1856,4 +1856,110 @@ theorem scalar_runs_heapWF {program machine frame expr outcome rank lang}
   rw [evalScalar_machine_eq hs (evalExpr_adequate h (Nat.lt_succ_self rank))]
   exact hwf
 
+/-- Expose one sequence edge while keeping both child ASTs symbolic.
+    The control carried by the first outcome, not the frame, selects the edge. -/
+theorem execSequence_eq (k : Nat) (program : TargetProgram) (m : TargetMachine)
+    (f : TargetFrame) (first rest : TargetStmt) :
+    execStmt (k + 1) program m f (.sequence first rest) = (do
+      let head ← execStmt k program m f first
+      match head.control with
+      | .normal => execStmt k program head.machine head.frame rest
+      | _ => pure head) := by
+  simp only [execStmt]
+  rfl
+
+theorem execSequence_of_normal {k program m f first rest middle midFrame}
+    (h : execStmt k program m f first = .ok ⟨middle, midFrame, .normal⟩) :
+    execStmt (k + 1) program m f (.sequence first rest) =
+      execStmt k program middle midFrame rest := by
+  rw [execSequence_eq, h]
+  rfl
+
+theorem execSequence_of_exit {k program m f first rest out}
+    (h : execStmt k program m f first = .ok out) (hc : out.control ≠ .normal) :
+    execStmt (k + 1) program m f (.sequence first rest) = .ok out := by
+  rw [execSequence_eq, h]
+  cases he : out.control <;> simp_all [Bind.bind, Pure.pure, Except.bind, Except.pure]
+
+/-- Expression statements preserve the caller frame and translate source
+    exceptions to statement control; outer target errors still propagate. -/
+theorem execDoExpr_eq (k : Nat) (program : TargetProgram) (m : TargetMachine)
+    (f : TargetFrame) (expr : TargetExpr) :
+    execStmt (k + 1) program m f (.doExpr expr) = (do
+      let result ← evalExpr k program m f expr
+      match result.result with
+      | .error e => pure ⟨result.machine, f, .raised e⟩
+      | .ok _ => pure ⟨result.machine, f, .normal⟩) := by
+  simp only [execStmt]
+  rfl
+
+/-- Short-circuit conjunction takes its RHS only after the actual left
+    outcome is truthy. This equation introduces no assumed helper result. -/
+theorem evalAndThen_of_true {k program m f left right middle value}
+    (he : evalExpr k program m f left = .ok ⟨middle, .ok value⟩)
+    (ht : sourceTruthy program.lang middle value = .ok true) :
+    evalExpr (k + 1) program m f (.andThen left right) =
+      evalExpr k program middle f right := by
+  simp only [evalExpr, he, Bind.bind, Pure.pure, Except.bind, Except.pure, ht]
+  rfl
+
+theorem execIf_of_false {k program m f cond yes no middle value}
+    (he : evalExpr k program m f cond = .ok ⟨middle, .ok value⟩)
+    (ht : sourceTruthy program.lang middle value = .ok false) :
+    execStmt (k + 1) program m f (.ifThenElse cond yes no) =
+      execStmt k program middle f no := by
+  simp only [execStmt, he, Bind.bind, Pure.pure, Except.bind, Except.pure, ht]
+  rfl
+
+/-- Read a fresh supplied parameter without traversing its captured frame. -/
+theorem localValue_fresh_parameter {m : TargetMachine} {f : TargetFrame} {name value mutable}
+    (ht : name ≠ "this") (hs : name ≠ "self") :
+    localValue (allocCell m value mutable).1
+      { f with locals := [(name, m.nextCell)] } name = .ok value := by
+  simp [localValue, ht, hs, allocCell, readCell, List.lookup]
+
+/-- Object reads ignore cell/closure allocation; these equations keep the
+    underlying heap opaque instead of expanding preparation or stored bodies. -/
+theorem objectAt_allocCell (m : TargetMachine) (value : TargetValue) (mutable : Bool) (ref : ObjRef) :
+    objectAt (allocCell m value mutable).1 ref = objectAt m ref := rfl
+
+theorem objectAt_allocClosure (m : TargetMachine) (closure : TargetClosure) (ref : ObjRef) :
+    objectAt (allocClosure m closure).1 ref = objectAt m ref := rfl
+
+theorem objectAt_allocObject_fresh (m : TargetMachine) (object : HeapObject) :
+    objectAt (allocObject m object).1 m.nextObject = .ok object := by
+  simp [objectAt, allocObject, List.lookup]
+
+/-- A supplied parameter cell cannot shadow an older canonical global.
+    All intervening object/closure allocations are kept symbolic. -/
+theorem localValue_constructor_global {m : TargetMachine} {method : TargetClosure}
+    {object : HeapObject} {argument : TargetValue} {param name : String} {ref : CellRef} {value : TargetValue}
+    (ht : name ≠ "this") (hs : name ≠ "self") (hn : name ≠ param)
+    (hc : method.captures.lookup name = none) (hg : m.globals.lookup name = some ref)
+    (hv : readCell m ref = .ok value) (hf : ref < m.nextCell) :
+    let caller := (allocCell (allocObject m object).1 argument true).1
+    let bound := (allocClosure caller method).1
+    localValue (allocCell bound argument true).1
+      { closureFrame method with locals := [(param, bound.nextCell)] } name = .ok value := by
+  have h0 : ref ≠ m.nextCell := Nat.ne_of_lt hf
+  have h1 : ref ≠ m.nextCell + 1 := Nat.ne_of_lt (Nat.lt_trans hf (Nat.lt_succ_self _))
+  have hnp : (name == param) = false := beq_eq_false_iff_ne.mpr hn
+  have hb0 : (ref == m.nextCell) = false := beq_eq_false_iff_ne.mpr h0
+  have hb1 : (ref == m.nextCell + 1) = false := beq_eq_false_iff_ne.mpr h1
+  simp only [readCell] at hv
+  simpa [localValue, ht, hs, hc, hg, closureFrame, allocCell, allocObject,
+    allocClosure, readCell, List.lookup, hnp, hb0, hb1] using hv
+
+theorem closureAt_allocCell (m : TargetMachine) (value : TargetValue) (mutable : Bool) (ref : ClosureRef) :
+    closureAt (allocCell m value mutable).1 ref = closureAt m ref := rfl
+
+theorem closureAt_allocObject (m : TargetMachine) (object : HeapObject) (ref : ClosureRef) :
+    closureAt (allocObject m object).1 ref = closureAt m ref := rfl
+
+theorem closureAt_allocClosure_other {m : TargetMachine} {closure : TargetClosure} {ref : ClosureRef}
+    (hn : ref ≠ m.nextClosure) :
+    closureAt (allocClosure m closure).1 ref = closureAt m ref := by
+  have hb : (ref == m.nextClosure) = false := beq_eq_false_iff_ne.mpr hn
+  simp [closureAt, allocClosure, List.lookup, hb]
+
 end Harmonia.Applications.Kadmos.Generated

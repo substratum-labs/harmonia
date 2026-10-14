@@ -846,3 +846,27 @@ theorem kadmos_generated_stored_call_body_equation
 
 #print axioms kadmos_generated_closure_body_equation
 #print axioms kadmos_generated_stored_call_body_equation
+
+-- Sequence control comes from StmtOutcome.control, even when a caller frame
+-- carries a stale returned value. A normal head must still execute its rest.
+example (program : TargetProgram) (m : TargetMachine) (f : TargetFrame) :
+    execStmt 3 program m { f with control := .returned (.bool false) }
+      (.sequence .empty .returnVoid) =
+      .ok ⟨m, { f with control := .returned (.bool false) }, .returned .undefined⟩ := by
+  rw [execSequence_of_normal (execStmt_adequate DepthDerivesStmt.empty (by decide : 0 < 2))]
+  exact execStmt_adequate DepthDerivesStmt.returnVoid (by decide)
+
+-- An actual returned head must skip an unsupported suffix, retaining the
+-- returned value and original frame even though the frame control is normal.
+example (program : TargetProgram) (m : TargetMachine) (f : TargetFrame) :
+    execStmt 3 program m f
+      (.sequence (.returnValue (.bool true)) (.doExpr .empty)) =
+      .ok ⟨m, f, .returned (.bool true)⟩ := by
+  exact execSequence_of_exit
+    (execStmt_adequate (DepthDerivesStmt.returnValue (.bool true)) (by decide : 1 < 2))
+    (by simp)
+
+#print axioms execSequence_eq
+#print axioms execDoExpr_eq
+#print axioms evalAndThen_of_true
+#print axioms localValue_fresh_parameter

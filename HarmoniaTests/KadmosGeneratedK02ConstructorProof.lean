@@ -113,3 +113,55 @@ theorem kadmos_generated_constructor_body_all_balances (lang : TargetLang) {b : 
   targetConstruct_balance_body lang hb
 
 #print axioms kadmos_generated_constructor_body_all_balances
+
+-- Complete small constructor ASTs are source-bound; this does not claim the
+-- generated reset/helpers or the post-construction representation are proved.
+example (lang : TargetLang) :
+    (balanceStoredConstructor lang).2.body = balanceConstructorBodyTemplate lang :=
+  balanceConstructorBody_shape lang
+
+example (lang : TargetLang) (b : Int) :
+    localValue (balanceConstructorBodyEntry lang b).1 (balanceConstructorBodyEntry lang b).2
+      (balanceConstructorParam lang) = .ok (.object (balancePreparation lang).1.nextObject) :=
+  balanceConstructorBodyEntry_argument lang b
+
+example (lang : TargetLang) (b : Int) :
+    objectAt (balanceConstructorBodyEntry lang b).1 (balancePreparation lang).1.nextObject =
+      .ok (balanceHeapObject lang (balancePreparation lang).1 b) :=
+  balanceConstructorBodyEntry_object lang b
+
+example {lang m f} (hr : f.receiver = some m.checkerRef) (hi : m.checker.busy = false) :
+    execStmt 99 (balanceProgram lang) m f (balanceStoredReset lang).2.body =
+      execStmt 97 (balanceProgram lang) (balanceSetBusy m true) f
+        (restStmt (restStmt (balanceStoredReset lang).2.body)) :=
+  balanceReset_idle_entry hr hi (by decide)
+
+#print axioms balanceConstructorBody_shape
+#print axioms balanceConstructor_ts_reset_eq
+#print axioms balanceConstructor_python_guard_eq
+#print axioms balanceConstructor_python_after_guard
+#print axioms balanceReset_idle_entry
+#print axioms evalReceiverObjectCall_eq
+#print axioms balanceStoredReset_lookup
+
+-- Canonical entry excludes shadowing of the two Python type-check hosts.
+example (b : Int) :
+    localValue (balanceConstructorBodyEntry .python b).1 (balanceConstructorBodyEntry .python b).2
+      "type" = .ok (.builtin .type) ∧
+    localValue (balanceConstructorBodyEntry .python b).1 (balanceConstructorBodyEntry .python b).2
+      "dict" = .ok (.builtin .dict) :=
+  balanceConstructorBodyEntry_python_types b
+
+example (lang : TargetLang) (b : Int) :
+    readCheckerField (balanceConstructorBodyEntry lang b).1 "reset" =
+      .error (.unboundLocal "reset") ∧
+    (balanceConstructorBodyEntry lang b).1.classMethods.lookup "reset" =
+      some (balanceStoredReset lang).1 ∧
+    closureAt (balanceConstructorBodyEntry lang b).1 (balanceStoredReset lang).1 =
+      .ok (balanceStoredReset lang).2 :=
+  balanceConstructorBodyEntry_reset_store lang b
+
+#print axioms balanceConstructor_python_canonical_after_guard
+#print axioms balanceConstructor_reset_call_eq_body
+#print axioms balanceResetBodyEntry_snapshots
+#print axioms balanceConstructor_ts_snapshots_eq

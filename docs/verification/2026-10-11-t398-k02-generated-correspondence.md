@@ -851,3 +851,49 @@ Nineteen final owner CLI commands ran serially (one Lake build active at a time)
 | `lake build kadmosWorldAudit` | 0 |
 
 `targetConstruct_sound`, `step_guard_reject`, `step_accept`, `step_bounds_reject` and `k02_balance_one_call` remain open, as do independent checked whole-source admission and full reached-path/provenance obligations. No placeholder declaration, weakened universal theorem or fake correspondence target is added. This is a partial prerequisite checkpoint, not Stage 3c completion or merge readiness. Independent physical read-only `codex exec` review used **gpt-6.1-sol/medium**, session `01a13975-218d-7aa2-a1c1-e401fd7b11c6`, exit 0: **ACCEPT for this local partial checkpoint / REJECT Stage 3c completion**, zero Critical, Important or Minor findings. It checked source/spec/plan, byte preservation, forbidden tokens, all nineteen receipt logs, and exact portable-list/log dependency equality (8,759 unique entries). It ran no Lean/Lake/builds, runtime or network checks; serial execution and build-time postimage identity remain owner evidence. The six frozen source hashes are unchanged through verification/review. No code repair was requested. Native runtime, hosted Linux, checked whole-source admission, full constructor/branch paths and universal correspondence remain unestablished here.
+
+## Constructor/reset structural execution checkpoint — 2026-10-14
+
+**T-398 and Tasks 2A/2B/3/4 remain IN_PROGRESS.** Physical continuation from clean local `1bec7d9525bb7bac4f753e5581498527cda61a2a`, on the existing isolated `feat/t396-generated-correspondence` worktree. No push, merge of PR #5 or unrelated-worktree edits.
+
+The complete small TS/Python constructor ASTs are kernel-certified against the actual stored parsed methods. Python's type-guard and all six initialization writes, reset call and final seed-copy nodes are retained. Canonical input-argument/object reads are proved for every symbolic b via generic allocation equations. Closed preparation facts plus preservation of older host cells establish actual unshadowed `type`/`dict` reads. `balanceConstructor_python_canonical_after_guard` executes the real exact-dict guard at depth 98 and reduces the constructor body to the untouched initialization/reset/copy suffix; it concludes no constructor success.
+
+Actual prepared reset lookup, parameter/default and freshness are certified. Constructor-entry allocations preserve its physical method lookup and stored closure. `evalReceiverObjectCall_eq` and `balanceConstructor_reset_call_eq_body` bind the actual receiver/provided object parameter and expose the retained reset body. The latter starts at the canonical constructor frame; for Python it is explicitly not claimed to be the reached post-initialization reset invocation.
+
+`balanceConstructor_ts_snapshots_eq` composes the TS body-at-99, expression statement at 98, reset call at 97, stored reset body at 96, idle guard and busy write to enter the actual reset snapshot/remainder at depth **94**. The real constructor seed-copy suffix still executes only after reset returns normally. The equation retains outer target errors, source exceptions and statement control. It has no reset/helper-success premise or conclusion.
+
+Narrow certificates and generic structural inversion retain both languages' actual reset/step throw branches and entire remaining snapshot/try/helper ASTs. `balanceReset_idle_entry` and `balanceStep_idle_entry` peel the idle check and actual busy=true assignment at their exact sibling depths. `balanceSetBusy_preserves_bindings` establishes unchanged methods, closures, globals, cells and objects for that single write. It does not establish preservation by the full constructor or final `CanonicalGlobals`.
+
+Generic equations expose one sequence edge, normal/exit behavior, expression-statement exception translation, short-circuit conjunction and false conditional. Two retained control regressions distinguish `StmtOutcome.control` from stale `frame.control` and require an actual returned head to skip an unsupported suffix. Original production declaration prefixes are byte-preserved versus `1bec7d9`; `TargetSemantics`, toolchain, emitted artifacts, reference models and host contracts are unchanged.
+
+RED interface probes preceded this batch. Diagnostic failed elaborations and a terminated broad preparation-expansion probe (owned Lean exit 143) are retained privately and are not successful proof evidence. A generic host-type probe isolated the simplification bottleneck; controlled unfold/dsimp establishes the primitive equation without broad host matcher traversal. Final evidence below is against frozen five production/test postimages. No private IO/metaprogram probe is imported or staged.
+
+Strict Generated audit: **8,841 theorems / 12,146 declarations**, observed and allowed **[propext, Quot.sound]** only. Exactly 8,841 unique portable theorem entries match the scan and every dependency set is checked. No sorry/admit/sorryAx/custom axiom/Classical.choice/native_decide/Mathlib is added to certified Generated modules; no policy relaxation or toolchain upgrade. Foundation gates retain their policy. Historical World compatibility is separate and may report its previously allowed Classical.choice.
+
+The following nineteen physical owner commands ran sequentially, with one Lake build process at a time. All exited 0; heavy TS/Python witnesses were built individually before aggregate roots.
+
+| Command | Exit |
+| --- | ---: |
+| `lake build` | 0 |
+| `lake build kadmosGeneratedK02SimulationTest` | 0 |
+| `lake build HarmoniaTests.KadmosGeneratedK02ConstructorProofTS` | 0 |
+| `lake build HarmoniaTests.KadmosGeneratedK02ConstructorProofPython` | 0 |
+| `lake build kadmosGeneratedK02ConstructorProofTest` | 0 |
+| `lake build HarmoniaTests.KadmosGeneratedK02BalanceStepProofCases` | 0 |
+| `lake build HarmoniaTests.KadmosGeneratedK02BalanceStepProofTS` | 0 |
+| `lake build HarmoniaTests.KadmosGeneratedK02BalanceStepProofPython` | 0 |
+| `lake build kadmosGeneratedK02BalanceStepProofTest` | 0 |
+| `lake build kadmosGeneratedK02SemanticsTest` | 0 |
+| `lake build kadmosGeneratedK02BalanceTSStepTest` | 0 |
+| `lake build foundationsTest foundationsAudit foundationsAuditRejection` | 0 |
+| `lake build kadmosGeneratedK02Audit` | 0 |
+| `python3 scripts/check_kadmos_generated_k02_audit.py` | 0 |
+| `python3 scripts/test_kadmos_generated_k02_audit.py` | 0 |
+| `python3 scripts/check_kadmos_generated_k02_artifacts.py` | 0 |
+| `python3 scripts/test_kadmos_generated_k02_artifacts.py` | 0 |
+| `lake build kadmosGeneratedK02AuditRejection` | 0 |
+| `lake build kadmosWorldAudit` | 0 |
+
+Full constructor/reset/helper success, final HeapWF/BalanceRep and step-store/CanonicalGlobals preservation, request/sanitizer/guard/effect/bounds/invariant/finalizer paths, independent checked whole-source admission and all five universal declarations (`targetConstruct_sound`, `step_guard_reject`, `step_accept`, `step_bounds_reject`, `k02_balance_one_call`) remain open. The final universal interface probe exits 1 for those absent names: this is a failed acceptance gate, not a successful negative test. Existing bounded witnesses remain finite kernel facts. Native-runtime and hosted-Linux checks were not rerun or inferred. Stage 3c completion and merge readiness are not claimed. Independent read-only physical CLI review is recorded below before local checkpoint integration.
+
+Independent physical read-only `codex exec` review used **gpt-6.1-sol / medium**, session `01a139ab-d34a-7af3-8775-ec967ff0ac70`, exit 0: **ACCEPT local partial checkpoint / REJECT Stage 3c completion**. Zero Critical, Important or Minor findings. The reviewer inspected all nineteen logs, five frozen source/test hashes, original production/test byte prefixes, plan/specs, control/default/fuel composition and exact equality of all 8,841 portable theorem names/dependency sets with the strict scan. It ran no Lean/Lake/build/runtime/network commands and made no edits. Physical serial execution and build-time identity are owner evidence supported by the inspected receipts. Frozen postimages remain unchanged after review; no code repair was requested. Foundation audit observed 52 theorems with [propext, Quot.sound] under its unchanged policy; historical World compatibility reports 9,917 theorems / 13,768 declarations under its existing [propext, Quot.sound, Classical.choice] policy, separately from Generated.

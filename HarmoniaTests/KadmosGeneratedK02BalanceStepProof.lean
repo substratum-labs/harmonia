@@ -63,3 +63,23 @@ theorem kadmos_generated_step_idle_prefix_adequate {lang m f}
   execStmt_adequate (kadmos_generated_step_idle_prefix_depth hr hi) (by decide)
 
 #print axioms kadmos_generated_step_idle_prefix_adequate
+
+-- Busy acquisition is actual source execution; snapshots, validation,
+-- guard/effect/bounds paths and finalization remain separate obligations.
+example {lang m f} (hr : f.receiver = some m.checkerRef) (hi : m.checker.busy = false) :
+    execStmt 99 (balanceProgram lang) m f (balanceStoredStep lang).2.body =
+      execStmt 97 (balanceProgram lang) (balanceSetBusy m true) f
+        (restStmt (balanceStepAfterBusy lang)) :=
+  balanceStep_idle_entry hr hi (by decide)
+
+example (m : TargetMachine) :
+    (balanceSetBusy m true).classMethods = m.classMethods ∧
+    (balanceSetBusy m true).closures = m.closures ∧
+    (balanceSetBusy m true).globals = m.globals ∧
+    (balanceSetBusy m true).cells = m.cells ∧
+    (balanceSetBusy m true).objects = m.objects :=
+  balanceSetBusy_preserves_bindings m true
+
+#print axioms balanceStep_afterBusy_shape
+#print axioms balanceStep_idle_entry
+#print axioms balanceSetBusy_preserves_bindings
