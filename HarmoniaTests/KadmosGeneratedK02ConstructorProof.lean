@@ -414,3 +414,35 @@ example (lang : TargetLang) {m ref old b}
     (ho : objectAt m ref = .ok (balanceHeapObject lang m old)) :
     objectAt (balanceOverlayUpdated lang m ref b) ref = .ok (balanceHeapObject lang m b) :=
   balanceOverlayUpdated_objectAt ho
+
+-- Direct regression for the previously compiled but uninvoked guard theorem.
+example {m f ref object k}
+    (hp : localValue m f "ctx" = .ok (.object ref))
+    (ht : localValue m f "type" = .ok (.builtin .type))
+    (hd : localValue m f "dict" = .ok (.builtin .dict))
+    (ho : objectAt m ref = .ok object) (hk : object.kind = .pythonDict) :
+    execStmt (k + 6) (balanceProgram .python) m f
+      (ifYesStmt (balanceResetMiddleStmt .python 2)) =
+    execStmt (k + 5) (balanceProgram .python) m f
+      (restStmt (ifYesStmt (balanceResetMiddleStmt .python 2))) :=
+  balanceReset_python_plain_guard_skip hp ht hd ho hk
+
+-- Canonical read congruence and direct discharge of the Python plain-dict guard.
+example (lang : TargetLang) (b : Int) (name : String) :
+    localValue (balanceResetMiddleEntry lang b).1 (balanceResetMiddleEntry lang b).2 name =
+      localValue (balanceResetMiddleEntry lang 0).1 (balanceResetMiddleEntry lang 0).2 name :=
+  balanceResetMiddleEntry_localValue lang b name
+
+example (b : Int) (k : Nat) :
+    let e := balanceResetMiddleEntry .python b
+    execStmt (k + 6) (balanceProgram .python) e.1 e.2
+      (ifYesStmt (balanceResetMiddleStmt .python 2)) =
+    execStmt (k + 5) (balanceProgram .python) e.1 e.2
+      (restStmt (ifYesStmt (balanceResetMiddleStmt .python 2))) :=
+  balanceReset_python_canonical_plain_guard_skip b k
+
+#print axioms resetBinding_localValue_congr
+#print axioms balanceResetMiddleEntry_localValue
+#print axioms balanceResetMiddlePythonCheck_zero
+#print axioms balanceResetMiddleEntry_python_seed
+#print axioms balanceReset_python_canonical_plain_guard_skip

@@ -323,3 +323,103 @@ example :
     (resetOverlayTest_eval (by
     rw [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]
     decide +kernel)) (by decide +kernel) (writeOwn_balance_existing rfl)
+
+-- Closed reached-loop regressions inspect both normal control and the actual
+-- candidate descriptor; they are not all-input constructor theorems.
+example :
+    let e := balanceResetMiddleEntry .python 0
+    resetOverlaySuccessCheck .python 0
+      (execStmt 40 (balanceProgram .python) e.1 e.2 (balanceResetOverlayLoop .python)) :=
+  balanceReset_python_overlay_zero_check
+
+example :
+    let e := balanceResetMiddleEntry .ts 0
+    ∃ m f,
+      execStmt 40 (balanceProgram .ts) e.1 e.2
+        (.sequence (ifNoStmt (balanceResetMiddleStmt .ts 2)) (balanceResetOverlayLoop .ts)) =
+          .ok ⟨m, f, .normal⟩ ∧
+      resetCandidateBalanceRead m f = .ok (some (integerValue .ts 0)) :=
+  resetOverlaySuccessCheck_sound balanceReset_ts_overlay_zero_check
+
+example {m f k}
+    (hn : localValue m f "name" = .ok (.string "balance"))
+    (ht : localValue m f "type" = .ok (.builtin .type))
+    (hs : localValue m f "str" = .ok (.builtin .strType)) :
+    evalExpr (k + 4) (balanceProgram .python) m f resetPythonOverlayNameTest =
+      .ok ⟨m, .ok (.bool false)⟩ :=
+  resetPythonOverlayName_execute hn ht hs
+
+#print axioms balanceReset_overlay_loop_shape
+#print axioms balanceReset_overlay_loop_execute
+#print axioms balanceReset_python_known_key_execute
+#print axioms resetOverlaySuccessCheck_sound
+#print axioms balanceReset_python_overlay_zero_check
+#print axioms balanceReset_ts_overlay_zero_check
+
+example {lang m source final f ff listRef pairRef list pair value k}
+    (he : evalExpr (k + 2) (balanceProgram lang) m f (resetOverlayIterable lang) =
+      .ok ⟨source, .ok (.object listRef)⟩)
+    (hl : objectAt source listRef = .ok list)
+    (hk : list.kind = (if lang == .ts then .jsArray else .pythonList))
+    (hi : list.items = [.object pairRef])
+    (hp : objectAt source pairRef = .ok pair)
+    (hv : pair.items = [.string "balance", value])
+    (hn : lang = .python → f.locals.lookup "name" = none)
+    (hf : lang = .python → f.locals.lookup "value" = none)
+    (hb : execStmt (k + 1) (balanceProgram lang)
+      (resetOverlayPairBinding lang source f value).1
+      (resetOverlayPairBinding lang source f value).2
+      (resetLoopBody (balanceResetOverlayLoop lang)) = .ok ⟨final, ff, .normal⟩) :
+    execStmt (k + 3) (balanceProgram lang) m f (balanceResetOverlayLoop lang) =
+      .ok ⟨final, (if lang == .ts then f else ff), .normal⟩ :=
+  balanceReset_overlay_loop_execute he hl hk hi hp hv hn hf hb
+
+-- The known-key helper is exercised on a live context-definition object.
+example :
+    evalExpr 4 (balanceProgram .python) (resetOverlayTestMachine .python 0)
+      resetOverlayTestFrame resetPythonOverlayKnownKeyTest =
+        .ok ⟨resetOverlayTestMachine .python 0, .ok (.bool false)⟩ := by
+  apply balanceReset_python_known_key_execute (ref := 3) (object :=
+    { literalObject .python TargetMachine.empty with
+      own := [("balance", ⟨some (.object 4), none, none, true, true, true⟩)] })
+  · rfl
+  · apply resetOverlayTest_eval
+    rw [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]
+    decide +kernel
+  · rfl
+  · rfl
+  · rfl
+
+-- Closed canonical tables are tested at the actual fresh iteration binding,
+-- rather than only on the small synthetic heap used by the unit regression.
+set_option maxRecDepth 65536 in
+set_option maxHeartbeats 10000000 in
+example :
+    let e := balanceResetMiddleEntry .python 0
+    let bound := resetOverlayPairBinding .python e.1 e.2 (integerValue .python 0)
+    evalExpr 5 (balanceProgram .python) bound.1 bound.2 resetPythonOverlayStringTest =
+      .ok ⟨bound.1, .ok (.bool false)⟩ := by
+  apply resetOverlayTest_eval
+  unfold balanceResetMiddleEntry balanceResetCandidateEntry
+    balanceCanonicalResetStage balanceCanonicalResetEntry balanceResetBodyEntry
+    balancePythonResetBodyEntry balanceConstructorBodyEntry balanceConstructorBoundEntry
+    balanceConstructorArgumentEntry balanceStoredReset balanceResetLookup balanceStoredConstructor
+    balanceConstructorLookup balanceConstructorName balancePreparation
+  rw [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]
+  decide +kernel
+
+set_option maxRecDepth 65536 in
+set_option maxHeartbeats 10000000 in
+example :
+    let e := balanceResetMiddleEntry .python 0
+    let bound := resetOverlayPairBinding .python e.1 e.2 (integerValue .python 0)
+    evalExpr 4 (balanceProgram .python) bound.1 bound.2 resetPythonOverlayKnownKeyTest =
+      .ok ⟨bound.1, .ok (.bool false)⟩ := by
+  apply resetOverlayTest_eval
+  unfold balanceResetMiddleEntry balanceResetCandidateEntry
+    balanceCanonicalResetStage balanceCanonicalResetEntry balanceResetBodyEntry
+    balancePythonResetBodyEntry balanceConstructorBodyEntry balanceConstructorBoundEntry
+    balanceConstructorArgumentEntry balanceStoredReset balanceResetLookup balanceStoredConstructor
+    balanceConstructorLookup balanceConstructorName balancePreparation
+  rw [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]
+  decide +kernel

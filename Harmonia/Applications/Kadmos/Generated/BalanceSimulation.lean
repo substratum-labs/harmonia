@@ -3178,6 +3178,278 @@ theorem balanceReset_overlay_write_python_execute {m final f ref b k}
   simp only [c, n, value, hw, Bind.bind, Except.bind, Pure.pure, Except.pure]
 
 
+theorem resetBinding_localValue_congr {lang m n f g name boundName value}
+    (hf : f = g) (hc : m.cells = n.cells) (hg : m.globals = n.globals)
+    (hn : m.nextCell = n.nextCell) :
+    localValue (snapshotBound lang m f boundName value).1
+      (snapshotBound lang m f boundName value).2 name =
+    localValue (snapshotBound lang n g boundName value).1
+      (snapshotBound lang n g boundName value).2 name := by
+  apply localValue_fields_congr
+  · change { f with locals := (boundName, m.nextCell) :: f.locals } =
+      { g with locals := (boundName, n.nextCell) :: g.locals }
+    rw [hf, hn]
+  · change (m.nextCell, value) :: m.cells = (n.nextCell, value) :: n.cells
+    rw [hn, hc]
+  · exact hg
+
+theorem resetTsOverridesEntry_localValue_congr {m n f g name}
+    (hf : f = g) (hc : m.cells = n.cells) (hg : m.globals = n.globals)
+    (hn : m.nextCell = n.nextCell) :
+    localValue (resetTsOverridesEntry m f).1 (resetTsOverridesEntry m f).2 name =
+    localValue (resetTsOverridesEntry n g).1 (resetTsOverridesEntry n g).2 name := by
+  apply localValue_fields_congr
+  · change { f with locals := ("overrides", m.nextCell) :: f.locals } =
+      { g with locals := ("overrides", n.nextCell) :: g.locals }
+    rw [hf, hn]
+  · change (m.nextCell, TargetValue.undefined) :: m.cells =
+      (n.nextCell, TargetValue.undefined) :: n.cells
+    rw [hn, hc]
+  · exact hg
+
+/-- The middle binding changes only cells and the frame; its reads are
+    independent of the seed descriptor's symbolic integer payload. -/
+theorem balanceResetMiddleEntry_localValue (lang : TargetLang) (b : Int) (name : String) :
+    localValue (balanceResetMiddleEntry lang b).1 (balanceResetMiddleEntry lang b).2 name =
+      localValue (balanceResetMiddleEntry lang 0).1 (balanceResetMiddleEntry lang 0).2 name := by
+  have hs := balanceCanonicalResetStage_footprint lang b 3 (by decide)
+  have hn := balanceCanonicalResetStage_nextCell lang b 3 (by decide)
+  have hf : (balanceResetCandidateEntry lang b).2 = (balanceResetCandidateEntry lang 0).2 :=
+    candidateBinding_frame_congr hs.2.1 hn
+  have hnc : (balanceResetCandidateEntry lang b).1.nextCell =
+      (balanceResetCandidateEntry lang 0).1.nextCell := by
+    change (balanceCanonicalResetStage lang b 3).1.nextCell + 1 =
+      (balanceCanonicalResetStage lang 0 3).1.nextCell + 1
+    rw [hn]
+  have hc : (balanceResetCandidateEntry lang b).1.cells =
+      (balanceResetCandidateEntry lang 0).1.cells := by
+    change ((balanceCanonicalResetStage lang b 3).1.nextCell,
+        TargetValue.object (balanceCanonicalResetStage lang b 3).1.nextObject) ::
+        (balanceCanonicalResetStage lang b 3).1.cells =
+      ((balanceCanonicalResetStage lang 0 3).1.nextCell,
+        TargetValue.object (balanceCanonicalResetStage lang 0 3).1.nextObject) ::
+        (balanceCanonicalResetStage lang 0 3).1.cells
+    rw [hn, hs.2.2.2.2.1, hs.2.2.1]
+  have hg : (balanceResetCandidateEntry lang b).1.globals =
+      (balanceResetCandidateEntry lang 0).1.globals := hs.2.2.2.1
+  cases lang with
+  | ts => exact resetTsOverridesEntry_localValue_congr hf hc hg hnc
+  | python => exact resetBinding_localValue_congr hf hc hg hnc
+
+def resetOverlayIterable (lang : TargetLang) : TargetExpr :=
+  if lang == .ts then .call (.property (.local "Object") "entries")
+    (.sequence (.local "overrides") .empty)
+  else .call (.local "list") (.sequence
+    (.call (.property (.local "dict") "items") (.sequence (.local "ctx") .empty)) .empty)
+
+theorem balanceReset_overlay_loop_shape (lang : TargetLang) :
+    balanceResetOverlayLoop lang =
+      .forDo ["name", "value"] (resetOverlayIterable lang)
+        (resetLoopBody (balanceResetOverlayLoop lang)) := by
+  cases lang <;> unfold balanceResetOverlayLoop balanceResetMiddleStmt balanceResetProtected
+    balanceResetSnapshots balanceStoredReset balanceResetLookup balancePreparation
+  · rw [balanceProgram_of_parse BalancePrograms.balanceTsProgram_source]; decide +kernel
+  · rw [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]; decide +kernel
+
+/-- The first Python overlay guard requires a string key. The second guard
+    owns the known-key test in the pinned source's context definition table. -/
+def resetPythonOverlayNameTest : TargetExpr :=
+  .binary .isNotIdentity (.call (.local "type") (.sequence (.local "name") .empty)) (.local "str")
+
+def resetPythonOverlayKnownKeyTest : TargetExpr :=
+  .binary .notInObject (.local "name") (.index (.local "_WORLD") (.string "context"))
+
+theorem resetPythonOverlayName_execute {m f k}
+    (hn : localValue m f "name" = .ok (.string "balance"))
+    (ht : localValue m f "type" = .ok (.builtin .type))
+    (hs : localValue m f "str" = .ok (.builtin .strType)) :
+    evalExpr (k + 4) (balanceProgram .python) m f resetPythonOverlayNameTest =
+      .ok ⟨m, .ok (.bool false)⟩ := by
+  have hc : DepthDerivesExpr (balanceProgram .python) m f
+      (.call (.local "type") (.sequence (.local "name") .empty))
+      ⟨m, .ok (.builtin .strType)⟩ 2 :=
+    .callBuiltin (.localRead ht) (.cons (.localRead hn) .empty) (by decide) (by rfl)
+  exact evalExpr_adequate (.binary (by decide) hc (.localRead hs) (by rfl)) (by omega)
+
+/-- This small membership fact does not evaluate the unused rejection arm. -/
+theorem balanceReset_python_known_key_execute {m f ref object k}
+    (hn : localValue m f "name" = .ok (.string "balance"))
+    (hc : evalExpr (k + 3) (balanceProgram .python) m f
+      (.index (.local "_WORLD") (.string "context")) = .ok ⟨m, .ok (.object ref)⟩)
+    (ho : objectAt m ref = .ok object) (hk : object.kind = .pythonDict)
+    (hp : (object.own.lookup "balance").isSome = true) :
+    evalExpr (k + 4) (balanceProgram .python) m f resetPythonOverlayKnownKeyTest =
+      .ok ⟨m, .ok (.bool false)⟩ := by
+  have hname := evalExpr_adequate (program := balanceProgram .python)
+    (.localRead hn) (k := k + 3) (by omega)
+  change evalExpr (k + 4) _ _ _ (.binary .notInObject _ _) = _
+  rw [evalExpr, hname]
+  simp only [Bind.bind, Except.bind]
+  rw [hc]
+  simp only [Bind.bind, Except.bind]
+  rw [balanceProgram_lang]
+  simp only [binaryValue, ho, hk, hp, Bind.bind, Except.bind, Pure.pure, Except.pure]
+  rfl
+
+/-- Closed facts inspect addresses and builtin locals, not a symbolic seed. -/
+def balanceResetMiddlePythonCheck : Prop :=
+  let e := balanceResetMiddleEntry .python 0
+  let stage := balanceCanonicalResetStage .python 0 3
+  let seed := (balancePreparation .python).1.nextObject
+  localValue e.1 e.2 "ctx" = .ok (.object seed) ∧
+  localValue e.1 e.2 "type" = .ok (.builtin .type) ∧
+  localValue e.1 e.2 "dict" = .ok (.builtin .dict) ∧
+  stage.1.nextObject ≠ seed ∧
+  (List.take (balanceCanonicalResetPrefixLength .python 3) stage.1.objects).lookup seed = none
+
+instance : Decidable balanceResetMiddlePythonCheck := by
+  unfold balanceResetMiddlePythonCheck
+  infer_instance
+
+theorem balanceResetMiddlePythonCheck_zero : balanceResetMiddlePythonCheck := by
+  unfold balanceResetMiddlePythonCheck balanceResetMiddleEntry balanceResetCandidateEntry
+    balanceCanonicalResetStage balanceCanonicalResetEntry balanceResetBodyEntry
+    balancePythonResetBodyEntry balanceConstructorBodyEntry balanceConstructorBoundEntry
+    balanceConstructorArgumentEntry balanceStoredReset balanceResetLookup balanceStoredConstructor
+    balanceConstructorLookup balanceConstructorName balancePreparation
+  rw [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]
+  decide +kernel
+
+/-- The supplied seed survives snapshot, candidate allocation, and ctx binding.
+    Only its payload varies; address separation is certified at zero. -/
+theorem balanceResetMiddleEntry_python_seed (b : Int) :
+    objectAt (balanceResetMiddleEntry .python b).1 (balancePreparation .python).1.nextObject =
+      .ok (balanceHeapObject .python (balancePreparation .python).1 b) := by
+  have h := balanceResetMiddlePythonCheck_zero
+  unfold balanceResetMiddlePythonCheck at h
+  dsimp only at h
+  have footprint := balanceCanonicalResetStage_footprint .python b 3 (by decide)
+  change (match (((balanceCanonicalResetStage .python b 3).1.nextObject,
+      balanceHeapObject .python (balanceCanonicalResetStage .python b 3).1 100) ::
+      (balanceCanonicalResetStage .python b 3).1.objects).lookup
+      (balancePreparation .python).1.nextObject with
+      | some o => Except.ok o | none => Except.error _) = _
+  rw [footprint.1, footprint.2.2.2.2.1]
+  simp only [List.lookup_cons, beq_eq_false_iff_ne.mpr (Ne.symm h.2.2.2.1), if_false,
+    List.lookup_append, h.2.2.2.2, Option.or, beq_self_eq_true, if_true]
+
+/-- Directly discharge all five plain-dict premises at the canonical entry. -/
+theorem balanceReset_python_canonical_plain_guard_skip (b : Int) (k : Nat) :
+    let e := balanceResetMiddleEntry .python b
+    execStmt (k + 6) (balanceProgram .python) e.1 e.2
+      (ifYesStmt (balanceResetMiddleStmt .python 2)) =
+    execStmt (k + 5) (balanceProgram .python) e.1 e.2
+      (restStmt (ifYesStmt (balanceResetMiddleStmt .python 2))) := by
+  have h := balanceResetMiddlePythonCheck_zero
+  unfold balanceResetMiddlePythonCheck at h
+  dsimp only at h
+  apply balanceReset_python_plain_guard_skip
+  · rw [balanceResetMiddleEntry_localValue .python b "ctx"]; exact h.1
+  · rw [balanceResetMiddleEntry_localValue .python b "type"]; exact h.2.1
+  · rw [balanceResetMiddleEntry_localValue .python b "dict"]; exact h.2.2.1
+  · exact balanceResetMiddleEntry_python_seed b
+  · rfl
+/-- The physical two-cell binding used by one fresh overlay iteration. -/
+def resetOverlayPairBinding (lang : TargetLang) (m : TargetMachine) (f : TargetFrame)
+    (value : TargetValue) : TargetMachine × TargetFrame :=
+  forPairBound lang m f (.string "balance") value
+
+/-- Execute the source-selected one-entry overlay loop, including its real
+    destructuring, body depth, empty iterator tail, and language frame behavior.
+    Iterable and body premises are explicit, not canonical execution claims. -/
+theorem balanceReset_overlay_loop_execute {lang m source final f ff listRef pairRef list pair value k}
+    (he : evalExpr (k + 2) (balanceProgram lang) m f (resetOverlayIterable lang) =
+      .ok ⟨source, .ok (.object listRef)⟩)
+    (hl : objectAt source listRef = .ok list)
+    (hk : list.kind = (if lang == .ts then .jsArray else .pythonList))
+    (hi : list.items = [.object pairRef])
+    (hp : objectAt source pairRef = .ok pair)
+    (hv : pair.items = [.string "balance", value])
+    (hn : lang = .python → f.locals.lookup "name" = none)
+    (hf : lang = .python → f.locals.lookup "value" = none)
+    (hb : execStmt (k + 1) (balanceProgram lang)
+      (resetOverlayPairBinding lang source f value).1
+      (resetOverlayPairBinding lang source f value).2
+      (resetLoopBody (balanceResetOverlayLoop lang)) = .ok ⟨final, ff, .normal⟩) :
+    execStmt (k + 3) (balanceProgram lang) m f (balanceResetOverlayLoop lang) =
+      .ok ⟨final, (if lang == .ts then f else ff), .normal⟩ := by
+  rw [balanceReset_overlay_loop_shape]
+  have h := execForDo_one_pair he hl
+    (by rw [balanceProgram_lang]; exact hk) hi hp hv
+    (by rw [balanceProgram_lang]; exact hn)
+    (by rw [balanceProgram_lang]; exact hf)
+    (by rw [balanceProgram_lang]; exact hb)
+  simpa only [balanceProgram_lang] using h
+
+/-- Project only the candidate's data descriptor after a loop. -/
+def resetCandidateBalanceRead (m : TargetMachine) (f : TargetFrame) :
+    Except TargetError (Option TargetValue) := do
+  let value ← localValue m f "candidate"
+  match value with
+  | .object ref =>
+      let object ← objectAt m ref
+      match object.own.lookup "balance" with
+      | some descriptor => pure descriptor.value
+      | none => throw .badDescriptor
+  | _ => throw .badDescriptor
+
+/-- A decidable closed check of execution control and candidate data. -/
+def resetOverlaySuccessCheck (lang : TargetLang) (b : Int)
+    (result : Except TargetError StmtOutcome) : Prop :=
+  result.toOption.map (fun out => (out.control, resetCandidateBalanceRead out.machine out.frame)) =
+    some (.normal, .ok (some (integerValue lang b)))
+
+instance (lang : TargetLang) (b : Int) (result : Except TargetError StmtOutcome) :
+    Decidable (resetOverlaySuccessCheck lang b result) := by
+  unfold resetOverlaySuccessCheck
+  infer_instance
+
+theorem resetOverlaySuccessCheck_sound {lang b result}
+    (h : resetOverlaySuccessCheck lang b result) :
+    ∃ m f, result = .ok ⟨m, f, .normal⟩ ∧
+      resetCandidateBalanceRead m f = .ok (some (integerValue lang b)) := by
+  cases result with
+  | error e => simp [resetOverlaySuccessCheck, Except.toOption] at h
+  | ok out =>
+      cases out with
+      | mk m f control =>
+          simp only [resetOverlaySuccessCheck, Except.toOption, Option.map,
+            Option.some.injEq, Prod.mk.injEq] at h
+          exact ⟨m, f, congrArg (fun c => Except.ok (StmtOutcome.mk m f c)) h.1, h.2⟩
+
+/-- Closed zero regression of the complete Python one-entry overlay, including
+    its source guards, safe-integer helper, int conversion, and forDo tail.
+    This is deliberately separate from the universal constructor obligation. -/
+theorem balanceReset_python_overlay_zero_check :
+    let e := balanceResetMiddleEntry .python 0
+    resetOverlaySuccessCheck .python 0
+      (execStmt 40 (balanceProgram .python) e.1 e.2 (balanceResetOverlayLoop .python)) := by
+  unfold balanceResetMiddleEntry balanceResetCandidateEntry
+    balanceCanonicalResetStage balanceCanonicalResetEntry balanceResetBodyEntry
+    balancePythonResetBodyEntry balanceConstructorBodyEntry balanceConstructorBoundEntry
+    balanceConstructorArgumentEntry balanceStoredReset balanceResetLookup balanceStoredConstructor
+    balanceConstructorLookup balanceConstructorName balancePreparation
+    balanceResetOverlayLoop balanceResetMiddleStmt balanceResetProtected balanceResetSnapshots
+  rw [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]
+  decide +kernel
+
+/-- The complete TS supplied-seed arm includes descriptor copying. This closed
+    check then runs the actual Object.entries overlay and inspects its write. -/
+theorem balanceReset_ts_overlay_zero_check :
+    let e := balanceResetMiddleEntry .ts 0
+    resetOverlaySuccessCheck .ts 0
+      (execStmt 40 (balanceProgram .ts) e.1 e.2
+        (.sequence (ifNoStmt (balanceResetMiddleStmt .ts 2)) (balanceResetOverlayLoop .ts))) := by
+  unfold balanceResetMiddleEntry balanceResetCandidateEntry
+    balanceCanonicalResetStage balanceCanonicalResetEntry balanceResetBodyEntry
+    balancePythonResetBodyEntry balanceConstructorBodyEntry balanceConstructorBoundEntry
+    balanceConstructorArgumentEntry balanceStoredReset balanceResetLookup balanceStoredConstructor
+    balanceConstructorLookup balanceConstructorName balancePreparation
+    balanceResetOverlayLoop balanceResetMiddleStmt balanceResetProtected balanceResetSnapshots
+  rw [balanceProgram_of_parse BalancePrograms.balanceTsProgram_source]
+  decide +kernel
+
+
 end CanonicalResetComposition
 
 end Harmonia.Applications.Kadmos.Generated

@@ -2206,4 +2206,63 @@ theorem evalEmptyArray (k : Nat) {program m f} (hl : program.lang = .ts) :
         .ok (.object m.nextObject)⟩ := by
   simp [evalExpr, evalArrayElems, hl, done, allocObject]
 
+
+/-- Physical fresh binding of a destructured two-value iteration. -/
+def forPairBound (lang : TargetLang) (m : TargetMachine) (f : TargetFrame)
+    (left right : TargetValue) : TargetMachine × TargetFrame :=
+  let named := allocCell m left (lang == .python)
+  let valued := allocCell named.1 right (lang == .python)
+  (valued.1, { f with locals := ("value", named.1.nextCell) :: ("name", m.nextCell) :: f.locals })
+
+/-- A one-pair forDo execution, with actual destructuring, body depth and
+    iterator tail. TS restores the outer frame; Python retains the body frame.
+    Freshness premises concern Python's existing-local write behavior. -/
+theorem execForDo_one_pair {program m source final f ff listRef pairRef list pair left right k iterable body}
+    (he : evalExpr (k + 2) program m f iterable = .ok ⟨source, .ok (.object listRef)⟩)
+    (hl : objectAt source listRef = .ok list)
+    (hk : list.kind = (if program.lang == .ts then .jsArray else .pythonList))
+    (hi : list.items = [.object pairRef])
+    (hp : objectAt source pairRef = .ok pair)
+    (hv : pair.items = [left, right])
+    (hn : program.lang = .python → f.locals.lookup "name" = none)
+    (hf : program.lang = .python → f.locals.lookup "value" = none)
+    (hb : execStmt (k + 1) program (forPairBound program.lang source f left right).1
+      (forPairBound program.lang source f left right).2 body = .ok ⟨final, ff, .normal⟩) :
+    execStmt (k + 3) program m f (.forDo ["name", "value"] iterable body) =
+      .ok ⟨final, (if program.lang == .ts then f else ff), .normal⟩ := by
+  rw [execStmt, he]
+  simp only [Bind.bind, Except.bind]
+  rw [hl]
+  simp only [Bind.bind, Except.bind]
+  rw [hk]
+  cases hlang : program.lang <;> rw [hlang] at hb
+  all_goals simp only [show (TargetLang.ts == .ts) = true from rfl,
+    show (TargetLang.python == .ts) = false from rfl, Bool.false_eq_true, if_true, if_false]
+  all_goals rw [hi]
+  all_goals simp only [execForItems, bindLoopValue, hp, hv, bindOne, hlang,
+    show (TargetLang.ts == .python) = false from rfl,
+    show (TargetLang.python == .python) = true from rfl,
+    Bool.false_eq_true, if_true, if_false, Bind.bind, Except.bind, Pure.pure, Except.pure]
+  · change (do
+      let result ← execStmt (k + 1) program (forPairBound .ts source f left right).1
+        (forPairBound .ts source f left right).2 body
+      match result.control with
+      | .normal | .continued "loop" => _
+      | .broke "loop" => _
+      | _ => _) = _
+    rw [hb]
+    rfl
+  · rw [hn hlang]
+    simp only [Bind.bind, Except.bind, Pure.pure, Except.pure, List.lookup_cons,
+      String.reduceBEq, if_false, hf hlang]
+    change (do
+      let result ← execStmt (k + 1) program (forPairBound .python source f left right).1
+        (forPairBound .python source f left right).2 body
+      match result.control with
+      | .normal | .continued "loop" => _
+      | .broke "loop" => _
+      | _ => _) = _
+    rw [hb]
+    rfl
+
 end Harmonia.Applications.Kadmos.Generated

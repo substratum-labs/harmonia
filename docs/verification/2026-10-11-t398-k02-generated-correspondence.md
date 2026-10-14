@@ -1226,3 +1226,111 @@ Independent physical read-only `codex exec` review used **gpt-6-astra / high**, 
 The one Minor finding was an overstated regression-coverage sentence: neither test root directly invokes `balanceReset_python_plain_guard_skip`. That sentence is corrected above; compilation and audit of the production theorem are distinguished from a dedicated regression invocation. No code/test change or new execution pass was needed for this factual receipt correction. All three code/test hashes remain identical to the verified and reviewed postimages; the portable axiom listing is unchanged. No deferred finding remains.
 
 Review scope rulings: independent execution reproduction was outside this static sub-pass; actual owner CLI/kernel evidence supplies verification. Native TS/Python behavior and hosted-Linux portability were also outside the established guarantees. Cost of these limits: no independent execution replication or native/Linux guarantee is claimed; those remain separate integration gates. The reviewer performed no mutation, Lean/Lake or target-runtime execution, network access or delegation. T-398 remains IN_PROGRESS; the full overlay/helper/constructor and whole-source gates remain open, and PR #5 remains unmergeable. No push or merge was performed.
+
+
+## One-entry overlay checkpoint after clean `ee52721` — 2026-10-14
+
+T-398 remains **IN_PROGRESS**. This is a partial proof checkpoint under the user's permission to advance as far as compiles and passes the complete suite. It does not establish the universal constructor, helper-call, generated-step, or whole-source acceptance gates. PR #5 remains unmergeable; no push or merge is authorized by this batch.
+
+**Source rulings.** The pinned TS supplied-seed false arm checks object/array/proxy and prototype, obtains own descriptors, creates an empty overrides object, and copies validated data descriptors with `Object.defineProperty`. It is not an `overrides = initialContext` assignment. The pinned Python iterable is `list(dict.items(ctx))`, and its known-key rejection arm tests `name not in _WORLD["context"]`, not `_DEFAULTS`. The actual source/AST controls the proof; neither simplification was substituted. Cost of the ruling: universal TS descriptor-copy and Python safe-integer validation still require explicit execution proofs.
+
+**New universal facts.** `balanceResetMiddleEntry_localValue` lifts middle-entry reads from closed zero to arbitrary `b` through frame/cell/global/next-cell footprint equalities. Two abstract binding congruences keep kernel conversion away from full symbolic constructor ASTs. `balanceResetMiddleEntry_python_seed` proves the original supplied seed object survives snapshots, candidate allocation and ctx binding for arbitrary `b`. `balanceReset_python_canonical_plain_guard_skip` discharges every local/heap/kind premise of the plain-dict guard from constructor provenance for arbitrary `b`, then exposes the actual loop continuation.
+
+**New conditional execution facts.** `execForDo_one_pair` in TargetSemantics handles real pair destructuring, fresh two-name binding, the body budget and empty iterator tail. It restores the outer TS frame and retains the Python body frame; the Python freshness premises are explicit. The existing interpreter definitions are unchanged. `balanceReset_overlay_loop_shape` selects the exact pinned TS and Python iterable, and `balanceReset_overlay_loop_execute` specializes the execution theorem to that source loop. Its iterable result, list/pair heap premises, fresh Python locals and body execution premise remain explicit: it is not a universal canonical-loop theorem. Small Python expression facts prove the string-name test and a known `balance` membership test false from explicit local/context-table premises.
+
+**Closed execution facts.** `balanceReset_python_overlay_zero_check` kernel-checks the complete one-entry loop at canonical middle entry `b = 0`, including its source guards, safe-integer helper, int conversion and iterator tail. `balanceReset_ts_overlay_zero_check` kernel-checks the complete supplied-seed false arm (including prototype/descriptor validation and descriptor copying), followed by the actual Object.entries overlay, also at `b = 0`. Both check normal control and read the actual candidate descriptor equal to integer zero. `resetOverlaySuccessCheck_sound` turns the decidable projection check into an existential exact normal execution and candidate read. These facts are closed zero examples; they do not imply all bounded inputs.
+
+**Regression coverage.** ConstructorProof directly invokes the existing `balanceReset_python_plain_guard_skip`, and the new canonical guard and arbitrary-b read congruence. BalanceStepProof directly invokes the conditional source-loop theorem, checks both closed complete loop executions and the success-check soundness projection, and exercises the small Python name/membership facts on live premises. Separate closed tests at a fresh pair binding constructed on the canonical middle-entry heap (before iterable allocations) show the actual context-definition string-type and known-key expressions evaluate false on `balance`. Production and test proofs use closed `decide +kernel` checks and small footprint equations; there is no admitted proof, native_decide, new protocol axiom, or raw WHNF tactic over a full AST at symbolic `b`.
+
+**Development evidence.** The new interface probe initially failed with unknown identifiers. A development build exposed missing implicit object parameters and the `strType` builtin spelling; those were corrected. A cell-pair projection was then made explicit, and the final read congruence was factored through abstract-machine binding lemmas (isolated symbolic check exited 0 in under one second). Scratch references to private interpreter names were discarded. The generic execution theorem was instead added beside the interpreter, where it compiled through the existing private loop definitions, and the application specializes its public result. The reversed seed-address comparison was corrected. Error/interrupted scratch attempts are not certification evidence and were not imported.
+
+All **61 final owner CLI commands exited 0**, serially, with one target per Lake build invocation. SHA256 postimages of the four code/test files were checked before and after every command and remain unchanged. This covers the full build, every verification library/test/audit/rejection target (Foundation, Distributed, World, Bridge, Generated, Quorum and CAP), five individual heavy constructor/step language/case leaves, and four inventory/artifact checks. The final pass includes the combined proof module explicitly and every existing verification target.
+
+| Command | Exit |
+| --- | ---: |
+| `lake build Harmonia.Applications.Kadmos.Generated.BalanceSimulation` | 0 |
+| `lake build` | 0 |
+| `lake build HarmoniaTests.KadmosGeneratedK02ConstructorProofTS` | 0 |
+| `lake build HarmoniaTests.KadmosGeneratedK02ConstructorProofPython` | 0 |
+| `lake build kadmosGeneratedK02ConstructorProofTest` | 0 |
+| `lake build HarmoniaTests.KadmosGeneratedK02BalanceStepProofCases` | 0 |
+| `lake build HarmoniaTests.KadmosGeneratedK02BalanceStepProofTS` | 0 |
+| `lake build HarmoniaTests.KadmosGeneratedK02BalanceStepProofPython` | 0 |
+| `lake build kadmosGeneratedK02BalanceStepProofTest` | 0 |
+| `lake build foundationsTest` | 0 |
+| `lake build foundationsAudit` | 0 |
+| `lake build foundationsAuditRejection` | 0 |
+| `lake build distributedTest` | 0 |
+| `lake build distributedAudit` | 0 |
+| `lake build distributedAuditRejection` | 0 |
+| `lake build kadmosWorldTest` | 0 |
+| `lake build kadmosWorldAudit` | 0 |
+| `lake build kadmosWorldAuditRejection` | 0 |
+| `lake build kadmosBridgeSyntaxTest` | 0 |
+| `lake build kadmosBridgeCertificateTest` | 0 |
+| `lake build kadmosBridgeFixturesTest` | 0 |
+| `lake build kadmosBridgeAudit` | 0 |
+| `lake build kadmosBridgeAuditRejection` | 0 |
+| `lake build kadmosGeneratedK02LexerTest` | 0 |
+| `lake build kadmosGeneratedK02SourceGrammarTest` | 0 |
+| `lake build kadmosGeneratedK02SourceLexTest` | 0 |
+| `lake build kadmosGeneratedK02SourceValidatorTest` | 0 |
+| `lake build kadmosGeneratedK02SourceModuleTest` | 0 |
+| `lake build kadmosGeneratedK02PythonBooleanSyntaxTest` | 0 |
+| `lake build kadmosGeneratedK02StatementCertificateTest` | 0 |
+| `lake build kadmosGeneratedK02PythonLinesTest` | 0 |
+| `lake build kadmosGeneratedK02SimulationTest` | 0 |
+| `lake build kadmosGeneratedK02ClosedProgramsTest` | 0 |
+| `lake build kadmosGeneratedK02MachineTest` | 0 |
+| `lake build kadmosGeneratedK02ExpressionParserTest` | 0 |
+| `lake build kadmosGeneratedK02StatementParserTest` | 0 |
+| `lake build kadmosGeneratedK02TSParserTest` | 0 |
+| `lake build kadmosGeneratedK02SemanticsTest` | 0 |
+| `lake build kadmosGeneratedK02ProgramParserTest` | 0 |
+| `lake build kadmosGeneratedK02BalanceTSParseTest` | 0 |
+| `lake build kadmosGeneratedK02BalancePythonParseTest` | 0 |
+| `lake build kadmosGeneratedK02OrderTSParseTest` | 0 |
+| `lake build kadmosGeneratedK02OrderPythonParseTest` | 0 |
+| `lake build kadmosGeneratedK02CertificateTest` | 0 |
+| `lake build kadmosGeneratedK02BalanceTSCertificateTest` | 0 |
+| `lake build kadmosGeneratedK02BalancePythonCertificateTest` | 0 |
+| `lake build kadmosGeneratedK02BalanceTSStepTest` | 0 |
+| `lake build kadmosGeneratedK02Audit` | 0 |
+| `lake build kadmosGeneratedK02AuditRejection` | 0 |
+| `lake build kadmosGeneratedK02JSONTest` | 0 |
+| `lake build kadmosGeneratedK02RegexTest` | 0 |
+| `lake build quorumTest` | 0 |
+| `lake build quorumAudit` | 0 |
+| `lake build quorumAuditRejection` | 0 |
+| `lake build capTest` | 0 |
+| `lake build capAudit` | 0 |
+| `lake build capAuditRejection` | 0 |
+| `python3 scripts/check_kadmos_generated_k02_audit.py` | 0 |
+| `python3 scripts/test_kadmos_generated_k02_audit.py` | 0 |
+| `python3 scripts/check_kadmos_generated_k02_artifacts.py` | 0 |
+| `python3 scripts/test_kadmos_generated_k02_artifacts.py` | 0 |
+
+Strict Generated scan: **9207 theorems / 12662 declarations**, observed and allowed **[propext, Quot.sound]** only. The portable listing contains exactly 9207 unique names, and every axiom dependency set was checked equal to the scan. Independent final review: ACCEPT partial checkpoint; zero findings.
+
+**Open obligations.** Universal TS false-arm execution; universal iterable allocation, pair/local/heap discharge and complete body guard execution for both canonical loops; bounds/invariant calls for every `0 ≤ b ≤ 9007199254740991`; protected-body/finally/publication/seed-copy composition; final HeapWF/BalanceRep; `targetConstruct_sound` and the other four universal interfaces; and the missing correspondence test target remain open. The full Task 2A source grammar/uniqueness/checked parser/admission gate also remains open. No solver, finite exploration, native TS/Python behavior or hosted-Linux guarantee is inferred from these local target-semantics kernel checks.
+
+Frozen SHA256 postimages:
+
+| File | SHA256 |
+| --- | --- |
+| `Harmonia/Applications/Kadmos/Generated/TargetSemantics.lean` | `03f48d22c6e91e05c1b69a84f63e4e39afb61fd15d036b2f93908dc7e976a7fe` |
+| `Harmonia/Applications/Kadmos/Generated/BalanceSimulation.lean` | `a182bdf52768e4628fb098fc0aeae7d6eaf97f8136da39b600d744ec96bd9446` |
+| `HarmoniaTests/KadmosGeneratedK02ConstructorProof.lean` | `bc6589a682b361b2a92a6f46880d996b7c972d435c1a15ad9cf7c96928ef67e8` |
+| `HarmoniaTests/KadmosGeneratedK02BalanceStepProof.lean` | `5d5ad65d866f96955b9205e6908770d72f6c3785171375b8b2af278ffe02c2be` |
+
+
+The final full-mission probes still exit **1**: all five universal names (`targetConstruct_sound`, `step_guard_reject`, `step_accept`, `step_bounds_reject`, `k02_balance_one_call`) are absent, and `kadmosGeneratedK02CorrespondenceTest` remains an unknown target. The new-slice interface probe now exits **0**, resolving every name that failed its initial RED probe. These two expected open-gate failures are separate from the 61 passing verification commands; no stub target was added.
+
+Foundation audit: 52 theorems, observed `[propext, Quot.sound]` under its unchanged historical whitelist. Exact Generated inventory remains 21 product / 37 test-audit / 64 closure modules / 28 targets / 33 World inventory modules; all 13 inventory and 8 artifact mutation tests pass, and artifact checks cover ten pinned files. Compatibility audit policies remain separate from the strict Generated whitelist. The pre-existing Bridge/Certificate.lean:185 warning is unchanged.
+
+Compatibility counts observed in this final pass: Distributed 336 / 594; World 10,280 / 14,279; Bridge 1,691 / 2,163; Quorum 15 / 17; CAP 63 / 157.
+
+
+Independent fresh-context read-only reviewer `/root/t398_review` used **gpt-6-astra / high** and returned **ACCEPT partial checkpoint; ready for the authorized local commit**, with **zero Critical, Important, or Minor findings**. The reviewer inspected the six-file diff from `ee52721`, confirmed all six postimages, every one of the 61 successful serial CLI records/logs and all 50 verification library targets, and exact equality of all 9,207 theorem/dependency pairs. It checked pair binding order/mutability, Python freshness, TS outer-frame restoration, body/tail depth, canonical seed separation, candidate-read projection, and the distinction between conditional, constructed pre-iterable, and complete zero-input checks. Existing interpreter definitions, pinned sources, toolchain, audit policies and layer boundaries remain unchanged.
+
+The reviewer **does not accept full-mission completion**: universal overlays/helpers/constructor and the whole-source gates remain open. Review scope was static, using actual read-only CLI inspection of owner evidence; it performed no Lean/Lake or native runtime execution, network access, mutation or delegation. Owner CLI/kernel results supply execution verification; no independent rerun, native TS/Python or hosted-Linux guarantee is claimed. The only change after review is this factual review receipt. The four compiled code/test hashes and the portable axiom listing remain identical to the verified and reviewed postimages. Generated Python cache files are excluded and cleaned before staging. No push or PR #5 merge is performed; T-398 remains IN_PROGRESS.
