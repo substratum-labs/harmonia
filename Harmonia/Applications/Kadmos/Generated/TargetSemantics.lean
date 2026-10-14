@@ -2177,4 +2177,33 @@ theorem evalPythonEmptyList (k : Nat) {program m f} (hl : program.lang = .python
         .ok (.object m.nextObject)⟩ := by
   simp [evalExpr, evalArrayElems, hl, done, allocObject]
 
+/-- Exact physical installation of a parameter-free source function.
+    Captures and body are retained, including the self-recursive binding. -/
+def functionInstalled (lang : TargetLang) (m : TargetMachine) (f : TargetFrame)
+    (name : String) (body : TargetStmt) : TargetMachine × TargetFrame :=
+  let withCell := (allocCell m .undefined true).1
+  let closure : TargetClosure := ⟨f.qualifiedName ++ "." ++ name, [], [], body,
+    (name, m.nextCell) :: f.locals ++ f.captures, f.receiver⟩
+  let withClosure := (allocClosure withCell closure).1
+  let written := { withClosure with cells := withClosure.cells.map fun entry =>
+    (entry.1, if entry.1 == m.nextCell then .closure m.nextClosure else entry.2) }
+  let sealed := if lang == .ts then { written with writableCells := written.writableCells.map fun entry =>
+    (entry.1, if entry.1 == m.nextCell then false else entry.2) } else written
+  (sealed, { f with locals := (name, m.nextCell) :: f.locals })
+
+theorem execDefineFunction_empty (program : TargetProgram) (m : TargetMachine) (f : TargetFrame)
+    (name : String) (body : TargetStmt) (k : Nat) :
+    execStmt (k + 2) program m f (.defineFunction name [] body) =
+      .ok ⟨(functionInstalled program.lang m f name body).1,
+        (functionInstalled program.lang m f name body).2, .normal⟩ := by
+  simp [execStmt, evalDefaults, writeCell, allocClosure, allocCell, List.lookup,
+    sealCell, functionInstalled, Bind.bind, Pure.pure, Except.bind, Except.pure]
+
+/-- TypeScript empty-array allocation at its exact collection depth. -/
+theorem evalEmptyArray (k : Nat) {program m f} (hl : program.lang = .ts) :
+    evalExpr (k + 2) program m f (.array .empty) =
+      .ok ⟨(allocObject m ⟨.jsArray, some m.objectPrototype, [], [], [], false, false⟩).1,
+        .ok (.object m.nextObject)⟩ := by
+  simp [evalExpr, evalArrayElems, hl, done, allocObject]
+
 end Harmonia.Applications.Kadmos.Generated

@@ -945,3 +945,94 @@ Two additional final **acceptance gates failed**, as required to report incomple
 
 
 Independent physical read-only `codex exec` review used **gpt-6.1-sol / medium**, session `01a139e7-762f-73b0-9b60-56ead4a1d2d5`, exit0: **ACCEPT local partial Task2B/3 checkpoint / REJECT Stage3c completion and universal correspondence**. Zero Critical, Important or Minor defects within the scoped continuation. The reviewer inspected all nineteen logs, four frozen SHA256 postimages, original source/test prefixes, source/spec/plan, depth/control/finalizer/copy semantics, Init-only external import leaves, forbidden constructs and exact equality of the8,912 portable names/dependency sets with the strict scan. It made no edits/Git mutations and ran no Lean/Lake/build/target-runtime/network processes or further delegation. Physical serial execution and build-time identity remain owner evidence supported by the inspected receipts, rather than independently rerun verification. Four code/test postimages remain unchanged after review; no repair was requested. All completion blockers above remain unwaived. A bytecode cache produced by the artifact self-tests was removed and is not staged. No push or merge.
+
+## Reset snapshot and publication execution — 2026-10-14
+
+**T-398 and Tasks 2A/2B/3/4 remain IN_PROGRESS.** Continuation from clean local `830287a` on `feat/t396-generated-correspondence` in the existing isolated `5b89` worktree. No push or PR #5 merge is authorized for this batch.
+
+The pinned TS/Python reset sources contain state, context and history snapshots followed by a `rollback` closure definition. Neither source has a `previousConstructorSeed` snapshot. This batch follows those actual four statements. Small closed `decide +kernel` checks inspect the three snapshot heads, rollback name/empty parameters, the 12-statement TS / 11-statement Python protected sequence, the first candidate-default copy, the four publication writes and the exact `busy = false` cleanup. Structural inversion retains the original rollback/protected/handler subtrees and excludes selector fallbacks. No helper is replaced by an ideal result.
+
+`balanceReset_snapshot_execute` composes all four statements at depths `k+8 → k+4` and returns the actual protected suffix on a concrete heap/frame recipe. TS snapshots its class default context `{balance: 100}`; Python snapshots its initialized empty dict. Context/history copies allocate their own objects. The rollback closure captures the fresh snapshot cells, receives its own callable cell and is sealed only in TS. Generic four-sibling composition keeps the source statement abstract. The receiver, host-binding, object-shape, fresh-address and Python unbound-name conditions remain explicit physical premises; this theorem does **not** discharge every such condition for the full canonical constructor path. Reset-entry receiver binding is proved through the generic allocation recipe for every symbolic seed. The state-snapshot regression retains its physical receiver and Python address conditions.
+
+`balanceConstructor_ts_seed_copy` executes the actual post-reset spread suffix at every depth `k+6`, allocates an ordinary object with the exact mutable/enumerable balance descriptor, and writes the copied constructor-seed address. It requires the live canonical context and physical freshness; it does not infer final HeapWF. The Python suffix theorem is preserved. `balanceReset_candidate_ts_execute` / `balanceReset_candidate_python_execute` execute the first protected defaults-copy statement from explicit captured/default-object reads. Python's real `_DEFAULTS` mapping proxy is copied to a mutable dict with no proxy prototype. Remaining override/type/descriptor loops, bounds and invariant helper calls have not been executed universally.
+
+`balanceReset_publication_execute` executes the actual final four try-body writes from a physical candidate read and the Python `_INITIAL = Ready` read: state Ready, candidate context, allocated empty history and cleared undo. TS retains its `WorldState` cast node. Publication preserves the held busy bit; `balanceReset_cleanup_execute` separately executes the actual finalizer. These are conditional suffix proofs, not a proof that execution reaches publication after validation. No final `BalanceRep`, full reset-body totality or `targetConstruct_sound` is claimed.
+
+The only interpreter-module additions are exact generic parameter-free function installation and TS empty-array allocation equations; existing executable definitions are unchanged. The function-installation recipe explicitly models the interpreter's cell/permission maps, including malformed duplicate-address input, without assuming address freshness. All pre-existing product/test declarations are unchanged. Toolchain, source pins, host contracts, Core/Distributed/legacy experiments and audit policies are unchanged. No source World interpreter call, native decision, new import, custom axiom or admitted proof is introduced.
+
+The initial tracked missing-interface probe reports Lean errors for the three absent requested slice names. Disposable proof/conversion/progress diagnostics were interrupted and are not verification passes. The owner inspected a process sample that showed a large kernel type-checker cache being freed under memory paging; no diagnostic code or machine log is imported or staged.
+
+All **60 final owner CLI commands exited 0**, sequentially, with one target per Lake build invocation. SHA256 postimages of the four code/test files were checked before and after every command and remain unchanged. This covers the full build, every named library/test/audit/rejection target (Foundation, Distributed, World, Bridge, Generated, Quorum and CAP), five individual heavy constructor/step language/case leaves, and four inventory/artifact checks. The initial four-command suite attempt stopped on a small test-wrapper reduction error; the complete successful run below supersedes it.
+
+| Command | Exit |
+| --- | ---: |
+| `lake build` | 0 |
+| `lake build HarmoniaTests.KadmosGeneratedK02ConstructorProofTS` | 0 |
+| `lake build HarmoniaTests.KadmosGeneratedK02ConstructorProofPython` | 0 |
+| `lake build kadmosGeneratedK02ConstructorProofTest` | 0 |
+| `lake build HarmoniaTests.KadmosGeneratedK02BalanceStepProofCases` | 0 |
+| `lake build HarmoniaTests.KadmosGeneratedK02BalanceStepProofTS` | 0 |
+| `lake build HarmoniaTests.KadmosGeneratedK02BalanceStepProofPython` | 0 |
+| `lake build kadmosGeneratedK02BalanceStepProofTest` | 0 |
+| `lake build foundationsTest` | 0 |
+| `lake build foundationsAudit` | 0 |
+| `lake build foundationsAuditRejection` | 0 |
+| `lake build distributedTest` | 0 |
+| `lake build distributedAudit` | 0 |
+| `lake build distributedAuditRejection` | 0 |
+| `lake build kadmosWorldTest` | 0 |
+| `lake build kadmosWorldAudit` | 0 |
+| `lake build kadmosWorldAuditRejection` | 0 |
+| `lake build kadmosBridgeSyntaxTest` | 0 |
+| `lake build kadmosBridgeCertificateTest` | 0 |
+| `lake build kadmosBridgeFixturesTest` | 0 |
+| `lake build kadmosBridgeAudit` | 0 |
+| `lake build kadmosBridgeAuditRejection` | 0 |
+| `lake build kadmosGeneratedK02LexerTest` | 0 |
+| `lake build kadmosGeneratedK02SourceGrammarTest` | 0 |
+| `lake build kadmosGeneratedK02SourceLexTest` | 0 |
+| `lake build kadmosGeneratedK02SourceValidatorTest` | 0 |
+| `lake build kadmosGeneratedK02SourceModuleTest` | 0 |
+| `lake build kadmosGeneratedK02PythonBooleanSyntaxTest` | 0 |
+| `lake build kadmosGeneratedK02StatementCertificateTest` | 0 |
+| `lake build kadmosGeneratedK02PythonLinesTest` | 0 |
+| `lake build kadmosGeneratedK02SimulationTest` | 0 |
+| `lake build kadmosGeneratedK02ClosedProgramsTest` | 0 |
+| `lake build kadmosGeneratedK02MachineTest` | 0 |
+| `lake build kadmosGeneratedK02ExpressionParserTest` | 0 |
+| `lake build kadmosGeneratedK02StatementParserTest` | 0 |
+| `lake build kadmosGeneratedK02TSParserTest` | 0 |
+| `lake build kadmosGeneratedK02SemanticsTest` | 0 |
+| `lake build kadmosGeneratedK02ProgramParserTest` | 0 |
+| `lake build kadmosGeneratedK02BalanceTSParseTest` | 0 |
+| `lake build kadmosGeneratedK02BalancePythonParseTest` | 0 |
+| `lake build kadmosGeneratedK02OrderTSParseTest` | 0 |
+| `lake build kadmosGeneratedK02OrderPythonParseTest` | 0 |
+| `lake build kadmosGeneratedK02CertificateTest` | 0 |
+| `lake build kadmosGeneratedK02BalanceTSCertificateTest` | 0 |
+| `lake build kadmosGeneratedK02BalancePythonCertificateTest` | 0 |
+| `lake build kadmosGeneratedK02BalanceTSStepTest` | 0 |
+| `lake build kadmosGeneratedK02Audit` | 0 |
+| `lake build kadmosGeneratedK02AuditRejection` | 0 |
+| `lake build kadmosGeneratedK02JSONTest` | 0 |
+| `lake build kadmosGeneratedK02RegexTest` | 0 |
+| `lake build quorumTest` | 0 |
+| `lake build quorumAudit` | 0 |
+| `lake build quorumAuditRejection` | 0 |
+| `lake build capTest` | 0 |
+| `lake build capAudit` | 0 |
+| `lake build capAuditRejection` | 0 |
+| `python3 scripts/check_kadmos_generated_k02_audit.py` | 0 |
+| `python3 scripts/test_kadmos_generated_k02_audit.py` | 0 |
+| `python3 scripts/check_kadmos_generated_k02_artifacts.py` | 0 |
+| `python3 scripts/test_kadmos_generated_k02_artifacts.py` | 0 |
+
+Strict Generated scan: **8983 theorems / 12361 declarations**, observed and allowed **[propext, Quot.sound]** only. The portable listing contains exactly 8983 unique names, and every axiom dependency set was checked equal to the scan. Independent physical read-only `codex exec` review used **gpt-6.1-sol / high**, session `01a13a56-a808-7b72-af8f-21a24604720c`, actual exit 0: **ACCEPT partial local checkpoint / NOT ACCEPTED full mission**. Zero Critical, Important or Minor findings. The reviewer confirmed unchanged old bodies/executable definitions, source order/depths, descriptor/prototype/capture behavior, explicit physical premises, cast/publication/busy cleanup, structural composition over opaque statements, meaningful budget/mutation regressions, Init-only/pinned/strict trust constraints, all four frozen signatures, all 60 serial owner exits, and exact equality of every one of the 8,983 names/dependency sets. It changed no files or Git/worktrees and ran no Lean/Lake, target runtime, network or delegated review.
+
+Review scope rulings: independent reproduction was prohibited in this read-only sub-pass; the inspected actual owner CLI results remain verification evidence, while the reviewer supplies an independent static proof/scope audit. Native TS/Python and hosted-Linux correctness remain unsupported by this batch. Cost of these limits: no independent execution replication or new runtime/Linux guarantee is claimed; those gates must be satisfied separately before full integration. No fixes or deferred minors were requested. Code/test postimages remain unchanged after review.
+
+The universal interface/correspondence acceptance gates remain open, as do independent whole-source grammar/soundness, canonical helper/global preservation, final heap representation and full universal branch correspondence. Finite kernel constructor/step witnesses, source-byte checks and these conditional execution equations do not establish those gates. No emitted native-runtime or hosted-Linux result is inferred from local Lean/inventory checks.
+
+The two full-mission acceptance probes still exit 1: the five universal interface names are absent, and `kadmosGeneratedK02CorrespondenceTest` is an unknown target. The four newly checked reset/copy/publication/candidate names resolve in the same interface probe. These are open acceptance failures, separate from the 60 existing verification passes.
+
+Foundation audit: 52 theorems, observed `[propext, Quot.sound]` under its unchanged historical whitelist. Distributed: 336 / 594; World: 10,060 / 13,984; Bridge: 1,691 / 2,163; their compatibility policies remain separate from the strict Generated policy. Quorum: 15 / 17; CAP: 63 / 157. Exact Generated inventory is unchanged (21 product, 37 test/audit, 64 closure modules, 28 targets, 33 World inventory modules); all 13 inventory and 8 artifact mutation tests pass. Artifact checks cover ten pinned files. The sole pre-existing linter warning is Bridge/Certificate.lean:185 (`unnecessarySimpa`); it is not introduced by this batch.

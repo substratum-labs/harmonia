@@ -223,3 +223,112 @@ example {m f b} (hr : f.receiver = some m.checkerRef)
 #print axioms balancePython_context_copy
 #print axioms balanceConstructor_python_seed_copy
 #print axioms balancePythonSeedCopied_preserves_bindings
+
+#check balanceReset_snapshot_execute
+#check balanceConstructor_ts_seed_copy
+#check balanceReset_cleanup_execute
+
+-- These source projections retain the live rollback body and all protected
+-- code. A seed snapshot is not present in the pinned reset sources.
+example (lang : TargetLang) :
+    firstStmt (dropStmts 3 (balanceResetSnapshots lang)) =
+      .defineFunction "rollback" [] (balanceResetRollback lang) :=
+  (balanceReset_snapshot_heads lang).2.2.2
+
+-- Receiver binding is derived from the opaque allocation recipe.
+example (lang : TargetLang) (b : Int) :
+    (balanceResetBodyEntry lang b).2.receiver = some (balanceResetBodyEntry lang b).1.checkerRef :=
+  balanceResetBodyEntry_receiver lang b
+
+example {m f b} (hr : f.receiver = some m.checkerRef)
+    (ho : objectAt m m.checker.context = .ok (balanceHeapObject .ts m b))
+    (hn : m.checker.context ≠ m.nextObject)
+    (hf : ∀ e ∈ m.objects, e.1 ≠ m.nextObject) :
+    execStmt 6 (balanceProgram .ts) m f (restStmt (balanceConstructorBodyTemplate .ts)) =
+      .ok ⟨balanceTsSeedCopied m b, f, .normal⟩ :=
+  balanceConstructor_ts_seed_copy (k := 0) hr ho hn hf
+
+-- Fresh copying preserves the symbolic numeric descriptor and publishes the
+-- copied seed address, rather than reusing the context address.
+example {m f b} (hr : f.receiver = some m.checkerRef)
+    (ho : objectAt m m.checker.context = .ok (balanceHeapObject .ts m b))
+    (hn : m.checker.context ≠ m.nextObject)
+    (hf : ∀ e ∈ m.objects, e.1 ≠ m.nextObject) :
+    evalExpr 4 (balanceProgram .ts) m f (resetContextCopy .ts) =
+      .ok ⟨(allocObject m (balanceHeapObject .ts m b)).1, .ok (.object m.nextObject)⟩ :=
+  balanceTs_context_copy (k := 0) hr ho hn hf
+
+example {m f} (hr : f.receiver = some m.checkerRef)
+    (ho : objectAt m m.checker.context = .ok (literalObject .python m))
+    (hn : m.checker.context ≠ m.nextObject)
+    (hd : localValue m f "dict" = .ok (.builtin .dict)) :
+    evalExpr 4 (balanceProgram .python) m f (resetContextCopy .python) =
+      .ok ⟨(allocObject m (literalObject .python m)).1, .ok (.object m.nextObject)⟩ :=
+  resetEmptyContext_copy (k := 0) hr ho hn (fun _ => hd)
+
+example {lang m f} (hr : f.receiver = some m.checkerRef)
+    (ho : objectAt m m.checker.history = .ok (emptyBalanceHistory lang m))
+    (hf : ∀ e ∈ m.objects, e.1 ≠ m.nextObject)
+    (hc : SnapshotCloneRead lang m f) :
+    evalExpr 4 (balanceProgram lang) m f (resetHistoryCopy lang) =
+      .ok ⟨(allocObject m (emptyBalanceHistory lang m)).1, .ok (.object m.nextObject)⟩ :=
+  resetHistory_copy (k := 0) hr ho hf hc
+
+example (lang : TargetLang) (m : TargetMachine) (f : TargetFrame) :
+    execStmt 2 (balanceProgram lang) m f
+      (firstStmt (dropStmts 3 (balanceResetSnapshots lang))) =
+      .ok ⟨(snapshotRollbackInstalled lang m f (balanceResetRollback lang)).1,
+        (snapshotRollbackInstalled lang m f (balanceResetRollback lang)).2, .normal⟩ := by
+  rw [(balanceReset_snapshot_heads lang).2.2.2]
+  exact execSnapshotRollback lang m f _ 0
+
+#print axioms balanceReset_snapshot_heads_check
+#print axioms balanceReset_snapshot_execute
+#print axioms balanceConstructor_ts_seed_copy
+#print axioms balanceReset_state_snapshot_execute
+#print axioms execDefineFunction_empty
+
+example {lang m f} (hr : f.receiver = some m.checkerRef)
+    (hn : lang = .python → snapshotAddress m f (snapshotName lang 0) = none) :
+    execStmt 3 (balanceProgram lang) m f (firstStmt (balanceResetSnapshots lang)) =
+      .ok ⟨(resetSnapshotState lang m f).1, (resetSnapshotState lang m f).2, .normal⟩ :=
+  balanceReset_state_snapshot_execute (k := 0) hr hn
+
+-- The installed source closure is callable through its freshly written cell,
+-- and retains snapshot addresses rather than copied snapshot values.
+example (lang : TargetLang) (m : TargetMachine) (f : TargetFrame) (body : TargetStmt) :
+    localValue (snapshotRollbackInstalled lang m f body).1
+      (snapshotRollbackInstalled lang m f body).2 "rollback" = .ok (.closure m.nextClosure) := by
+  cases lang <;> simp [snapshotRollbackInstalled, functionInstalled, localValue,
+    allocCell, allocClosure, readCell, List.lookup]
+
+#check balanceReset_candidate_ts_execute
+#check balanceReset_candidate_python_execute
+
+example (lang : TargetLang) :
+    firstStmt (balanceResetProtected lang).body =
+      snapshotBindStmt lang "candidate" (resetCandidateExpr lang) :=
+  balanceReset_candidate_shape lang
+
+example {m f ref source} (hd : localValue m f "dict" = .ok (.builtin .dict))
+    (hl : localValue m f "_DEFAULTS" = .ok (.object ref))
+    (ho : objectAt m ref = .ok source) (hk : source.kind = .mappingProxy)
+    (hown : source.own = [("balance", balanceDataDescriptor .python 100)])
+    (hn : snapshotAddress m f "candidate" = none) :
+    execStmt 4 (balanceProgram .python) m f (firstStmt (balanceResetProtected .python).body) =
+      .ok ⟨(snapshotBound .python (allocObject m (balanceHeapObject .python m 100)).1 f "candidate" (.object m.nextObject)).1,
+        (snapshotBound .python (allocObject m (balanceHeapObject .python m 100)).1 f "candidate" (.object m.nextObject)).2, .normal⟩ :=
+  balanceReset_candidate_python_execute (k := 0) hd hl ho hk hown hn
+
+#print axioms balanceReset_candidate_shape
+#print axioms balanceReset_candidate_ts_execute
+#print axioms balanceReset_candidate_python_execute
+
+-- One less statement budget fails at the argument spine before any defaults
+-- object read or allocation. This tests actual execution, not just ranks.
+example {m f} (hd : localValue m f "dict" = .ok (.builtin .dict)) :
+    evalExpr 2 (balanceProgram .python) m f (resetCandidateExpr .python) =
+      .error .exhaustedFuel := by
+  change evalExpr 2 _ _ _ (.call (.local "dict") (.sequence (.local "_DEFAULTS") .empty)) = _
+  simp [evalExpr, evalArgValues, hd, Bind.bind, Pure.pure, Except.bind, Except.pure]
+  rfl

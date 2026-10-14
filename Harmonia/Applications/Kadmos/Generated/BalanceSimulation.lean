@@ -1618,4 +1618,621 @@ theorem balancePythonSeedCopied_preserves_bindings (m : TargetMachine) (b : Int)
     (balancePythonSeedCopied m b).checker.busy = m.checker.busy :=
   ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
 
+
+def balanceResetSnapshots (lang : TargetLang) : TargetStmt :=
+  restStmt (restStmt (balanceStoredReset lang).2.body)
+
+def balanceResetProtected (lang : TargetLang) : ProtectedSyntax :=
+  protectedSyntax (firstStmt (dropStmts 4 (balanceResetSnapshots lang)))
+
+/-- Counts only sequence constructors; never compares generated helper bodies. -/
+def statementSpineCheck : Nat → TargetStmt → Bool
+  | 0, .empty => true
+  | n + 1, .sequence _ rest => statementSpineCheck n rest
+  | _, _ => false
+
+set_option maxRecDepth 65536 in
+set_option maxHeartbeats 10000000 in
+theorem balanceReset_body_spine (lang : TargetLang) :
+    statementSpineCheck (if lang == .ts then 12 else 11) (balanceResetProtected lang).body = true ∧
+    (balanceResetProtected lang).cleanup = .sequence
+      (.assign (.property (.local (if lang == .ts then "this" else "self"))
+        (if lang == .ts then "#busy" else "_busy")) (.bool false)) .empty := by
+  cases lang <;>
+    unfold balanceResetProtected balanceResetSnapshots balanceStoredReset balanceResetLookup balancePreparation
+  · rw [balanceProgram_of_parse BalancePrograms.balanceTsProgram_source]; decide +kernel
+  · rw [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]; decide +kernel
+
+theorem statementSpineCheck_sequence {n stmt} (h : statementSpineCheck (n + 1) stmt = true) :
+    stmt = .sequence (firstStmt stmt) (restStmt stmt) ∧
+    statementSpineCheck n (restStmt stmt) = true := by
+  cases stmt <;> simp_all [statementSpineCheck, firstStmt, restStmt]
+
+theorem balanceReset_cleanup_execute {lang m f k}
+    (hr : f.receiver = some m.checkerRef) (hk : 4 ≤ k) :
+    execStmt k (balanceProgram lang) m f (balanceResetProtected lang).cleanup =
+      .ok ⟨balanceSetBusy m false, f, .normal⟩ := by
+  rw [(balanceReset_body_spine lang).2]
+  exact execStmt_adequate (.sequenceNormal (balance_busy_write hr) .empty) (by omega)
+
+/-- Spread reads the old live object after allocating its destination. -/
+theorem objectAt_allocObject_other {m object ref} (hn : ref ≠ m.nextObject) :
+    objectAt (allocObject m object).1 ref = objectAt m ref := by
+  simp [objectAt, allocObject, List.lookup, beq_eq_false_iff_ne.mpr hn]
+
+theorem writeOwn_balance_fresh {m b}
+    (hf : ∀ e ∈ m.objects, e.1 ≠ m.nextObject) :
+    writeOwn (allocObject m (literalObject .ts m)).1 m.nextObject "balance" (integerValue .ts b) =
+      .ok (allocObject m (balanceHeapObject .ts m b)).1 := by
+  simp [writeOwn, objectAt_allocObject_fresh, literalObject, balanceHeapObject,
+    balanceDataDescriptor, replaceObject_allocObject hf,
+    Bind.bind, Pure.pure, Except.bind, Except.pure]
+
+theorem balanceTs_context_copy {m f b k}
+    (hr : f.receiver = some m.checkerRef)
+    (ho : objectAt m m.checker.context = .ok (balanceHeapObject .ts m b))
+    (hn : m.checker.context ≠ m.nextObject)
+    (hf : ∀ e ∈ m.objects, e.1 ≠ m.nextObject) :
+    evalExpr (k + 4) (balanceProgram .ts) m f
+      (.object (.objectSpread (.property (.local "this") "#context") .empty)) =
+      .ok ⟨(allocObject m (balanceHeapObject .ts m b)).1, .ok (.object m.nextObject)⟩ := by
+  let fresh := (allocObject m (literalObject .ts m)).1
+  have hs : localValue fresh f "this" = .ok (.object m.checkerRef) := by
+    simp [localValue, hr, fresh, allocObject]
+  have hp : readPropertyValue .ts fresh (.object m.checkerRef) "#context" =
+      .ok ⟨fresh, .ok (.object m.checker.context)⟩ := by
+    simp [readPropertyValue, readCheckerField, fresh, allocObject,
+      Bind.bind, Pure.pure, Except.bind, Except.pure]; rfl
+  have he : evalExpr (k + 2) (balanceProgram .ts) fresh f
+      (.property (.local "this") "#context") =
+      .ok ⟨fresh, .ok (.object m.checker.context)⟩ := by
+    exact evalExpr_adequate (.property (.localRead hs) (by rw [balanceProgram_lang]; exact hp)) (by omega)
+  have ho' : objectAt fresh m.checker.context = .ok (balanceHeapObject .ts m b) :=
+    (objectAt_allocObject_other hn).trans ho
+  simp only [evalExpr, balanceProgram_lang]
+  change evalObjectFields (k + 3) (balanceProgram .ts) fresh f m.nextObject _ = _
+  simp [evalObjectFields, he, ho', balanceHeapObject, balanceDataDescriptor,
+    show writeOwn fresh m.nextObject "balance" (integerValue .ts b) =
+      .ok (allocObject m (balanceHeapObject .ts m b)).1 from writeOwn_balance_fresh hf,
+    List.forIn_cons, List.forIn_nil, Bind.bind, Pure.pure, Except.bind, Except.pure]
+  rfl
+
+def balanceTsSeedCopied (m : TargetMachine) (b : Int) : TargetMachine :=
+  let copied := (allocObject m (balanceHeapObject .ts m b)).1
+  { copied with checker := { copied.checker with constructorSeed := some m.nextObject } }
+
+theorem balanceConstructor_ts_seed_copy {m f b k}
+    (hr : f.receiver = some m.checkerRef)
+    (ho : objectAt m m.checker.context = .ok (balanceHeapObject .ts m b))
+    (hn : m.checker.context ≠ m.nextObject)
+    (hf : ∀ e ∈ m.objects, e.1 ≠ m.nextObject) :
+    execStmt (k + 6) (balanceProgram .ts) m f (restStmt (balanceConstructorBodyTemplate .ts)) =
+      .ok ⟨balanceTsSeedCopied m b, f, .normal⟩ := by
+  have hs : evalExpr (k + 4) (balanceProgram .ts) m f (.local "this") =
+      .ok ⟨m, .ok (.object m.checkerRef)⟩ :=
+    evalExpr_adequate (.localRead (by simp [localValue, hr])) (by omega)
+  have he := balanceTs_context_copy (k := k) hr ho hn hf
+  have hw : execStmt (k + 5) (balanceProgram .ts) m f
+      (.assign (.property (.local "this") "#constructorSeed")
+        (.object (.objectSpread (.property (.local "this") "#context") .empty))) =
+      .ok ⟨balanceTsSeedCopied m b, f, .normal⟩ := by
+    have hh := execCheckerAssign_of_value (final := (allocObject m (balanceHeapObject .ts m b)).1) hs he (show writeCheckerField
+        (allocObject m (balanceHeapObject .ts m b)).1 "#constructorSeed" (.object m.nextObject) =
+        .ok (balanceTsSeedCopied m b) from rfl)
+    exact hh
+  change execStmt ((k + 5) + 1) _ _ _ (.sequence _ .empty) = _
+  simp only [show (TargetLang.ts == .ts) = true by decide, ↓reduceIte]
+  rw [execSequence_of_normal hw]
+  exact execStmt_adequate .empty (by omega)
+
+
+def snapshotName (lang : TargetLang) (i : Nat) : String :=
+  if lang == .ts then if i == 0 then "snapshotState" else if i == 1 then "snapshotContext" else "snapshotHistory"
+  else if i == 0 then "snapshot_state" else if i == 1 then "snapshot_context" else "snapshot_history"
+
+def snapshotBindStmt (lang : TargetLang) (name : String) (expr : TargetExpr) : TargetStmt :=
+  if lang == .ts then .letLocal name false expr else .assign (.local name) expr
+
+def snapshotBound (lang : TargetLang) (m : TargetMachine) (f : TargetFrame)
+    (name : String) (value : TargetValue) : TargetMachine × TargetFrame :=
+  ((allocCell m value (lang != .ts)).1, { f with locals := (name, m.nextCell) :: f.locals })
+
+def snapshotAddress (m : TargetMachine) (f : TargetFrame) (name : String) : Option CellRef :=
+  (f.locals.lookup name).orElse (fun _ => (f.captures.lookup name).orElse (fun _ => m.globals.lookup name))
+
+theorem execSnapshotBind {lang m f name expr final value k}
+    (he : evalExpr k (balanceProgram lang) m f expr = .ok ⟨final, .ok value⟩)
+    (hn : lang = .python → snapshotAddress m f name = none) :
+    execStmt (k + 1) (balanceProgram lang) m f (snapshotBindStmt lang name expr) =
+      .ok ⟨(snapshotBound lang final f name value).1, (snapshotBound lang final f name value).2, .normal⟩ := by
+  cases lang with
+  | ts => simp [snapshotBindStmt, snapshotBound, execStmt, he, allocCell,
+      Bind.bind, Pure.pure, Except.bind, Except.pure]
+  | python =>
+      have ha := hn rfl
+      unfold snapshotAddress at ha
+      simp [snapshotBindStmt, snapshotBound, execStmt, he, balanceProgram_lang, ha, allocCell,
+        Bind.bind, Pure.pure, Except.bind, Except.pure]
+
+def resetReceiver (lang : TargetLang) : TargetExpr := .local (if lang == .ts then "this" else "self")
+def resetField (lang : TargetLang) (ts py : String) : TargetExpr :=
+  .property (resetReceiver lang) (if lang == .ts then ts else py)
+
+def resetContextCopy (lang : TargetLang) : TargetExpr :=
+  if lang == .ts then .object (.objectSpread (resetField lang "#context" "__context") .empty)
+  else .call (.local "dict") (.sequence (resetField lang "#context" "__context") .empty)
+
+def resetHistoryCopy (lang : TargetLang) : TargetExpr :=
+  .call (if lang == .ts then .local "structuredClone" else .property (.local "copy") "deepcopy")
+    (.sequence (resetField lang "#history" "__history") .empty)
+
+def functionBody (stmt : TargetStmt) : TargetStmt :=
+  match stmt with | .defineFunction _ _ body => body | _ => .empty
+
+def balanceResetRollback (lang : TargetLang) : TargetStmt :=
+  functionBody (firstStmt (dropStmts 3 (balanceResetSnapshots lang)))
+
+def resetSnapshotHeadsCheck (lang : TargetLang) (s : TargetStmt) : Bool :=
+  match s with
+  | .sequence a (.sequence b (.sequence c (.sequence (.defineFunction name params _) _))) =>
+      a == snapshotBindStmt lang (snapshotName lang 0) (resetField lang "#state" "__state") &&
+      b == snapshotBindStmt lang (snapshotName lang 1) (resetContextCopy lang) &&
+      c == snapshotBindStmt lang (snapshotName lang 2) (resetHistoryCopy lang) &&
+      name == "rollback" && params.isEmpty
+  | _ => false
+
+set_option maxRecDepth 65536 in
+set_option maxHeartbeats 10000000 in
+theorem balanceReset_snapshot_heads_check (lang : TargetLang) :
+    resetSnapshotHeadsCheck lang (balanceResetSnapshots lang) = true := by
+  cases lang <;>
+    unfold balanceResetSnapshots balanceStoredReset balanceResetLookup balancePreparation
+  · rw [balanceProgram_of_parse BalancePrograms.balanceTsProgram_source]; decide +kernel
+  · rw [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]; decide +kernel
+
+theorem resetSnapshotHeadsCheck_sound {lang s} (h : resetSnapshotHeadsCheck lang s = true) :
+    firstStmt s = snapshotBindStmt lang (snapshotName lang 0) (resetField lang "#state" "__state") ∧
+    firstStmt (dropStmts 1 s) = snapshotBindStmt lang (snapshotName lang 1) (resetContextCopy lang) ∧
+    firstStmt (dropStmts 2 s) = snapshotBindStmt lang (snapshotName lang 2) (resetHistoryCopy lang) ∧
+    firstStmt (dropStmts 3 s) = .defineFunction "rollback" [] (functionBody (firstStmt (dropStmts 3 s))) := by
+  cases s <;> try simp_all [resetSnapshotHeadsCheck]
+  rename_i a tail
+  cases tail <;> try simp_all [resetSnapshotHeadsCheck]
+  rename_i b tail
+  cases tail <;> try simp_all [resetSnapshotHeadsCheck]
+  rename_i c tail
+  cases tail <;> try simp_all [resetSnapshotHeadsCheck]
+  rename_i d tail
+  cases d <;> try simp_all [resetSnapshotHeadsCheck]
+  rename_i name params body
+  cases params <;> simp_all [resetSnapshotHeadsCheck, firstStmt, dropStmts, restStmt, functionBody]
+
+theorem balanceReset_snapshot_heads (lang : TargetLang) :
+    firstStmt (balanceResetSnapshots lang) = snapshotBindStmt lang (snapshotName lang 0) (resetField lang "#state" "__state") ∧
+    firstStmt (dropStmts 1 (balanceResetSnapshots lang)) = snapshotBindStmt lang (snapshotName lang 1) (resetContextCopy lang) ∧
+    firstStmt (dropStmts 2 (balanceResetSnapshots lang)) = snapshotBindStmt lang (snapshotName lang 2) (resetHistoryCopy lang) ∧
+    firstStmt (dropStmts 3 (balanceResetSnapshots lang)) = .defineFunction "rollback" [] (balanceResetRollback lang) :=
+  resetSnapshotHeadsCheck_sound (balanceReset_snapshot_heads_check lang)
+
+theorem resetField_depth {lang m f ts py value}
+    (hr : f.receiver = some m.checkerRef)
+    (hv : readCheckerField m (if lang == .ts then ts else py) = .ok value) :
+    DepthDerivesExpr (balanceProgram lang) m f (resetField lang ts py) ⟨m, .ok value⟩ 1 := by
+  have hs : localValue m f (if lang == .ts then "this" else "self") = .ok (.object m.checkerRef) := by
+    cases lang <;> simp [localValue, hr]
+  apply DepthDerivesExpr.property (.localRead hs)
+  rw [balanceProgram_lang]
+  cases lang with
+  | ts =>
+      change readCheckerField m ts = .ok value at hv
+      change readPropertyValue .ts m (.object m.checkerRef) ts = _
+      simp [readPropertyValue, hv, Bind.bind, Pure.pure, Except.bind, Except.pure]; rfl
+  | python =>
+      change readCheckerField m py = .ok value at hv
+      change readPropertyValue .python m (.object m.checkerRef) py = _
+      simp [readPropertyValue, hv, Bind.bind, Pure.pure, Except.bind, Except.pure]; rfl
+
+theorem resetEmptyContext_copy {lang m f k}
+    (hr : f.receiver = some m.checkerRef)
+    (ho : objectAt m m.checker.context = .ok (literalObject lang m))
+    (hn : m.checker.context ≠ m.nextObject)
+    (hd : lang = .python → localValue m f "dict" = .ok (.builtin .dict)) :
+    evalExpr (k + 4) (balanceProgram lang) m f (resetContextCopy lang) =
+      .ok ⟨(allocObject m (literalObject lang m)).1, .ok (.object m.nextObject)⟩ := by
+  cases lang with
+  | ts =>
+      let fresh := (allocObject m (literalObject .ts m)).1
+      have ho' : objectAt fresh m.checker.context = .ok (literalObject .ts m) :=
+        (objectAt_allocObject_other hn).trans ho
+      have he : evalExpr (k + 2) (balanceProgram .ts) fresh f (resetField .ts "#context" "__context") =
+          .ok ⟨fresh, .ok (.object m.checker.context)⟩ :=
+        evalExpr_adequate (resetField_depth hr (by rfl)) (by omega)
+      simp only [resetContextCopy, show (TargetLang.ts == .ts) = true by decide, ↓reduceIte,
+        evalExpr, balanceProgram_lang]
+      change evalObjectFields (k + 3) _ fresh _ _ _ = _
+      simp [evalObjectFields, he, ho', literalObject, Bind.bind, Pure.pure, Except.bind, Except.pure]
+      rfl
+  | python =>
+      have he : DepthDerivesExpr (balanceProgram .python) m f (resetContextCopy .python)
+          ⟨(allocObject m (literalObject .python m)).1, .ok (.object m.nextObject)⟩ 3 := by
+        change DepthDerivesExpr (balanceProgram .python) m f
+          (.call (.local "dict") (.sequence (resetField .python "#context" "__context") .empty)) _ 3
+        have hp := resetField_depth (lang := .python) (ts := "#context") (py := "__context") hr
+          (show readCheckerField m "__context" = .ok (.object m.checker.context) from rfl)
+        apply DepthDerivesExpr.callBuiltin (.localRead (hd rfl)) (.cons hp .empty) (by decide)
+        rw [balanceProgram_lang]
+        unfold hostCall
+        dsimp only
+        rw [ho]
+        rfl
+      exact evalExpr_adequate he (by omega)
+
+theorem cloneValue_emptyHistory {lang m ref k}
+    (ho : objectAt m ref = .ok (emptyBalanceHistory lang m))
+    (hf : ∀ e ∈ m.objects, e.1 ≠ m.nextObject) :
+    cloneValue (k + 1) m (.object ref) =
+      .ok ((allocObject m (emptyBalanceHistory lang m)).1, .object m.nextObject) := by
+  cases lang <;> simp [cloneValue, ho, emptyBalanceHistory, replaceObject_allocObject hf,
+    Bind.bind, Pure.pure, Except.bind, Except.pure]
+
+/-- Closure installation retains the actual body and every captured address.
+    Maps deliberately model all matching cells even on malformed input heaps. -/
+def snapshotRollbackInstalled (lang : TargetLang) (m : TargetMachine) (f : TargetFrame)
+    (body : TargetStmt) : TargetMachine × TargetFrame :=
+  functionInstalled lang m f "rollback" body
+
+theorem execSnapshotRollback (lang : TargetLang) (m : TargetMachine) (f : TargetFrame)
+    (body : TargetStmt) (k : Nat) :
+    execStmt (k + 2) (balanceProgram lang) m f (.defineFunction "rollback" [] body) =
+      .ok ⟨(snapshotRollbackInstalled lang m f body).1,
+        (snapshotRollbackInstalled lang m f body).2, .normal⟩ := by
+  rw [execDefineFunction_empty, balanceProgram_lang]
+  rfl
+
+
+/-- Actual pre-reset context differs by language: TS class defaults, Python's
+    newly initialized empty dict. The supplied symbolic seed stays separate. -/
+def resetSnapshotContextObject (lang : TargetLang) (m : TargetMachine) : HeapObject :=
+  if lang == .ts then balanceHeapObject .ts m 100 else literalObject .python m
+
+def resetSnapshotState (lang : TargetLang) (m : TargetMachine) (f : TargetFrame) : TargetMachine × TargetFrame :=
+  snapshotBound lang m f (snapshotName lang 0) (.string m.checker.state)
+
+def resetSnapshotContext (lang : TargetLang) (m : TargetMachine) (f : TargetFrame) : TargetMachine × TargetFrame :=
+  let s := resetSnapshotState lang m f
+  let copied := (allocObject s.1 (resetSnapshotContextObject lang s.1)).1
+  snapshotBound lang copied s.2 (snapshotName lang 1) (.object s.1.nextObject)
+
+def resetSnapshotHistory (lang : TargetLang) (m : TargetMachine) (f : TargetFrame) : TargetMachine × TargetFrame :=
+  let s := resetSnapshotContext lang m f
+  let copied := (allocObject s.1 (emptyBalanceHistory lang s.1)).1
+  snapshotBound lang copied s.2 (snapshotName lang 2) (.object s.1.nextObject)
+
+def resetSnapshotsInstalled (lang : TargetLang) (m : TargetMachine) (f : TargetFrame) : TargetMachine × TargetFrame :=
+  let s := resetSnapshotHistory lang m f
+  snapshotRollbackInstalled lang s.1 s.2 (balanceResetRollback lang)
+
+/-- Physical host reads at the reached history snapshot, with no executor premise. -/
+def SnapshotCloneRead (lang : TargetLang) (m : TargetMachine) (f : TargetFrame) : Prop :=
+  if lang == .ts then localValue m f "structuredClone" = .ok (.builtin .structuredClone)
+  else ∃ value, localValue m f "copy" = .ok value ∧
+    readPropertyValue .python m value "deepcopy" = .ok ⟨m, .ok (.builtin .deepCopy)⟩
+
+theorem resetHistory_callee {lang m f} (hc : SnapshotCloneRead lang m f) :
+    DepthDerivesExpr (balanceProgram lang) m f
+      (if lang == .ts then .local "structuredClone" else .property (.local "copy") "deepcopy")
+      ⟨m, .ok (.builtin (if lang == .ts then .structuredClone else .deepCopy))⟩
+      (if lang == .ts then 0 else 1) := by
+  cases lang with
+  | ts => exact .localRead hc
+  | python =>
+      obtain ⟨value, hl, hp⟩ := hc
+      exact .property (.localRead hl) (by rw [balanceProgram_lang]; exact hp)
+
+theorem resetHistory_copy {lang m f k}
+    (hr : f.receiver = some m.checkerRef)
+    (ho : objectAt m m.checker.history = .ok (emptyBalanceHistory lang m))
+    (hf : ∀ e ∈ m.objects, e.1 ≠ m.nextObject)
+    (hc : SnapshotCloneRead lang m f) :
+    evalExpr (k + 4) (balanceProgram lang) m f (resetHistoryCopy lang) =
+      .ok ⟨(allocObject m (emptyBalanceHistory lang m)).1, .ok (.object m.nextObject)⟩ := by
+  have hp := resetField_depth (lang := lang) (ts := "#history") (py := "__history") hr
+    (show readCheckerField m (if lang == .ts then "#history" else "__history") =
+      .ok (.object m.checker.history) by cases lang <;> rfl)
+  have hh : hostCall lang m (if lang == .ts then .structuredClone else .deepCopy) none
+      [.object m.checker.history] =
+      .ok ⟨(allocObject m (emptyBalanceHistory lang m)).1, .ok (.object m.nextObject)⟩ := by
+    have hclone := cloneValue_emptyHistory (k := 2047) ho hf
+    cases lang <;>
+      simp only [show (TargetLang.ts == .ts) = true by decide,
+        show (TargetLang.python == .ts) = false by decide, Bool.false_eq_true, ↓reduceIte] <;>
+      unfold hostCall <;> dsimp only <;> rw [hclone] <;> rfl
+  have he := DepthDerivesExpr.callBuiltin (resetHistory_callee hc) (.cons hp .empty)
+    (by cases lang <;> decide) (by rw [balanceProgram_lang]; exact hh)
+  exact evalExpr_adequate he (by cases lang <;> simp <;> omega)
+
+/-- Four source siblings compose at their own predecessor budgets. The
+    statement is kept abstract so no stored AST is normalized in composition. -/
+theorem execFourSnapshots {program stmt m f m1 f1 m2 f2 m3 f3 m4 f4 k}
+    (shape : snapshotTryCheck 4 stmt = true)
+    (h1 : execStmt (k + 7) program m f (firstStmt stmt) = .ok ⟨m1, f1, .normal⟩)
+    (h2 : execStmt (k + 6) program m1 f1 (firstStmt (dropStmts 1 stmt)) = .ok ⟨m2, f2, .normal⟩)
+    (h3 : execStmt (k + 5) program m2 f2 (firstStmt (dropStmts 2 stmt)) = .ok ⟨m3, f3, .normal⟩)
+    (h4 : execStmt (k + 4) program m3 f3 (firstStmt (dropStmts 3 stmt)) = .ok ⟨m4, f4, .normal⟩) :
+    execStmt (k + 8) program m f stmt = execStmt (k + 4) program m4 f4 (dropStmts 4 stmt) := by
+  have normal {n s j a af z zf}
+      (hs : snapshotTryCheck (n + 1) s = true)
+      (hh : execStmt j program a af (firstStmt s) = .ok ⟨z, zf, .normal⟩) :
+      execStmt (j + 1) program a af s = execStmt j program z zf (restStmt s) := by
+    conv => lhs; rw [(snapshotTryCheck_sequence hs).1]
+    exact execSequence_of_normal hh
+  have sh1 := (snapshotTryCheck_sequence shape).2
+  have sh2 := (snapshotTryCheck_sequence sh1).2
+  have sh3 := (snapshotTryCheck_sequence sh2).2
+  calc
+    _ = execStmt (k + 7) program m1 f1 (dropStmts 1 stmt) := normal shape h1
+    _ = execStmt (k + 6) program m2 f2 (dropStmts 2 stmt) := normal sh1 h2
+    _ = execStmt (k + 5) program m3 f3 (dropStmts 3 stmt) := normal sh2 h3
+    _ = execStmt (k + 4) program m4 f4 (dropStmts 4 stmt) := normal sh3 h4
+
+/-- Executes all four actual source snapshots from physical reached reads.
+    No reset success, try-body result or representation is assumed. -/
+theorem balanceReset_snapshot_execute {lang m f k}
+    (hr : f.receiver = some m.checkerRef)
+    (hcontext : objectAt (resetSnapshotState lang m f).1 m.checker.context =
+      .ok (resetSnapshotContextObject lang (resetSnapshotState lang m f).1))
+    (hcontextFresh : m.checker.context ≠ (resetSnapshotState lang m f).1.nextObject)
+    (hfContext : ∀ e ∈ (resetSnapshotState lang m f).1.objects,
+      e.1 ≠ (resetSnapshotState lang m f).1.nextObject)
+    (hd : lang = .python → localValue (resetSnapshotState lang m f).1
+      (resetSnapshotState lang m f).2 "dict" = .ok (.builtin .dict))
+    (hhistory : objectAt (resetSnapshotContext lang m f).1 m.checker.history =
+      .ok (emptyBalanceHistory lang (resetSnapshotContext lang m f).1))
+    (hfHistory : ∀ e ∈ (resetSnapshotContext lang m f).1.objects,
+      e.1 ≠ (resetSnapshotContext lang m f).1.nextObject)
+    (hc : SnapshotCloneRead lang (resetSnapshotContext lang m f).1 (resetSnapshotContext lang m f).2)
+    (hn0 : lang = .python → snapshotAddress m f (snapshotName lang 0) = none)
+    (hn1 : lang = .python → snapshotAddress (resetSnapshotState lang m f).1
+      (resetSnapshotState lang m f).2 (snapshotName lang 1) = none)
+    (hn2 : lang = .python → snapshotAddress (resetSnapshotContext lang m f).1
+      (resetSnapshotContext lang m f).2 (snapshotName lang 2) = none) :
+    execStmt (k + 8) (balanceProgram lang) m f (balanceResetSnapshots lang) =
+      execStmt (k + 4) (balanceProgram lang) (resetSnapshotsInstalled lang m f).1
+        (resetSnapshotsInstalled lang m f).2 (dropStmts 4 (balanceResetSnapshots lang)) := by
+  let s1 := resetSnapshotState lang m f
+  let s2 := resetSnapshotContext lang m f
+  let s3 := resetSnapshotHistory lang m f
+  have hs := balanceReset_snapshot_heads lang
+  have shape := balanceReset_snapshot_shape lang
+  change snapshotTryCheck 4 (balanceResetSnapshots lang) = true at shape
+  have hp := resetField_depth (lang := lang) (ts := "#state") (py := "__state") hr
+    (show readCheckerField m (if lang == .ts then "#state" else "__state") =
+      .ok (.string m.checker.state) by cases lang <;> rfl)
+  have h1 : execStmt (k + 7) (balanceProgram lang) m f (firstStmt (balanceResetSnapshots lang)) =
+      .ok ⟨s1.1, s1.2, .normal⟩ := by
+    rw [hs.1]
+    exact execSnapshotBind (evalExpr_adequate hp (by omega)) hn0
+  have hcopy : evalExpr (k + 5) (balanceProgram lang) s1.1 s1.2 (resetContextCopy lang) =
+      .ok ⟨(allocObject s1.1 (resetSnapshotContextObject lang s1.1)).1,
+        .ok (.object s1.1.nextObject)⟩ := by
+    have hr1 : s1.2.receiver = some s1.1.checkerRef := hr
+    cases lang with
+    | ts => exact balanceTs_context_copy (k := k + 1) hr1 hcontext hcontextFresh hfContext
+    | python => exact resetEmptyContext_copy (k := k + 1) hr1 hcontext hcontextFresh hd
+  have h2 : execStmt (k + 6) (balanceProgram lang) s1.1 s1.2
+      (firstStmt (dropStmts 1 (balanceResetSnapshots lang))) = .ok ⟨s2.1, s2.2, .normal⟩ := by
+    rw [hs.2.1]
+    exact execSnapshotBind hcopy hn1
+  have h3 : execStmt (k + 5) (balanceProgram lang) s2.1 s2.2
+      (firstStmt (dropStmts 2 (balanceResetSnapshots lang))) = .ok ⟨s3.1, s3.2, .normal⟩ := by
+    rw [hs.2.2.1]
+    exact execSnapshotBind (resetHistory_copy hr hhistory hfHistory hc) hn2
+  have h4 : execStmt (k + 4) (balanceProgram lang) s3.1 s3.2
+      (firstStmt (dropStmts 3 (balanceResetSnapshots lang))) =
+      .ok ⟨(resetSnapshotsInstalled lang m f).1, (resetSnapshotsInstalled lang m f).2, .normal⟩ := by
+    rw [hs.2.2.2]
+    exact execSnapshotRollback lang s3.1 s3.2 (balanceResetRollback lang) (k + 2)
+  exact execFourSnapshots shape h1 h2 h3 h4
+
+/-- The four publication writes are selected after bounds and invariant checks;
+    no successful check is assumed by this structural certificate. -/
+def resetPublication (lang : TargetLang) : TargetStmt :=
+  dropStmts (if lang == .ts then 8 else 7) (balanceResetProtected lang).body
+
+def resetPublicationTemplate (lang : TargetLang) : TargetStmt :=
+  .sequence (.assign (.property (resetReceiver lang) (if lang == .ts then "#state" else "__state"))
+    (if lang == .ts then .typeCast (.string "Ready") "WorldState" else .local "_INITIAL"))
+  (.sequence (.assign (.property (resetReceiver lang) (if lang == .ts then "#context" else "__context")) (.local "candidate"))
+  (.sequence (.assign (.property (resetReceiver lang) (if lang == .ts then "#history" else "__history")) (.array .empty))
+  (.sequence (.assign (.property (resetReceiver lang) (if lang == .ts then "#undo" else "__undo")) .null) .empty)))
+
+set_option maxRecDepth 65536 in
+set_option maxHeartbeats 10000000 in
+theorem balanceReset_publication_shape (lang : TargetLang) :
+    resetPublication lang = resetPublicationTemplate lang := by
+  cases lang <;> unfold resetPublication balanceResetProtected balanceResetSnapshots
+    balanceStoredReset balanceResetLookup balancePreparation
+  · rw [balanceProgram_of_parse BalancePrograms.balanceTsProgram_source]; decide +kernel
+  · rw [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]; decide +kernel
+
+/-- Publication allocates fresh empty history while preserving the candidate
+    reference and the still-held busy bit; the finally block releases it. -/
+def resetPublished (lang : TargetLang) (m : TargetMachine) (candidate : ObjRef) : TargetMachine :=
+  let state := { m with checker := { m.checker with state := "Ready", context := candidate } }
+  let history := (allocObject state (emptyBalanceHistory lang state)).1
+  { history with checker := { history.checker with history := state.nextObject, undo := none } }
+
+theorem evalEmptyHistory (lang : TargetLang) (m : TargetMachine) (f : TargetFrame) (k : Nat) :
+    evalExpr (k + 2) (balanceProgram lang) m f (.array .empty) =
+      .ok ⟨(allocObject m (emptyBalanceHistory lang m)).1, .ok (.object m.nextObject)⟩ := by
+  cases lang with
+  | python => exact evalPythonEmptyList _ (balanceProgram_lang .python)
+  | ts =>
+      -- The public TS empty-array equation is obtained by the same private
+      -- collection rule as the Python one.
+      exact evalEmptyArray _ (balanceProgram_lang .ts)
+
+theorem balanceReset_publication_execute {lang m f candidate k}
+    (hr : f.receiver = some m.checkerRef)
+    (hc : localValue m f "candidate" = .ok (.object candidate))
+    (hi : lang = .python → localValue m f "_INITIAL" = .ok (.string "Ready")) :
+    execStmt (k + 8) (balanceProgram lang) m f (resetPublication lang) =
+      .ok ⟨resetPublished lang m candidate, f, .normal⟩ := by
+  let m1 := { m with checker := { m.checker with state := "Ready" } }
+  let m2 := { m1 with checker := { m1.checker with context := candidate } }
+  let m3a := (allocObject m2 (emptyBalanceHistory lang m2)).1
+  let m3 := { m3a with checker := { m3a.checker with history := m2.nextObject } }
+  let m4 := { m3 with checker := { m3.checker with undo := none } }
+  have receiver (a : TargetMachine) (ha : a.checkerRef = m.checkerRef) (j : Nat) :
+      evalExpr (j + 1) (balanceProgram lang) a f (resetReceiver lang) =
+        .ok ⟨a, .ok (.object m.checkerRef)⟩ := by
+    have h : localValue a f (if lang == .ts then "this" else "self") = .ok (.object m.checkerRef) := by
+      cases lang <;> simp [localValue, hr]
+    exact evalExpr_adequate (.localRead h) (by omega)
+  have he : evalExpr (k + 6) (balanceProgram lang) m f
+      (if lang == .ts then .typeCast (.string "Ready") "WorldState" else .local "_INITIAL") = .ok ⟨m, .ok (.string "Ready")⟩ := by
+    cases lang with
+    | ts => simp [evalExpr]; rfl
+    | python => exact evalExpr_adequate (.localRead (hi rfl)) (by omega)
+  have h1 : execStmt (k + 7) (balanceProgram lang) m f
+      (.assign (.property (resetReceiver lang) (if lang == .ts then "#state" else "__state"))
+        (if lang == .ts then .typeCast (.string "Ready") "WorldState" else .local "_INITIAL")) = .ok ⟨m1, f, .normal⟩ :=
+    execCheckerAssign_of_value (final := m) (receiver m rfl _) he (by cases lang <;> rfl)
+  have h2 : execStmt (k + 6) (balanceProgram lang) m1 f
+      (.assign (.property (resetReceiver lang) (if lang == .ts then "#context" else "__context")) (.local "candidate")) =
+      .ok ⟨m2, f, .normal⟩ :=
+    execCheckerAssign_of_value (final := m1) (receiver m1 rfl _)
+      (evalExpr_adequate (.localRead hc) (by omega)) (by cases lang <;> rfl)
+  have h3 : execStmt (k + 5) (balanceProgram lang) m2 f
+      (.assign (.property (resetReceiver lang) (if lang == .ts then "#history" else "__history")) (.array .empty)) =
+      .ok ⟨m3, f, .normal⟩ :=
+    execCheckerAssign_of_value (final := m3a) (receiver m2 rfl _)
+      (evalEmptyHistory lang m2 f (k + 2)) (by cases lang <;> rfl)
+  have h4 : execStmt (k + 4) (balanceProgram lang) m3 f
+      (.assign (.property (resetReceiver lang) (if lang == .ts then "#undo" else "__undo")) .null) =
+      .ok ⟨m4, f, .normal⟩ :=
+    execCheckerAssign_of_value (final := m3) (receiver m3 rfl _)
+      (evalExpr_adequate DepthDerivesExpr.null (by omega)) (by cases lang <;> rfl)
+  rw [balanceReset_publication_shape]
+  unfold resetPublicationTemplate
+  rw [execSequence_of_normal h1, execSequence_of_normal h2, execSequence_of_normal h3,
+    execSequence_of_normal h4]
+  exact execStmt_adequate .empty (by omega)
+
+
+
+/-- Physical receiver binding, proved by the generic reset allocation recipe. -/
+theorem balanceResetBodyEntry_receiver (lang : TargetLang) (b : Int) :
+    (balanceResetBodyEntry lang b).2.receiver = some (balanceResetBodyEntry lang b).1.checkerRef :=
+  receiverCallBody_receiver (balanceConstructorBodyEntry lang b).1 (balanceStoredReset lang).2
+    (.object (balancePreparation lang).1.nextObject) (balanceConstructorParam lang)
+
+/-- The real first state snapshot executes for every symbolic seed. Python's
+    fresh local address condition is stated separately from receiver binding. -/
+theorem balanceReset_state_snapshot_execute {lang m f k}
+    (hr : f.receiver = some m.checkerRef)
+    (hn : lang = .python → snapshotAddress m f (snapshotName lang 0) = none) :
+    execStmt (k + 3) (balanceProgram lang) m f (firstStmt (balanceResetSnapshots lang)) =
+      .ok ⟨(resetSnapshotState lang m f).1, (resetSnapshotState lang m f).2, .normal⟩ := by
+  rw [(balanceReset_snapshot_heads lang).1]
+  have hp := resetField_depth (lang := lang) (ts := "#state") (py := "__state") hr
+    (show readCheckerField m (if lang == .ts then "#state" else "__state") =
+      .ok (.string m.checker.state) by cases lang <;> rfl)
+  exact execSnapshotBind (evalExpr_adequate hp (by omega)) hn
+
+
+/-- The first protected statement copies actual captured defaults. -/
+def resetCandidateExpr (lang : TargetLang) : TargetExpr :=
+  if lang == .ts then .object (.objectSpread (.local "contextDefaults") .empty)
+  else .call (.local "dict") (.sequence (.local "_DEFAULTS") .empty)
+
+set_option maxRecDepth 65536 in
+set_option maxHeartbeats 10000000 in
+theorem balanceReset_candidate_shape (lang : TargetLang) :
+    firstStmt (balanceResetProtected lang).body = snapshotBindStmt lang "candidate" (resetCandidateExpr lang) := by
+  cases lang <;> unfold balanceResetProtected balanceResetSnapshots balanceStoredReset balanceResetLookup balancePreparation
+  · rw [balanceProgram_of_parse BalancePrograms.balanceTsProgram_source]; decide +kernel
+  · rw [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]; decide +kernel
+
+theorem balanceTs_local_copy {m f name ref b k}
+    (hl : localValue (allocObject m (literalObject .ts m)).1 f name = .ok (.object ref))
+    (ho : objectAt m ref = .ok (balanceHeapObject .ts m b))
+    (hn : ref ≠ m.nextObject)
+    (hf : ∀ e ∈ m.objects, e.1 ≠ m.nextObject) :
+    evalExpr (k + 3) (balanceProgram .ts) m f (.object (.objectSpread (.local name) .empty)) =
+      .ok ⟨(allocObject m (balanceHeapObject .ts m b)).1, .ok (.object m.nextObject)⟩ := by
+  let fresh := (allocObject m (literalObject .ts m)).1
+  have he : evalExpr (k + 1) (balanceProgram .ts) fresh f (.local name) =
+      .ok ⟨fresh, .ok (.object ref)⟩ := evalExpr_adequate (.localRead hl) (by omega)
+  have ho' : objectAt fresh ref = .ok (balanceHeapObject .ts m b) :=
+    (objectAt_allocObject_other hn).trans ho
+  simp only [evalExpr, balanceProgram_lang]
+  change evalObjectFields (k + 2) (balanceProgram .ts) fresh f m.nextObject _ = _
+  simp [evalObjectFields, he, ho', balanceHeapObject, balanceDataDescriptor,
+    show writeOwn fresh m.nextObject "balance" (integerValue .ts b) =
+      .ok (allocObject m (balanceHeapObject .ts m b)).1 from writeOwn_balance_fresh hf,
+    List.forIn_cons, List.forIn_nil, Bind.bind, Pure.pure, Except.bind, Except.pure]
+  rfl
+
+theorem balanceReset_candidate_ts_execute {m f ref k}
+    (hl : localValue (allocObject m (literalObject .ts m)).1 f "contextDefaults" = .ok (.object ref))
+    (ho : objectAt m ref = .ok (balanceHeapObject .ts m 100))
+    (hn : ref ≠ m.nextObject)
+    (hf : ∀ e ∈ m.objects, e.1 ≠ m.nextObject) :
+    execStmt (k + 4) (balanceProgram .ts) m f (firstStmt (balanceResetProtected .ts).body) =
+      .ok ⟨(snapshotBound .ts (allocObject m (balanceHeapObject .ts m 100)).1 f "candidate" (.object m.nextObject)).1,
+        (snapshotBound .ts (allocObject m (balanceHeapObject .ts m 100)).1 f "candidate" (.object m.nextObject)).2, .normal⟩ := by
+  rw [balanceReset_candidate_shape]
+  exact execSnapshotBind (balanceTs_local_copy hl ho hn hf) (fun h => nomatch h)
+
+/-- Python defaults are a mapping proxy; dict copies its own descriptors
+    into a mutable ordinary dict and does not retain the proxy prototype. -/
+theorem hostDict_balance_proxy {m b ref source}
+    (ho : objectAt m ref = .ok source)
+    (hk : source.kind = .mappingProxy)
+    (hown : source.own = [("balance", balanceDataDescriptor .python b)]) :
+    hostCall .python m .dict none [.object ref] =
+      .ok ⟨(allocObject m (balanceHeapObject .python m b)).1, .ok (.object m.nextObject)⟩ := by
+  unfold hostCall
+  dsimp only
+  rw [ho]
+  dsimp only [Bind.bind, Except.bind]
+  rw [hk]
+  change (Except.ok ⟨(allocObject m ⟨.pythonDict, none, source.own, [], [], false, false⟩).1,
+    .ok (.object m.nextObject)⟩ : Except TargetError ExprOutcome) = _
+  rw [hown]
+  rfl
+
+theorem balanceReset_candidate_python_execute {m f ref source k}
+    (hd : localValue m f "dict" = .ok (.builtin .dict))
+    (hl : localValue m f "_DEFAULTS" = .ok (.object ref))
+    (ho : objectAt m ref = .ok source)
+    (hk : source.kind = .mappingProxy)
+    (hown : source.own = [("balance", balanceDataDescriptor .python 100)])
+    (hn : snapshotAddress m f "candidate" = none) :
+    execStmt (k + 4) (balanceProgram .python) m f (firstStmt (balanceResetProtected .python).body) =
+      .ok ⟨(snapshotBound .python (allocObject m (balanceHeapObject .python m 100)).1 f "candidate" (.object m.nextObject)).1,
+        (snapshotBound .python (allocObject m (balanceHeapObject .python m 100)).1 f "candidate" (.object m.nextObject)).2, .normal⟩ := by
+  have he : DepthDerivesExpr (balanceProgram .python) m f
+      (.call (.local "dict") (.sequence (.local "_DEFAULTS") .empty))
+      ⟨(allocObject m (balanceHeapObject .python m 100)).1, .ok (.object m.nextObject)⟩ 2 :=
+    .callBuiltin (.localRead hd) (.cons (.localRead hl) .empty) (by decide)
+      (by rw [balanceProgram_lang]; exact hostDict_balance_proxy ho hk hown)
+  rw [balanceReset_candidate_shape]
+  exact execSnapshotBind (k := k + 3) (evalExpr_adequate he (k := k + 3) (by omega)) (fun _ => hn)
+
+/-- The original next statement and every exit are retained at the body edge. -/
+theorem balanceReset_body_first_eq (lang : TargetLang) (k : Nat) (m : TargetMachine) (f : TargetFrame) :
+    execStmt (k + 1) (balanceProgram lang) m f (balanceResetProtected lang).body = (do
+      let head ← execStmt k (balanceProgram lang) m f (firstStmt (balanceResetProtected lang).body)
+      match head.control with
+      | .normal => execStmt k (balanceProgram lang) head.machine head.frame (restStmt (balanceResetProtected lang).body)
+      | _ => pure head) := by
+  have shape : statementSpineCheck ((if lang == .ts then 11 else 10) + 1) (balanceResetProtected lang).body = true := by
+    cases lang with
+    | ts => exact (balanceReset_body_spine .ts).1
+    | python => exact (balanceReset_body_spine .python).1
+  conv => lhs; rw [(statementSpineCheck_sequence shape).1]
+  exact execSequence_eq _ _ _ _ _ _
+
 end Harmonia.Applications.Kadmos.Generated
