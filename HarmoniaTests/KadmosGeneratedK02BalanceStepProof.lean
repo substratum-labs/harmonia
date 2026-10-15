@@ -597,3 +597,40 @@ example (b : Int) (k : Nat) :
   (balanceReset_python_canonical_table_tests b k).2
 
 #print axioms balanceReset_python_canonical_table_tests
+
+-- The actual canonical Python iterable, pair binding and helper-backed body
+-- compose without a body-success or environment premise.
+example (b : Int) (hb : b.natAbs ≤ 9007199254740991) (k : Nat) :
+    let e := balanceResetMiddleEntry .python b
+    execStmt (k + 22) (balanceProgram .python) e.1 e.2 (balanceResetOverlayLoop .python) =
+      .ok ⟨balanceOverlayUpdated .python (balanceResetPythonOverlayAfterHelper b) 79 b,
+        (balanceResetPythonOverlayBound b).2, .normal⟩ :=
+  (balanceReset_python_canonical_overlay_safe b hb k).1
+
+example (b : Int) (hb : b.natAbs ≤ 9007199254740991) (k : Nat) :
+    let e := balanceResetPythonOverlayBound b
+    execStmt (k + 20) (balanceProgram .python) e.1 e.2
+      (resetLoopBody (balanceResetOverlayLoop .python)) =
+        .ok ⟨balanceOverlayUpdated .python (balanceResetPythonOverlayAfterHelper b) 79 b, e.2, .normal⟩ :=
+  balanceReset_python_canonical_overlay_body_safe b hb k
+
+-- Boundary instantiation observes statement-2 success, rather than merely a
+-- primitive safe-integer test at the largest positive supported payload.
+example :
+    let b : Int := 9007199254740991
+    let e := balanceResetMiddleEntry .python b
+    execStmt 25 (balanceProgram .python) e.1 e.2 (balanceResetMiddleStmt .python 2) =
+      .ok ⟨balanceOverlayUpdated .python (balanceResetPythonOverlayAfterHelper b) 79 b,
+        (balanceResetPythonOverlayBound b).2, .normal⟩ :=
+  (balanceReset_python_canonical_overlay_safe (9007199254740991 : Int) (by decide) 0).2
+
+example (b : Int) (k : Nat) :
+    let e := balanceResetMiddleEntry .ts b
+    execStmt (k + 7) (balanceProgram .ts) e.1 e.2 (ifNoStmt (balanceResetMiddleStmt .ts 2)) =
+      execStmt (k + 6) (balanceProgram .ts) e.1 e.2
+        (restStmt (ifNoStmt (balanceResetMiddleStmt .ts 2))) :=
+  balanceReset_ts_canonical_plain_guard_skip b k
+
+#print axioms balanceReset_python_canonical_overlay_body_safe
+#print axioms balanceReset_python_canonical_overlay_safe
+#print axioms balanceReset_ts_canonical_plain_guard_skip

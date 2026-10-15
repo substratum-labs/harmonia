@@ -4882,6 +4882,928 @@ theorem balanceReset_python_canonical_table_tests (b : Int) (k : Nat) :
         (by rw [checker]; decide) (by rw [proto]; decide) (by decide)
         (objs 41 (.inr (.inr rfl))) hdk hdp)
 
+-- Canonical signed-safe Python overlay: physical helper discharge and composition.
+
+/-- Updating a different heap entry preserves an existing lookup. -/
+theorem lookup_replace_payload_other {α : Type} (entries : List (Nat × α))
+    {ref target : Nat} (value : α) (hn : ref ≠ target) :
+    (entries.map (fun entry => (entry.1, if entry.1 == target then value else entry.2))).lookup ref =
+      entries.lookup ref := by
+  induction entries with
+  | nil => rfl
+  | cons entry rest ih =>
+    rcases entry with ⟨key, old⟩
+    by_cases h : ref = key
+    · subst key
+      simp [List.lookup_cons, hn, beq_eq_false_iff_ne.mpr hn]
+    · simp only [List.map_cons, List.lookup_cons, Prod.fst, Prod.snd,
+        beq_eq_false_iff_ne.mpr h, if_false, ih]
+
+theorem resetSafeTupleMachine_objectAt_other {m ref} (hn : ref ≠ m.nextObject) :
+    objectAt (resetSafeTupleMachine m) ref = objectAt m ref := by
+  unfold objectAt resetSafeTupleMachine resetSafeTupleStage
+  simp only [allocObject, Prod.fst]
+  rw [lookup_replace_payload_other _ _ hn, lookup_replace_payload_other _ _ hn]
+  simp [List.lookup_cons, hn, beq_eq_false_iff_ne.mpr hn]
+
+theorem localValue_allocCell_preserved {m f name ref value}
+    (hn : name ≠ "this" ∧ name ≠ "self")
+    (ha : snapshotAddress m f name = some ref) (hf : ref < m.nextCell) :
+    localValue (allocCell m value true).1 f name = localValue m f name := by
+  have hb : snapshotAddress (allocCell m value true).1 f name = some ref := ha
+  rw [localValue_of_snapshotAddress hn hb, localValue_of_snapshotAddress hn ha]
+  simp [readCell, allocCell, List.lookup_cons, beq_eq_false_iff_ne.mpr (Nat.ne_of_lt hf)]
+
+/-- Physical post-helper machine, retaining the eager default dict and tuple. -/
+def balanceResetPythonOverlayAfterHelper (b : Int) : TargetMachine :=
+  resetSafeTupleMachine (resetPythonSafeCallEntry
+    (resetPythonOverlayTypedMachine (balanceResetPythonOverlayBound b).1)
+    balancePythonSafeIntegerClosure b).1
+
+/-- Closed helper binding inventory; no execution result is assumed. -/
+def resetPythonCanonicalHelperBindingsCheck : Prop :=
+  let m := (balanceCanonicalResetStage .python 0 3).1
+  let f := closureFrame balancePythonSafeIntegerClosure
+  balancePythonSafeIntegerClosure.params = [⟨"value", none⟩] ∧
+  closureAt (balanceResetPythonOverlayBound 0).1 4 = .ok balancePythonSafeIntegerClosure ∧
+  m.nextCell = 108 ∧
+  (resetPythonCanonicalBindings.take 9).all (fun entry =>
+    decide (entry.1 ≠ "value" ∧ entry.1 ≠ "this" ∧ entry.1 ≠ "self" ∧
+      snapshotAddress m f entry.1 = some entry.2.1 ∧ entry.2.1 < m.nextCell ∧
+      localValue m f entry.1 = .ok entry.2.2)) = true
+
+instance : Decidable resetPythonCanonicalHelperBindingsCheck := by
+  unfold resetPythonCanonicalHelperBindingsCheck; infer_instance
+
+set_option maxHeartbeats 10000000 in
+theorem resetPythonCanonicalHelperBindingsCheck_true : resetPythonCanonicalHelperBindingsCheck := by
+  unfold resetPythonCanonicalHelperBindingsCheck balanceResetPythonOverlayBound
+    balanceResetMiddleEntry balanceResetCandidateEntry balanceCanonicalResetStage
+    balanceCanonicalResetEntry balanceResetBodyEntry balancePythonResetBodyEntry
+    balanceConstructorBodyEntry balanceConstructorBoundEntry balanceConstructorArgumentEntry
+    balanceStoredReset balanceResetLookup balanceStoredConstructor balanceConstructorLookup
+    balanceConstructorName balancePreparation balancePythonSafeIntegerClosure
+  simp only [balancePreparation, balanceProgram_of_parse BalancePrograms.balancePyProgram_source]
+  decide +kernel
+
+
+/-- Old lexical cells survive the candidate, context, pair, eager dictionary,
+    and helper-argument allocations. The stage and closure are abstract. -/
+theorem resetPythonCanonicalHelper_read_generic
+    (stage : TargetMachine × TargetFrame) (seed : ObjRef) (b : Int)
+    (closure : TargetClosure) (name : String) (ref : CellRef) (value : TargetValue)
+    (hn : name ≠ "value" ∧ name ≠ "this" ∧ name ≠ "self")
+    (ha : snapshotAddress stage.1 (closureFrame closure) name = some ref)
+    (hf : ref < stage.1.nextCell)
+    (hv : localValue stage.1 (closureFrame closure) name = .ok value) :
+    let original := resetCandidateMiddleModel .python stage seed
+    let bound := resetOverlayPairBinding .python
+      (resetIterableMachine .python original.1 b) original.2 (.number .pyInt b)
+    let call := resetPythonSafeCallEntry (resetPythonOverlayTypedMachine bound.1) closure b
+    localValue call.1 call.2 name = .ok value := by
+  let original := resetCandidateMiddleModel .python stage seed
+  let bound := resetOverlayPairBinding .python
+    (resetIterableMachine .python original.1 b) original.2 (.number .pyInt b)
+  let call := resetPythonSafeCallEntry (resetPythonOverlayTypedMachine bound.1) closure b
+  change localValue call.1 call.2 name = .ok value
+  have address : snapshotAddress call.1 call.2 name = some ref := by
+    dsimp only [call, resetPythonSafeCallEntry, snapshotAddress, closureFrame]
+    simp only [List.lookup_cons, List.lookup_nil, beq_eq_false_iff_ne.mpr hn.1, if_false, Option.orElse]
+    have hg : (resetPythonOverlayTypedMachine bound.1).globals = stage.1.globals := by
+      simp only [bound, original, resetPythonOverlayTypedMachine, resetOverlayPairBinding,
+        forPairBound, resetIterableMachine, oneEntryMachine, resetCandidateMiddleModel,
+        snapshotBound, resetTsOverridesEntry, allocCell, allocObject, Prod.fst, Prod.snd,
+        beq_self_eq_true, show (TargetLang.python == .ts) = false from rfl, Bool.false_eq_true, if_false, if_true]
+    simp only [allocCell, Prod.fst, hg]
+    exact ha
+  rw [localValue_of_snapshotAddress ⟨hn.2.1, hn.2.2⟩ address]
+  rw [localValue_of_snapshotAddress ⟨hn.2.1, hn.2.2⟩ ha] at hv
+  have ne (i : Nat) : ref ≠ stage.1.nextCell + i := by
+    exact Nat.ne_of_lt (Nat.lt_of_lt_of_le hf (Nat.le_add_right _ _))
+  have read : readCell call.1 ref = readCell stage.1 ref := by
+    change (match
+      ((stage.1.nextCell + 4, TargetValue.number .pyInt b) ::
+       (stage.1.nextCell + 3, TargetValue.number .pyInt b) ::
+       (stage.1.nextCell + 2, TargetValue.string "balance") ::
+       (stage.1.nextCell + 1, TargetValue.object seed) ::
+       (stage.1.nextCell, TargetValue.object stage.1.nextObject) :: stage.1.cells).lookup ref with
+      | some found => Except.ok found
+      | none => Except.error (TargetError.danglingCell ref)) = _
+    simp only [List.lookup_cons, beq_eq_false_iff_ne.mpr (ne 4),
+      beq_eq_false_iff_ne.mpr (ne 3), beq_eq_false_iff_ne.mpr (ne 2),
+      beq_eq_false_iff_ne.mpr (ne 1),
+      beq_eq_false_iff_ne.mpr (show ref ≠ stage.1.nextCell from by simpa using ne 0), if_false]
+    rfl
+  exact read.trans hv
+
+set_option maxHeartbeats 10000000 in
+theorem balanceReset_python_canonical_helper_environment (b : Int) {entry}
+    (he : entry ∈ resetPythonCanonicalBindings.take 9) :
+    let e := resetPythonSafeCallEntry
+      (resetPythonOverlayTypedMachine (balanceResetPythonOverlayBound b).1)
+      balancePythonSafeIntegerClosure b
+    localValue e.1 e.2 entry.1 = .ok entry.2.2 := by
+  obtain ⟨_, _, _, check⟩ := resetPythonCanonicalHelperBindingsCheck_true
+  have h := List.all_eq_true.mp check entry he
+  simp only [decide_eq_true_eq] at h
+  obtain ⟨hn, ht, hs, ha, hf, hv⟩ := h
+  have foot := balanceCanonicalResetStage_footprint .python b 3 (by decide)
+  apply resetPythonCanonicalHelper_read_generic
+    (stage := balanceCanonicalResetStage .python b 3)
+    (seed := (balancePreparation .python).1.nextObject)
+    (b := b) (closure := balancePythonSafeIntegerClosure)
+    (name := entry.1) (ref := entry.2.1) (value := entry.2.2)
+  · exact ⟨hn, ht, hs⟩
+  · simpa only [snapshotAddress, foot.2.2.2.1] using ha
+  · rw [foot.2.2.2.2.2.2.2.2]; exact hf
+  · exact (localValue_fields_congr rfl foot.2.2.1 foot.2.2.2.1).trans hv
+
+theorem resetOverlayPairBinding_nextObject (lang m f value) :
+    (resetOverlayPairBinding lang m f value).1.nextObject = m.nextObject := rfl
+
+theorem resetOverlayPairBinding_nextCell (lang m f value) :
+    (resetOverlayPairBinding lang m f value).1.nextCell = m.nextCell + 2 := rfl
+
+theorem resetIterableMachine_nextObject_python (m b) :
+    (resetIterableMachine .python m b).nextObject = m.nextObject + 3 := rfl
+
+theorem resetIterableMachine_nextCell (lang m b) :
+    (resetIterableMachine lang m b).nextCell = m.nextCell := by cases lang <;> rfl
+
+theorem resetCandidateMiddleModel_nextObject_python (stage seed) :
+    (resetCandidateMiddleModel .python stage seed).1.nextObject = stage.1.nextObject + 1 := rfl
+
+theorem resetCandidateMiddleModel_nextCell_python (stage seed) :
+    (resetCandidateMiddleModel .python stage seed).1.nextCell = stage.1.nextCell + 2 := rfl
+
+theorem balanceResetPythonOverlayBound_next (b : Int) :
+    (balanceResetPythonOverlayBound b).1.nextObject = 83 ∧
+    (balanceResetPythonOverlayBound b).1.nextCell = 112 := by
+  have ho := (balanceCanonicalResetStage_footprint .python b 3 (by decide)).2.2.2.2.1
+  have hc := (balanceCanonicalResetStage_footprint .python b 3 (by decide)).2.2.2.2.2.2.2.2
+  unfold balanceResetPythonOverlayBound
+  constructor
+  · rw [resetOverlayPairBinding_nextObject, resetIterableMachine_nextObject_python,
+      balanceResetMiddleEntry_model, resetCandidateMiddleModel_nextObject_python, ho,
+      resetPythonCanonicalTablesCheck_true.1]
+  · rw [resetOverlayPairBinding_nextCell, resetIterableMachine_nextCell,
+      balanceResetMiddleEntry_model, resetCandidateMiddleModel_nextCell_python, hc,
+      resetPythonCanonicalHelperBindingsCheck_true.2.2.1]
+
+/-- Helper effects preserve caller cells below the fresh argument address. -/
+theorem resetPythonHelperResult_localValue {m f closure b name ref}
+    (hn : name ≠ "this" ∧ name ≠ "self")
+    (ha : snapshotAddress m f name = some ref) (hf : ref < m.nextCell) :
+    localValue (resetSafeTupleMachine (resetPythonSafeCallEntry
+      (resetPythonOverlayTypedMachine m) closure b).1) f name = localValue m f name := by
+  exact localValue_allocCell_preserved (m := resetPythonOverlayTypedMachine m)
+    (value := integerValue .python b) hn ha hf
+
+theorem balanceResetPythonOverlayAfterHelper_localValue {b name ref}
+    (hn : name ≠ "this" ∧ name ≠ "self")
+    (ha : snapshotAddress (balanceResetPythonOverlayBound b).1
+      (balanceResetPythonOverlayBound b).2 name = some ref)
+    (hf : ref < (balanceResetPythonOverlayBound b).1.nextCell) :
+    localValue (balanceResetPythonOverlayAfterHelper b) (balanceResetPythonOverlayBound b).2 name =
+      localValue (balanceResetPythonOverlayBound b).1 (balanceResetPythonOverlayBound b).2 name :=
+  resetPythonHelperResult_localValue hn ha hf
+
+theorem resetPythonHelperResult_objectAt {m closure b ref} (hf : ref < m.nextObject) :
+    objectAt (resetSafeTupleMachine (resetPythonSafeCallEntry
+      (resetPythonOverlayTypedMachine m) closure b).1) ref = objectAt m ref := by
+  rw [resetSafeTupleMachine_objectAt_other (by
+    change ref ≠ m.nextObject + 1
+    exact Nat.ne_of_lt (Nat.lt_trans hf (Nat.lt_succ_self _)))]
+  change objectAt (allocObject m (literalObject .python m)).1 ref = _
+  exact objectAt_allocObject_other (Nat.ne_of_lt hf)
+
+theorem balanceResetPythonOverlayAfterHelper_objectAt {b ref} (hf : ref < 83) :
+    objectAt (balanceResetPythonOverlayAfterHelper b) ref =
+      objectAt (balanceResetPythonOverlayBound b).1 ref := by
+  apply resetPythonHelperResult_objectAt
+  rw [(balanceResetPythonOverlayBound_next b).1]; exact hf
+
+theorem resetOverlayPairBinding_address_other {lang m f value name ref}
+    (hn : name ≠ "value" ∧ name ≠ "name") (ha : snapshotAddress m f name = some ref) :
+    snapshotAddress (resetOverlayPairBinding lang m f value).1
+      (resetOverlayPairBinding lang m f value).2 name = some ref := by
+  simpa only [resetOverlayPairBinding, forPairBound, snapshotAddress, allocCell,
+    List.lookup_cons, beq_eq_false_iff_ne.mpr hn.1, beq_eq_false_iff_ne.mpr hn.2, if_false] using ha
+
+theorem resetIterableMachine_address (lang m f b name) :
+    snapshotAddress (resetIterableMachine lang m b) f name = snapshotAddress m f name := by
+  cases lang <;> rfl
+
+/-- Every fixed caller binding survives the canonical helper invocation. -/
+theorem balanceResetPythonOverlayAfterHelper_environment (b : Int) {entry}
+    (he : entry ∈ resetPythonCanonicalBindings) :
+    localValue (balanceResetPythonOverlayAfterHelper b) (balanceResetPythonOverlayBound b).2 entry.1 =
+      .ok entry.2.2 := by
+  have check := List.all_eq_true.mp resetPythonCanonicalBindingsCheck_true entry he
+  simp only [resetPythonCanonicalBindingsCheck, decide_eq_true_eq] at check
+  obtain ⟨ha, hf, _, hn, hv, ht, hs⟩ := check
+  have hab : snapshotAddress (balanceResetMiddleEntry .python b).1
+      (balanceResetMiddleEntry .python b).2 entry.1 = some entry.2.1 := by
+    rw [balanceResetMiddleEntry_address]; exact ha
+  have hfb : entry.2.1 < (balanceResetMiddleEntry .python b).1.nextCell := by
+    rw [balanceResetMiddleEntry_nextCell]; exact hf
+  have bound : snapshotAddress (balanceResetPythonOverlayBound b).1
+      (balanceResetPythonOverlayBound b).2 entry.1 = some entry.2.1 := by
+    apply resetOverlayPairBinding_address_other ⟨hv, hn⟩
+    rw [resetIterableMachine_address]; exact hab
+  have fresh : entry.2.1 < (balanceResetPythonOverlayBound b).1.nextCell := by
+    unfold balanceResetPythonOverlayBound
+    rw [resetOverlayPairBinding_nextCell, resetIterableMachine_nextCell]
+    exact Nat.lt_trans hfb (Nat.lt_add_of_pos_right (by decide : 0 < 2))
+  rw [balanceResetPythonOverlayAfterHelper_localValue ⟨ht, hs⟩ bound fresh]
+  exact balanceReset_python_canonical_overlay_environment b he
+
+theorem resetPythonHelperResult_pair_reads (m f closure b) :
+    let e := resetOverlayPairBinding .python m f (integerValue .python b)
+    let n := resetSafeTupleMachine (resetPythonSafeCallEntry
+      (resetPythonOverlayTypedMachine e.1) closure b).1
+    localValue n e.2 "name" = .ok (.string "balance") ∧
+    localValue n e.2 "value" = .ok (integerValue .python b) := by
+  let e := resetOverlayPairBinding .python m f (integerValue .python b)
+  have name : snapshotAddress e.1 e.2 "name" = some m.nextCell := by
+    simp [e, resetOverlayPairBinding, forPairBound, snapshotAddress, allocCell, List.lookup, Option.orElse]
+  have value : snapshotAddress e.1 e.2 "value" = some (m.nextCell + 1) := by
+    simp [e, resetOverlayPairBinding, forPairBound, snapshotAddress, allocCell, List.lookup, Option.orElse]
+  constructor
+  · rw [resetPythonHelperResult_localValue (by decide) name (by
+      rw [resetOverlayPairBinding_nextCell]; exact Nat.lt_add_of_pos_right (by decide : 0 < 2))]
+    exact (resetOverlayPairBinding_reads .python m f (integerValue .python b)).1
+  · rw [resetPythonHelperResult_localValue (by decide) value (by
+      rw [resetOverlayPairBinding_nextCell]; exact Nat.lt_succ_self _)]
+    exact (resetOverlayPairBinding_reads .python m f (integerValue .python b)).2
+
+theorem balanceResetPythonOverlayAfterHelper_pair_reads (b : Int) :
+    localValue (balanceResetPythonOverlayAfterHelper b) (balanceResetPythonOverlayBound b).2 "name" =
+      .ok (.string "balance") ∧
+    localValue (balanceResetPythonOverlayAfterHelper b) (balanceResetPythonOverlayBound b).2 "value" =
+      .ok (integerValue .python b) := resetPythonHelperResult_pair_reads _ _ _ _
+
+/-- A data property in an ordinary host module is read without allocation. -/
+theorem resetPythonOrdinaryTable_read {m ref object key value}
+    (hr : ref ≠ m.checkerRef) (hp : ref ≠ m.objectPrototype)
+    (ho : objectAt m ref = .ok object) (hk : object.kind = .jsOrdinary)
+    (hv : object.own.lookup key = some ⟨some value, none, none, true, true, true⟩) :
+    readPropertyValue .python m (.object ref) key = .ok ⟨m, .ok value⟩ := by
+  simp [readPropertyValue, beq_eq_false_iff_ne.mpr hr, beq_eq_false_iff_ne.mpr hp,
+    ho, hk, readOwn, hv, Bind.bind, Except.bind, Pure.pure, Except.pure]
+  rfl
+
+def resetPythonCanonicalMathCheck : Prop :=
+  let object := resetPythonCanonicalTableObject 4
+  objectAt (balanceCanonicalResetStage .python 0 3).1 4 = .ok object ∧
+  object.kind = .jsOrdinary ∧
+  object.own.lookup "isfinite" = some ⟨some (.builtin .isFinite), none, none, true, true, true⟩
+
+instance : Decidable resetPythonCanonicalMathCheck := by
+  unfold resetPythonCanonicalMathCheck; infer_instance
+
+set_option maxHeartbeats 10000000 in
+theorem resetPythonCanonicalMathCheck_true : resetPythonCanonicalMathCheck := by
+  simp only [resetPythonCanonicalMathCheck, resetPythonCanonicalTableObject,
+    balanceCanonicalResetStage, balanceCanonicalResetEntry, balanceResetBodyEntry,
+    balancePythonResetBodyEntry, balanceConstructorBodyEntry, balanceConstructorBoundEntry,
+    balanceConstructorArgumentEntry, balanceStoredReset, balanceResetLookup,
+    balanceStoredConstructor, balanceConstructorLookup, balanceConstructorName,
+    balancePreparation, balanceProgram_of_parse BalancePrograms.balancePyProgram_source]
+  decide +kernel
+
+
+theorem resetPythonHelperResult_checkerRef (m closure b) :
+    (resetSafeTupleMachine (resetPythonSafeCallEntry
+      (resetPythonOverlayTypedMachine m) closure b).1).checkerRef = m.checkerRef := rfl
+
+theorem resetPythonHelperResult_objectPrototype (m closure b) :
+    (resetSafeTupleMachine (resetPythonSafeCallEntry
+      (resetPythonOverlayTypedMachine m) closure b).1).objectPrototype = m.objectPrototype := rfl
+
+theorem resetOverlayPairBinding_checkerRef (lang m f value) :
+    (resetOverlayPairBinding lang m f value).1.checkerRef = m.checkerRef := rfl
+
+theorem resetOverlayPairBinding_objectPrototype (lang m f value) :
+    (resetOverlayPairBinding lang m f value).1.objectPrototype = m.objectPrototype := rfl
+
+theorem resetIterableMachine_checkerRef (lang m b) :
+    (resetIterableMachine lang m b).checkerRef = m.checkerRef := by cases lang <;> rfl
+
+theorem resetIterableMachine_objectPrototype (lang m b) :
+    (resetIterableMachine lang m b).objectPrototype = m.objectPrototype := by cases lang <;> rfl
+
+theorem resetCandidateMiddleModel_checkerRef_python (stage seed) :
+    (resetCandidateMiddleModel .python stage seed).1.checkerRef = stage.1.checkerRef := rfl
+
+theorem resetCandidateMiddleModel_objectPrototype_python (stage seed) :
+    (resetCandidateMiddleModel .python stage seed).1.objectPrototype = stage.1.objectPrototype := rfl
+
+theorem balanceResetPythonOverlayAfterHelper_fixed (b : Int) :
+    (balanceResetPythonOverlayAfterHelper b).checkerRef = 1 ∧
+    (balanceResetPythonOverlayAfterHelper b).objectPrototype = 0 := by
+  have h := balanceCanonicalResetStage_footprint .python b 3 (by decide)
+  unfold balanceResetPythonOverlayAfterHelper balanceResetPythonOverlayBound
+  constructor
+  · rw [resetPythonHelperResult_checkerRef, resetOverlayPairBinding_checkerRef,
+      resetIterableMachine_checkerRef, balanceResetMiddleEntry_model,
+      resetCandidateMiddleModel_checkerRef_python, h.2.2.2.2.2.2.1]
+    exact resetPythonCanonicalTablesCheck_true.2.1
+  · rw [resetPythonHelperResult_objectPrototype, resetOverlayPairBinding_objectPrototype,
+      resetIterableMachine_objectPrototype, balanceResetMiddleEntry_model,
+      resetCandidateMiddleModel_objectPrototype_python, h.2.2.2.2.2.1]
+    exact resetPythonCanonicalTablesCheck_true.2.2.1
+
+theorem balanceResetPythonOverlayAfterHelper_old_object (b : Int) (ref : ObjRef)
+    (hf : ref < 79) (hs : ref ≠ 74) :
+    objectAt (balanceResetPythonOverlayAfterHelper b) ref =
+      objectAt (balanceCanonicalResetStage .python 0 3).1 ref := by
+  rw [balanceResetPythonOverlayAfterHelper_objectAt (Nat.lt_trans hf (by decide : 79 < 83))]
+  apply balanceResetPythonOverlayBound_objectAt b ref
+  · rw [resetPythonCanonicalTablesCheck_true.1]; exact hf
+  · rw [resetPythonCanonicalTablesCheck_true.2.2.2.1]; exact hs
+
+theorem resetPythonSafeCallEntry_value (m : TargetMachine) (closure : TargetClosure) (b : Int) :
+    localValue (resetPythonSafeCallEntry m closure b).1
+      (resetPythonSafeCallEntry m closure b).2 "value" = .ok (integerValue .python b) := by
+  simp [resetPythonSafeCallEntry, localValue, readCell, allocCell, List.lookup]
+
+/-- All physical helper premises at the actual canonical argument frame. -/
+def balanceReset_python_canonical_safe_physical (b : Int) :
+    let e := resetPythonSafeCallEntry
+      (resetPythonOverlayTypedMachine (balanceResetPythonOverlayBound b).1)
+      balancePythonSafeIntegerClosure b
+    ResetPythonSafePhysical e.1 e.2 b := by
+  refine ⟨4, resetPythonSafeCallEntry_value
+    (resetPythonOverlayTypedMachine (balanceResetPythonOverlayBound b).1) balancePythonSafeIntegerClosure b, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  · exact balanceReset_python_canonical_helper_environment b (entry := ("type", 0, .builtin .type)) (by decide)
+  · exact balanceReset_python_canonical_helper_environment b (entry := ("int", 6, .builtin .int)) (by decide)
+  · exact balanceReset_python_canonical_helper_environment b (entry := ("float", 5, .builtin .float)) (by decide)
+  · exact balanceReset_python_canonical_helper_environment b (entry := ("abs", 14, .builtin .abs)) (by decide)
+  · exact balanceReset_python_canonical_helper_environment b
+      (entry := ("_MAX_INTEGER", 79, integerValue .python 9007199254740991)) (by decide)
+  · exact balanceReset_python_canonical_helper_environment b (entry := ("math", 21, .object 4)) (by decide)
+  · obtain ⟨ho, hk, hv⟩ := resetPythonCanonicalMathCheck_true
+    exact resetPythonOrdinaryTable_read (m := balanceResetPythonOverlayAfterHelper b) (ref := 4)
+      (by rw [(balanceResetPythonOverlayAfterHelper_fixed b).1]; decide)
+      (by rw [(balanceResetPythonOverlayAfterHelper_fixed b).2]; decide)
+      ((balanceResetPythonOverlayAfterHelper_old_object b 4 (by decide) (by decide)).trans ho) hk hv
+
+theorem balanceReset_python_canonical_post_table_test (b : Int) (k : Nat) :
+    evalExpr (k + 5) (balanceProgram .python) (balanceResetPythonOverlayAfterHelper b)
+      (balanceResetPythonOverlayBound b).2 resetPythonOverlayStringTest =
+        .ok ⟨balanceResetPythonOverlayAfterHelper b, .ok (.bool false)⟩ := by
+  obtain ⟨_, _, _, _, hw, hwk, hwp, hc, hck, hcp, hd, hdk, hdp⟩ := resetPythonCanonicalTablesCheck_true
+  let n := balanceResetPythonOverlayAfterHelper b
+  have objs (ref : ObjRef) (h : ref = 63 ∨ ref = 42 ∨ ref = 41) :
+      objectAt n ref = .ok (resetPythonCanonicalTableObject ref) := by
+    rcases h with rfl | rfl | rfl
+    all_goals rw [balanceResetPythonOverlayAfterHelper_old_object b _ (by decide) (by decide)]
+    · exact hw
+    · exact hc
+    · exact hd
+  have checker := (balanceResetPythonOverlayAfterHelper_fixed b).1
+  have proto := (balanceResetPythonOverlayAfterHelper_fixed b).2
+  apply resetPythonOverlayStringTest_execute (world := 63) (context := 42) (definition := 41)
+  · exact balanceResetPythonOverlayAfterHelper_environment b (entry := ("_WORLD", 69, .object 63)) (by decide)
+  · exact (balanceResetPythonOverlayAfterHelper_pair_reads b).1
+  · exact resetPythonTable_read (m := n) (ref := 63) (by rw [checker]; decide) (by rw [proto]; decide) (by decide)
+      (objs 63 (.inl rfl)) hwk hwp
+  · exact resetPythonTable_read (m := n) (ref := 42) (by rw [checker]; decide) (by rw [proto]; decide) (by decide)
+      (objs 42 (.inr (.inl rfl))) hck hcp
+  · exact resetPythonTable_read (m := n) (ref := 41) (by rw [checker]; decide) (by rw [proto]; decide) (by decide)
+      (objs 41 (.inr (.inr rfl))) hdk hdp
+
+theorem balanceHeapObject_python_machine (m n : TargetMachine) (b : Int) :
+    balanceHeapObject .python m b = balanceHeapObject .python n b := rfl
+
+/-- The existing candidate remains live across every helper allocation. -/
+theorem balanceReset_python_canonical_post_candidate (b : Int) :
+    localValue (balanceResetPythonOverlayAfterHelper b) (balanceResetPythonOverlayBound b).2 "candidate" =
+      .ok (.object 79) ∧
+    objectAt (balanceResetPythonOverlayAfterHelper b) 79 =
+      .ok (balanceHeapObject .python (balanceResetPythonOverlayAfterHelper b) 100) := by
+  constructor
+  · exact balanceResetPythonOverlayAfterHelper_environment b (entry := ("candidate", 108, .object 79)) (by decide)
+  · have key : (balanceCanonicalResetStage .python b 3).1.nextObject = 79 :=
+      (balanceCanonicalResetStage_footprint .python b 3 (by decide)).2.2.2.2.1.trans
+        resetPythonCanonicalTablesCheck_true.1
+    have hn : (balanceResetMiddleEntry .python b).1.nextObject = 80 := by
+      rw [balanceResetMiddleEntry_model, resetCandidateMiddleModel_nextObject_python, key]
+    have mid : objectAt (balanceResetMiddleEntry .python b).1 79 =
+        .ok (balanceHeapObject .python (balanceResetMiddleEntry .python b).1 100) := by
+      simpa only [key] using balanceResetMiddleEntry_candidate_object .python b
+    have before : objectAt (balanceResetPythonOverlayBound b).1 79 =
+        objectAt (balanceResetMiddleEntry .python b).1 79 := by
+      unfold balanceResetPythonOverlayBound
+      rw [resetOverlayPairBinding_objectAt,
+        resetIterableMachine_objectAt_other (m := (balanceResetMiddleEntry .python b).1)
+          (b := b) (ref := 79) (by rw [hn]; decide)]
+    exact (balanceResetPythonOverlayAfterHelper_objectAt (b := b) (ref := 79) (by decide)).trans
+      (before.trans (mid.trans (congrArg (fun object : HeapObject => (Except.ok object : Except TargetError HeapObject))
+        (balanceHeapObject_python_machine (balanceResetMiddleEntry .python b).1
+          (balanceResetPythonOverlayAfterHelper b) 100))))
+
+theorem balanceResetPythonOverlayBound_fixed (b : Int) :
+    (balanceResetPythonOverlayBound b).1.checkerRef = 1 ∧
+    (balanceResetPythonOverlayBound b).1.objectPrototype = 0 := by
+  have h := balanceResetPythonOverlayAfterHelper_fixed b
+  unfold balanceResetPythonOverlayAfterHelper at h
+  rwa [resetPythonHelperResult_checkerRef, resetPythonHelperResult_objectPrototype] at h
+
+theorem resetOverlayPairBinding_closureAt (lang m f value ref) :
+    closureAt (resetOverlayPairBinding lang m f value).1 ref = closureAt m ref := rfl
+
+theorem resetIterableMachine_closureAt (lang m b ref) :
+    closureAt (resetIterableMachine lang m b) ref = closureAt m ref := by cases lang <;> rfl
+
+theorem resetCandidateMiddleModel_closureAt_python (stage seed ref) :
+    closureAt (resetCandidateMiddleModel .python stage seed).1 ref = closureAt stage.1 ref := rfl
+
+
+theorem allocCell_nextClosure (m value mutable) :
+    (allocCell m value mutable).1.nextClosure = m.nextClosure := rfl
+
+theorem allocObject_nextClosure (m object) :
+    (allocObject m object).1.nextClosure = m.nextClosure := rfl
+
+theorem allocClosure_nextClosure (m closure) :
+    (allocClosure m closure).1.nextClosure = m.nextClosure + 1 := rfl
+
+/-- Closure lookup does not depend on the new function's body when its fresh
+    closure address differs from the queried old address. -/
+theorem functionInstalled_closureAt_other {lang : TargetLang}
+    {m : TargetMachine} {f : TargetFrame} {name : String} {body : TargetStmt} {ref : ClosureRef}
+    (hn : ref ≠ m.nextClosure) :
+    closureAt (functionInstalled lang m f name body).1 ref = closureAt m ref := by
+  let installed : TargetClosure := ⟨f.qualifiedName ++ "." ++ name, [], [], body,
+    (name, m.nextCell) :: f.locals ++ f.captures, f.receiver⟩
+  cases lang <;>
+    change (match ((m.nextClosure, installed) :: m.closures).lookup ref with
+      | some closure => Except.ok closure
+      | none => Except.error (TargetError.danglingClosure ref)) = _
+  all_goals simp only [List.lookup_cons, beq_eq_false_iff_ne.mpr hn, if_false]
+  all_goals rfl
+
+theorem resetSnapshotHistory_closureAt (lang m f ref) :
+    closureAt (resetSnapshotHistory lang m f).1 ref = closureAt m ref := rfl
+
+theorem resetSnapshotHistory_nextClosure (lang m f) :
+    (resetSnapshotHistory lang m f).1.nextClosure = m.nextClosure := rfl
+
+theorem resetSnapshotsInstalled_closureAt_other {lang m f ref}
+    (hn : ref ≠ m.nextClosure) :
+    closureAt (resetSnapshotsInstalled lang m f).1 ref = closureAt m ref := by
+  unfold resetSnapshotsInstalled snapshotRollbackInstalled
+  rw [functionInstalled_closureAt_other
+    (m := (resetSnapshotHistory lang m f).1)
+    (by rw [resetSnapshotHistory_nextClosure]; exact hn)]
+  exact resetSnapshotHistory_closureAt lang m f ref
+
+theorem balanceConstructorArgumentEntry_closureAt (lang b ref) :
+    closureAt (balanceConstructorArgumentEntry lang b).1 ref =
+      closureAt (balancePreparation lang).1 ref := by
+  unfold balanceConstructorArgumentEntry
+  rw [closureAt_allocCell, closureAt_allocObject]
+
+theorem balanceConstructorArgumentEntry_nextClosure (lang b) :
+    (balanceConstructorArgumentEntry lang b).1.nextClosure =
+      (balancePreparation lang).1.nextClosure := by
+  unfold balanceConstructorArgumentEntry
+  rw [allocCell_nextClosure, allocObject_nextClosure]
+
+theorem balanceConstructorBodyEntry_nextClosure (lang b) :
+    (balanceConstructorBodyEntry lang b).1.nextClosure =
+      (balancePreparation lang).1.nextClosure + 1 := by
+  unfold balanceConstructorBodyEntry balanceConstructorBoundEntry
+  rw [allocCell_nextClosure, allocClosure_nextClosure, balanceConstructorArgumentEntry_nextClosure]
+
+theorem balanceConstructorBodyEntry_closureAt_other {lang b ref}
+    (hn : ref ≠ (balancePreparation lang).1.nextClosure) :
+    closureAt (balanceConstructorBodyEntry lang b).1 ref =
+      closureAt (balancePreparation lang).1 ref := by
+  unfold balanceConstructorBodyEntry balanceConstructorBoundEntry
+  rw [closureAt_allocCell, closureAt_allocClosure_other
+    (m := (balanceConstructorArgumentEntry lang b).1)
+    (by rw [balanceConstructorArgumentEntry_nextClosure]; exact hn)]
+  exact balanceConstructorArgumentEntry_closureAt lang b ref
+
+theorem balancePythonInitialized_closureAt (m initial ref) :
+    closureAt (balancePythonInitialized m initial) ref = closureAt m ref := by
+  unfold closureAt
+  rw [(balancePythonInitialized_preserves_bindings m initial).2.1]
+
+theorem balancePythonResetBodyEntry_nextClosure (b) :
+    (balancePythonResetBodyEntry b).1.nextClosure =
+      (balancePreparation .python).1.nextClosure + 1 + 1 := by
+  unfold balancePythonResetBodyEntry
+  rw [allocCell_nextClosure, allocClosure_nextClosure,
+    (balancePythonInitialized_preserves_bindings _ _).2.2.2.2.1,
+    balanceConstructorBodyEntry_nextClosure]
+
+theorem balancePythonResetBodyEntry_closureAt_other {b ref}
+    (h0 : ref ≠ (balancePreparation .python).1.nextClosure)
+    (h1 : ref ≠ (balancePreparation .python).1.nextClosure + 1) :
+    closureAt (balancePythonResetBodyEntry b).1 ref =
+      closureAt (balancePreparation .python).1 ref := by
+  unfold balancePythonResetBodyEntry
+  rw [closureAt_allocCell, closureAt_allocClosure_other
+    (m := balancePythonInitialized (balanceConstructorBodyEntry .python b).1 "Ready")
+    (by
+      rw [(balancePythonInitialized_preserves_bindings
+        (balanceConstructorBodyEntry .python b).1 "Ready").2.2.2.2.1,
+        balanceConstructorBodyEntry_nextClosure]
+      exact h1)]
+  rw [balancePythonInitialized_closureAt]
+  exact balanceConstructorBodyEntry_closureAt_other (lang := .python) (b := b) (ref := ref) h0
+
+theorem balanceSetBusy_closureAt (m busy ref) :
+    closureAt (balanceSetBusy m busy) ref = closureAt m ref := rfl
+
+theorem balanceSetBusy_nextClosure (m busy) :
+    (balanceSetBusy m busy).nextClosure = m.nextClosure := rfl
+
+theorem balanceCanonicalResetStage_python3_eq (b : Int) :
+    balanceCanonicalResetStage .python b 3 =
+      resetSnapshotsInstalled .python (balanceCanonicalResetEntry .python b).1
+        (balanceCanonicalResetEntry .python b).2 := rfl
+
+theorem balanceCanonicalResetEntry_python_eq (b : Int) :
+    balanceCanonicalResetEntry .python b =
+      (balanceSetBusy (balancePythonResetBodyEntry b).1 true,
+        (balancePythonResetBodyEntry b).2) := rfl
+
+theorem balanceCanonicalResetStage_python_closureAt_other {b ref}
+    (h0 : ref ≠ (balancePreparation .python).1.nextClosure)
+    (h1 : ref ≠ (balancePreparation .python).1.nextClosure + 1)
+    (h2 : ref ≠ (balancePreparation .python).1.nextClosure + 1 + 1) :
+    closureAt (balanceCanonicalResetStage .python b 3).1 ref =
+      closureAt (balancePreparation .python).1 ref := by
+  rw [balanceCanonicalResetStage_python3_eq, resetSnapshotsInstalled_closureAt_other]
+  · rw [balanceCanonicalResetEntry_python_eq, balanceSetBusy_closureAt]
+    exact balancePythonResetBodyEntry_closureAt_other (b := b) (ref := ref) h0 h1
+  · rw [balanceCanonicalResetEntry_python_eq, balanceSetBusy_nextClosure,
+      balancePythonResetBodyEntry_nextClosure]
+    exact h2
+
+set_option maxHeartbeats 10000000 in
+theorem balancePythonSafeInteger_fresh_closures : 4 < (balancePreparation .python).1.nextClosure := by
+  unfold balancePreparation
+  rw [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]
+  decide +kernel
+
+
+theorem balanceResetPythonOverlayBound_closureAt (b : Int) (ref : ClosureRef) :
+    closureAt (balanceResetPythonOverlayBound b).1 ref =
+      closureAt (balanceCanonicalResetStage .python b 3).1 ref := by
+  unfold balanceResetPythonOverlayBound
+  rw [resetOverlayPairBinding_closureAt, resetIterableMachine_closureAt,
+    balanceResetMiddleEntry_model, resetCandidateMiddleModel_closureAt_python]
+
+
+
+def balancePythonPrepared : TargetMachine × TargetFrame :=
+  (targetPrepareConstructor 100 BalancePrograms.balancePyProgram).toOption.getD
+    (TargetMachine.empty, ⟨"module", [], [], [], none, .normal⟩)
+
+theorem balancePreparation_python_eq : balancePreparation .python = balancePythonPrepared := by
+  unfold balancePreparation balancePythonPrepared
+  rw [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]
+
+theorem balancePythonSafeInteger_preparation_closure :
+    closureAt (balancePreparation .python).1 4 = .ok balancePythonSafeIntegerClosure := by
+  unfold balancePythonSafeIntegerClosure
+  simp only [balancePreparation_python_eq]
+  decide +kernel
+
+theorem resetPythonOverlayTypedMachine_closureAt (m ref) :
+    closureAt (resetPythonOverlayTypedMachine m) ref = closureAt m ref := rfl
+
+
+theorem resetClosureFresh_inequalities {ref fresh : Nat} (hf : ref < fresh) :
+    ref ≠ fresh ∧ ref ≠ fresh + 1 ∧ ref ≠ fresh + 1 + 1 := by
+  have h1 : ref < fresh + 1 := Nat.lt_of_lt_of_le hf (Nat.le_succ fresh)
+  have h2 : ref < fresh + 1 + 1 := Nat.lt_of_lt_of_le h1 (Nat.le_succ (fresh + 1))
+  exact ⟨Nat.ne_of_lt hf, Nat.ne_of_lt h1, Nat.ne_of_lt h2⟩
+
+theorem balanceReset_python_canonical_helper_closure (b : Int) :
+    closureAt (resetPythonOverlayTypedMachine (balanceResetPythonOverlayBound b).1) 4 =
+      .ok balancePythonSafeIntegerClosure := by
+  have h := resetClosureFresh_inequalities balancePythonSafeInteger_fresh_closures
+  calc
+    closureAt (resetPythonOverlayTypedMachine (balanceResetPythonOverlayBound b).1) 4 =
+        closureAt (balanceResetPythonOverlayBound b).1 4 :=
+      resetPythonOverlayTypedMachine_closureAt (balanceResetPythonOverlayBound b).1 4
+    _ = closureAt (balanceCanonicalResetStage .python b 3).1 4 :=
+      balanceResetPythonOverlayBound_closureAt b 4
+    _ = closureAt (balancePreparation .python).1 4 :=
+      balanceCanonicalResetStage_python_closureAt_other (b := b) (ref := 4) h.1 h.2.1 h.2.2
+    _ = .ok balancePythonSafeIntegerClosure := balancePythonSafeInteger_preparation_closure
+theorem resetPythonOverlayTypedMachine_localValue (m f name) :
+    localValue (resetPythonOverlayTypedMachine m) f name = localValue m f name := rfl
+
+/-- Execute the complete canonical Python overlay body for every safe signed
+    payload. All table, closure, helper-frame and post-allocation reads are discharged. -/
+theorem balanceReset_python_canonical_overlay_body_safe (b : Int)
+    (hb : b.natAbs ≤ 9007199254740991) (k : Nat) :
+    let e := balanceResetPythonOverlayBound b
+    execStmt (k + 20) (balanceProgram .python) e.1 e.2
+      (resetLoopBody (balanceResetOverlayLoop .python)) =
+        .ok ⟨balanceOverlayUpdated .python (balanceResetPythonOverlayAfterHelper b) 79 b, e.2, .normal⟩ := by
+  let e := balanceResetPythonOverlayBound b
+  have reads := resetOverlayPairBinding_reads .python
+    (resetIterableMachine .python (balanceResetMiddleEntry .python b).1 b)
+    (balanceResetMiddleEntry .python b).2 (integerValue .python b)
+  obtain ⟨hnext, hchecker, hproto, hseed, hw, hwk, hwp, hc, hck, hcp, hd, hdk, hdp⟩ :=
+    resetPythonCanonicalTablesCheck_true
+  have obj42 : objectAt e.1 42 = .ok (resetPythonCanonicalTableObject 42) :=
+    (balanceResetPythonOverlayBound_objectAt b 42 (by rw [hnext]; decide) (by rw [hseed]; decide)).trans hc
+  have obj63 : objectAt e.1 63 = .ok (resetPythonCanonicalTableObject 63) :=
+    (balanceResetPythonOverlayBound_objectAt b 63 (by rw [hnext]; decide) (by rw [hseed]; decide)).trans hw
+  have context : readPropertyValue .python e.1 (.object 63) "context" =
+      .ok ⟨e.1, .ok (.object 42)⟩ :=
+    resetPythonTable_read (m := e.1) (ref := 63) (by rw [(balanceResetPythonOverlayBound_fixed b).1]; decide)
+      (by rw [(balanceResetPythonOverlayBound_fixed b).2]; decide) (by decide) obj63 hwk hwp
+  apply balanceReset_python_overlay_body_safe (m := e.1) (f := e.2) (ref := 79) (b := b) (k := k) (typed := resetPythonOverlayTypedMachine e.1)
+    (context := 42) (object := resetPythonCanonicalTableObject 42)
+    (helper := 4) (closure := balancePythonSafeIntegerClosure)
+  · exact reads.1
+  · exact balanceReset_python_canonical_overlay_environment b (entry := ("type", 0, .builtin .type)) (by decide)
+  · exact balanceReset_python_canonical_overlay_environment b (entry := ("str", 7, .builtin .strType)) (by decide)
+  · exact resetPythonWorldContext_execute
+      (balanceReset_python_canonical_overlay_environment b (entry := ("_WORLD", 69, .object 63)) (by decide)) context
+  · exact obj42
+  · exact .inr hck
+  · rw [hcp]; rfl
+  · exact (balanceReset_python_canonical_table_tests b (k + 7)).1
+  · exact (resetPythonOverlayTypedMachine_localValue e.1 e.2 "_safe_integer").trans
+      (balanceReset_python_canonical_overlay_environment b (entry := ("_safe_integer", 84, .closure 4)) (by decide))
+  · exact (resetPythonOverlayTypedMachine_localValue e.1 e.2 "value").trans reads.2
+  · exact balanceReset_python_canonical_helper_closure b
+  · exact resetPythonCanonicalHelperBindingsCheck_true.1
+  · rfl
+  · exact balanceReset_python_canonical_safe_physical b
+  · exact (balanceReset_python_canonical_post_candidate b).1
+  · exact (balanceResetPythonOverlayAfterHelper_pair_reads b).1
+  · exact (balanceResetPythonOverlayAfterHelper_pair_reads b).2
+  · exact balanceResetPythonOverlayAfterHelper_environment b (entry := ("int", 6, .builtin .int)) (by decide)
+  · exact balanceReset_python_canonical_post_table_test b (k + 10)
+  · exact (balanceReset_python_canonical_post_candidate b).2
+  · exact hb
+
+set_option maxHeartbeats 10000000 in
+theorem balanceReset_python_overlay_tail_shape :
+    restStmt (ifYesStmt (balanceResetMiddleStmt .python 2)) =
+      .sequence (balanceResetOverlayLoop .python) .empty := by
+  unfold balanceResetOverlayLoop balanceResetMiddleStmt balanceResetProtected
+    balanceResetSnapshots balanceStoredReset balanceResetLookup
+  simp only [balancePreparation_python_eq]
+  decide +kernel
+
+/-- Unconditional canonical Python loop and complete statement-2 execution.
+    Negative safe values are written here; later bounds validation is separate. -/
+theorem balanceReset_python_canonical_overlay_safe (b : Int)
+    (hb : b.natAbs ≤ 9007199254740991) (k : Nat) :
+    let e := balanceResetMiddleEntry .python b
+    let final := balanceOverlayUpdated .python (balanceResetPythonOverlayAfterHelper b) 79 b
+    execStmt (k + 22) (balanceProgram .python) e.1 e.2 (balanceResetOverlayLoop .python) =
+      .ok ⟨final, (balanceResetPythonOverlayBound b).2, .normal⟩ ∧
+    execStmt (k + 25) (balanceProgram .python) e.1 e.2 (balanceResetMiddleStmt .python 2) =
+      .ok ⟨final, (balanceResetPythonOverlayBound b).2, .normal⟩ := by
+  have loop := balanceReset_python_canonical_loop_execute (b := b) (k := k + 16)
+    (final := balanceOverlayUpdated .python (balanceResetPythonOverlayAfterHelper b) 79 b)
+    (ff := (balanceResetPythonOverlayBound b).2)
+    (balanceReset_python_canonical_overlay_body_safe b hb k)
+  constructor
+  · exact loop
+  · have ctx : localValue (balanceResetMiddleEntry .python b).1 (balanceResetMiddleEntry .python b).2 "ctx" =
+        .ok (.object (balancePreparation .python).1.nextObject) := by
+      exact (balanceResetMiddleEntry_localValue .python b "ctx").trans balanceResetMiddlePythonCheck_zero.1
+    rw [balanceReset_python_seed_present (k := k + 20) ctx,
+      balanceReset_python_canonical_plain_guard_skip b (k + 18),
+      balanceReset_python_overlay_tail_shape, execSequence_of_normal loop]
+    exact execStmt_adequate .empty (by omega)
+
+
+
+-- Supplied-seed TS first guard; descriptor-copy continuation remains separate.
+
+def balanceTsPrepared : TargetMachine × TargetFrame :=
+  (targetPrepareConstructor 100 BalancePrograms.balanceTsProgram).toOption.getD
+    (TargetMachine.empty, ⟨"module", [], [], [], none, .normal⟩)
+
+theorem balancePreparation_ts_eq : balancePreparation .ts = balanceTsPrepared := by
+  unfold balancePreparation balanceTsPrepared
+  rw [balanceProgram_of_parse BalancePrograms.balanceTsProgram_source]
+
+/-- The first supplied-seed TS guard reads only object kind and proxy status. -/
+def resetTsPlainGuardExpr : TargetExpr :=
+  .orElse
+    (.orElse (.binary .strictNe (.unary .typeof (.local "initialContext")) (.string "object"))
+      (.call (.property (.local "Array") "isArray") (.sequence (.local "initialContext") .empty)))
+    (.call (.property (.local "nodeTypes") "isProxy") (.sequence (.local "initialContext") .empty))
+
+set_option maxRecDepth 65536 in
+set_option maxHeartbeats 10000000 in
+theorem balanceReset_ts_plain_guard_shape :
+    firstStmt (ifNoStmt (balanceResetMiddleStmt .ts 2)) =
+      .ifThenElse resetTsPlainGuardExpr
+        (ifYesStmt (firstStmt (ifNoStmt (balanceResetMiddleStmt .ts 2)))) .empty ∧
+    ifNoStmt (balanceResetMiddleStmt .ts 2) =
+      .sequence (firstStmt (ifNoStmt (balanceResetMiddleStmt .ts 2)))
+        (restStmt (ifNoStmt (balanceResetMiddleStmt .ts 2))) := by
+  simp only [balanceResetMiddleStmt, balanceResetProtected, balanceResetSnapshots,
+    balanceStoredReset, balanceResetLookup, balancePreparation_ts_eq]
+  decide +kernel
+
+theorem resetTsPlainGuard_execute {m f ref object array node k}
+    (hp : localValue m f "initialContext" = .ok (.object ref))
+    (ha : localValue m f "Array" = .ok (.object array))
+    (haRead : readPropertyValue .ts m (.object array) "isArray" =
+      .ok ⟨m, .ok (.builtin .arrayIsArray)⟩)
+    (hn : localValue m f "nodeTypes" = .ok (.object node))
+    (hnRead : readPropertyValue .ts m (.object node) "isProxy" =
+      .ok ⟨m, .ok (.builtin .nodeIsProxy)⟩)
+    (ho : objectAt m ref = .ok object) (hk : object.kind ≠ .jsArray)
+    (hproxy : object.proxy = false) :
+    evalExpr (k + 5) (balanceProgram .ts) m f resetTsPlainGuardExpr =
+      .ok ⟨m, .ok (.bool false)⟩ := by
+  have typ : evalExpr (k + 3) (balanceProgram .ts) m f
+      (.binary .strictNe (.unary .typeof (.local "initialContext")) (.string "object")) =
+      .ok ⟨m, .ok (.bool false)⟩ := by
+    have inner : evalExpr (k + 2) (balanceProgram .ts) m f
+        (.unary .typeof (.local "initialContext")) = .ok ⟨m, .ok (.string "object")⟩ := by
+      rw [evalExpr, evalExpr_adequate (.localRead hp) (by omega)]; rfl
+    rw [evalExpr, inner]
+    simp only [Bind.bind, Except.bind]
+    rw [evalExpr_adequate (.string "object") (by omega), balanceProgram_lang]; rfl
+  have arr : evalExpr (k + 3) (balanceProgram .ts) m f
+      (.call (.property (.local "Array") "isArray") (.sequence (.local "initialContext") .empty)) =
+      .ok ⟨m, .ok (.bool false)⟩ := by
+    apply evalExpr_adequate (.callBuiltin (.property (.localRead ha)
+      (by simpa only [balanceProgram_lang] using haRead))
+      (.cons (.localRead hp) .empty) (by decide) ?_) (by omega)
+    rw [balanceProgram_lang]
+    change (do let current ← objectAt m ref
+               pure (⟨m, .ok (.bool (current.kind == ObjectKind.jsArray))⟩ : ExprOutcome)) = _
+    rw [ho]
+    simp only [Bind.bind, Except.bind, beq_eq_false_iff_ne.mpr hk]
+    rfl
+  have proxy : evalExpr (k + 4) (balanceProgram .ts) m f
+      (.call (.property (.local "nodeTypes") "isProxy") (.sequence (.local "initialContext") .empty)) =
+      .ok ⟨m, .ok (.bool false)⟩ := by
+    apply evalExpr_adequate (.callBuiltin (.property (.localRead hn)
+      (by simpa only [balanceProgram_lang] using hnRead))
+      (.cons (.localRead hp) .empty) (by decide) ?_) (by omega)
+    rw [balanceProgram_lang]
+    change (do let current ← objectAt m ref
+               pure (⟨m, .ok (.bool current.proxy)⟩ : ExprOutcome)) = _
+    rw [ho]
+    simp only [Bind.bind, Except.bind, hproxy]
+    rfl
+  have first : evalExpr (k + 4) (balanceProgram .ts) m f
+      (.orElse (.binary .strictNe (.unary .typeof (.local "initialContext")) (.string "object"))
+        (.call (.property (.local "Array") "isArray") (.sequence (.local "initialContext") .empty))) =
+      .ok ⟨m, .ok (.bool false)⟩ := by
+    rw [evalExpr, typ]
+    simpa only [Bind.bind, Except.bind, sourceTruthy, Bool.false_eq_true, if_false] using arr
+  unfold resetTsPlainGuardExpr
+  rw [evalExpr, first]
+  simpa only [Bind.bind, Except.bind, sourceTruthy, Bool.false_eq_true, if_false] using proxy
+
+theorem balanceReset_ts_plain_guard_skip {m f ref object array node k}
+    (hp : localValue m f "initialContext" = .ok (.object ref))
+    (ha : localValue m f "Array" = .ok (.object array))
+    (haRead : readPropertyValue .ts m (.object array) "isArray" =
+      .ok ⟨m, .ok (.builtin .arrayIsArray)⟩)
+    (hn : localValue m f "nodeTypes" = .ok (.object node))
+    (hnRead : readPropertyValue .ts m (.object node) "isProxy" =
+      .ok ⟨m, .ok (.builtin .nodeIsProxy)⟩)
+    (ho : objectAt m ref = .ok object) (hk : object.kind ≠ .jsArray)
+    (hproxy : object.proxy = false) :
+    execStmt (k + 7) (balanceProgram .ts) m f
+      (ifNoStmt (balanceResetMiddleStmt .ts 2)) =
+    execStmt (k + 6) (balanceProgram .ts) m f
+      (restStmt (ifNoStmt (balanceResetMiddleStmt .ts 2))) := by
+  have head : execStmt (k + 6) (balanceProgram .ts) m f
+      (firstStmt (ifNoStmt (balanceResetMiddleStmt .ts 2))) = .ok ⟨m, f, .normal⟩ := by
+    rw [balanceReset_ts_plain_guard_shape.1,
+      execIf_of_false (resetTsPlainGuard_execute hp ha haRead hn hnRead ho hk hproxy) rfl]
+    exact execStmt_adequate .empty (by omega)
+  conv => lhs; rw [balanceReset_ts_plain_guard_shape.2]
+  exact execSequence_of_normal head
+
+def resetTsPlainArrayHost : HeapObject :=
+  ⟨.jsOrdinary, some 0,
+    [("isArray", ⟨some (.builtin .arrayIsArray), none, none, true, true, true⟩)],
+    [], [], false, false⟩
+
+def resetTsPlainNodeHost : HeapObject :=
+  ⟨.jsOrdinary, some 0,
+    [("isProxy", ⟨some (.builtin .nodeIsProxy), none, none, true, true, true⟩)],
+    [], [], false, false⟩
+
+def resetTsCanonicalPlainFixedCheck : Prop :=
+  let stage := (balanceCanonicalResetStage .ts 0 3).1
+  let e := balanceResetMiddleEntry .ts 0
+  let seed := (balancePreparation .ts).1.nextObject
+  stage.checkerRef = 1 ∧ stage.objectPrototype = 0 ∧
+  stage.nextObject ≠ seed ∧
+  (List.take (balanceCanonicalResetPrefixLength .ts 3) stage.objects).lookup seed = none ∧
+  localValue e.1 e.2 "initialContext" = .ok (.object seed) ∧
+  localValue e.1 e.2 "Array" = .ok (.object 4) ∧
+  localValue e.1 e.2 "nodeTypes" = .ok (.object 6) ∧
+  4 < stage.nextObject ∧ 6 < stage.nextObject ∧ 4 ≠ seed ∧ 6 ≠ seed ∧
+  objectAt stage 4 = .ok resetTsPlainArrayHost ∧
+  objectAt stage 6 = .ok resetTsPlainNodeHost
+
+instance : Decidable resetTsCanonicalPlainFixedCheck := by
+  unfold resetTsCanonicalPlainFixedCheck
+  infer_instance
+
+set_option maxRecDepth 65536 in
+set_option maxHeartbeats 10000000 in
+theorem resetTsCanonicalPlainFixedCheck_true : resetTsCanonicalPlainFixedCheck := by
+  simp only [resetTsCanonicalPlainFixedCheck,
+    balanceResetMiddleEntry, balanceResetCandidateEntry,
+    balanceCanonicalResetStage, balanceCanonicalResetEntry, balanceResetBodyEntry,
+    balancePythonResetBodyEntry, balanceConstructorBodyEntry, balanceConstructorBoundEntry,
+    balanceConstructorArgumentEntry, balanceStoredReset, balanceResetLookup, balanceStoredConstructor,
+    balanceConstructorLookup, balanceConstructorName, balancePreparation_ts_eq]
+  decide +kernel
+
+theorem balanceResetMiddleEntry_ts_seed_fixed (b : Int) :
+    objectAt (balanceResetMiddleEntry .ts b).1 (balancePreparation .ts).1.nextObject =
+      .ok (balanceHeapObject .ts (balancePreparation .ts).1 b) := by
+  obtain ⟨_, _, hne, hfront, _⟩ := resetTsCanonicalPlainFixedCheck_true
+  have footprint := balanceCanonicalResetStage_footprint .ts b 3 (by decide)
+  change (match (((balanceCanonicalResetStage .ts b 3).1.nextObject,
+      balanceHeapObject .ts (balanceCanonicalResetStage .ts b 3).1 100) ::
+      (balanceCanonicalResetStage .ts b 3).1.objects).lookup
+      (balancePreparation .ts).1.nextObject with
+      | some o => Except.ok o | none => Except.error _) = _
+  rw [footprint.1, footprint.2.2.2.2.1]
+  simp only [List.lookup_cons, beq_eq_false_iff_ne.mpr (Ne.symm hne), if_false,
+    List.lookup_append, hfront, Option.or, beq_self_eq_true, if_true]
+
+theorem resetTsPlainArrayHost_read {m : TargetMachine}
+    (hc : m.checkerRef = 1) (hp : m.objectPrototype = 0)
+    (ho : objectAt m 4 = .ok resetTsPlainArrayHost) :
+    readPropertyValue .ts m (.object 4) "isArray" = .ok ⟨m, .ok (.builtin .arrayIsArray)⟩ := by
+  simp [readPropertyValue, hc, hp, ho, resetTsPlainArrayHost,
+    readOwn, List.lookup, Bind.bind, Except.bind, Pure.pure, Except.pure]
+  rfl
+
+theorem resetTsPlainNodeHost_read {m : TargetMachine}
+    (hc : m.checkerRef = 1) (hp : m.objectPrototype = 0)
+    (ho : objectAt m 6 = .ok resetTsPlainNodeHost) :
+    readPropertyValue .ts m (.object 6) "isProxy" = .ok ⟨m, .ok (.builtin .nodeIsProxy)⟩ := by
+  simp [readPropertyValue, hc, hp, ho, resetTsPlainNodeHost,
+    readOwn, List.lookup, Bind.bind, Except.bind, Pure.pure, Except.pure]
+  rfl
+
+theorem balanceReset_ts_canonical_plain_guard_skip (b : Int) (k : Nat) :
+    let e := balanceResetMiddleEntry .ts b
+    execStmt (k + 7) (balanceProgram .ts) e.1 e.2
+      (ifNoStmt (balanceResetMiddleStmt .ts 2)) =
+    execStmt (k + 6) (balanceProgram .ts) e.1 e.2
+      (restStmt (ifNoStmt (balanceResetMiddleStmt .ts 2))) := by
+  obtain ⟨hc, hp, _, _, hseed, harr, hnode, h4, h6, hn4, hn6, ho4, ho6⟩ :=
+    resetTsCanonicalPlainFixedCheck_true
+  let e := balanceResetMiddleEntry .ts b
+  have footprint := balanceCanonicalResetStage_footprint .ts b 3 (by decide)
+  have checker : e.1.checkerRef = 1 := by
+    change (balanceCanonicalResetStage .ts b 3).1.checkerRef = 1
+    rw [footprint.2.2.2.2.2.2.1]; exact hc
+  have proto : e.1.objectPrototype = 0 := by
+    change (balanceCanonicalResetStage .ts b 3).1.objectPrototype = 0
+    rw [footprint.2.2.2.2.2.1]; exact hp
+  have objectOther (ref : ObjRef)
+      (hf : ref < (balanceCanonicalResetStage .ts 0 3).1.nextObject)
+      (hs : ref ≠ (balancePreparation .ts).1.nextObject) :
+      objectAt e.1 ref = objectAt (balanceCanonicalResetStage .ts 0 3).1 ref := by
+    change objectAt (balanceResetMiddleEntry .ts b).1 ref = _
+    rw [balanceResetMiddleEntry_model, resetCandidateMiddleModel_objectAt_other]
+    · exact balanceCanonicalResetStage_objectAt .ts b 3 (by decide) ref hs
+    · rw [footprint.2.2.2.2.1]; exact Nat.ne_of_lt hf
+  have arrayObject : objectAt e.1 4 = .ok resetTsPlainArrayHost :=
+    (objectOther 4 h4 hn4).trans ho4
+  have nodeObject : objectAt e.1 6 = .ok resetTsPlainNodeHost :=
+    (objectOther 6 h6 hn6).trans ho6
+  apply balanceReset_ts_plain_guard_skip
+    (ref := (balancePreparation .ts).1.nextObject)
+    (object := balanceHeapObject .ts (balancePreparation .ts).1 b)
+    (array := 4) (node := 6)
+  · exact (balanceResetMiddleEntry_localValue .ts b "initialContext").trans hseed
+  · exact (balanceResetMiddleEntry_localValue .ts b "Array").trans harr
+  · exact resetTsPlainArrayHost_read checker proto arrayObject
+  · exact (balanceResetMiddleEntry_localValue .ts b "nodeTypes").trans hnode
+  · exact resetTsPlainNodeHost_read checker proto nodeObject
+  · exact balanceResetMiddleEntry_ts_seed_fixed b
+  · exact (by decide : ObjectKind.jsOrdinary ≠ ObjectKind.jsArray)
+  · rfl
+
+
 end CanonicalResetComposition
 
 end Harmonia.Applications.Kadmos.Generated

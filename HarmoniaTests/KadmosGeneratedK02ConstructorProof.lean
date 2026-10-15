@@ -811,3 +811,52 @@ example (b : Int) (k : Nat) :
   simp only [resetPythonOverlayStringTest, evalExpr, Bind.bind, Except.bind,
     Pure.pure, Except.pure, balanceProgram_lang]
   rfl
+
+-- Execute canonical Python statement 2 for every safe signed payload. The
+-- real helper argument, fallback dict and tuple allocations remain in final.
+example (b : Int) (hb : b.natAbs ≤ 9007199254740991) (k : Nat) :
+    let e := balanceResetMiddleEntry .python b
+    execStmt (k + 25) (balanceProgram .python) e.1 e.2 (balanceResetMiddleStmt .python 2) =
+      .ok ⟨balanceOverlayUpdated .python (balanceResetPythonOverlayAfterHelper b) 79 b,
+        (balanceResetPythonOverlayBound b).2, .normal⟩ :=
+  (balanceReset_python_canonical_overlay_safe b hb k).2
+
+-- Inspect the actual candidate data after the canonical overlay, including
+-- negative safe values, separately from later nonnegative bounds validation.
+theorem resetPythonCanonicalOverlay_candidate_read (b : Int) :
+    resetCandidateBalanceRead
+      (balanceOverlayUpdated .python (balanceResetPythonOverlayAfterHelper b) 79 b)
+      (balanceResetPythonOverlayBound b).2 = .ok (some (integerValue .python b)) :=
+  balanceOverlayUpdated_candidate_read
+    (balanceReset_python_canonical_post_candidate b).1
+    (balanceReset_python_canonical_post_candidate b).2
+
+example :
+    resetCandidateBalanceRead
+      (balanceOverlayUpdated .python (balanceResetPythonOverlayAfterHelper (-9007199254740991)) 79 (-9007199254740991))
+      (balanceResetPythonOverlayBound (-9007199254740991)).2 =
+        .ok (some (integerValue .python (-9007199254740991))) :=
+  resetPythonCanonicalOverlay_candidate_read (-9007199254740991)
+
+-- Canonical TS Array/nodeTypes reads discharge the first supplied-seed guard;
+-- its remaining prototype/descriptor-copy continuation is still explicit.
+example (b : Int) (k : Nat) :
+    let e := balanceResetMiddleEntry .ts b
+    execStmt (k + 7) (balanceProgram .ts) e.1 e.2 (ifNoStmt (balanceResetMiddleStmt .ts 2)) =
+      execStmt (k + 6) (balanceProgram .ts) e.1 e.2
+        (restStmt (ifNoStmt (balanceResetMiddleStmt .ts 2))) :=
+  balanceReset_ts_canonical_plain_guard_skip b k
+
+#print axioms balanceReset_python_canonical_safe_physical
+#print axioms balanceReset_python_canonical_helper_closure
+#print axioms balanceReset_python_canonical_overlay_safe
+#print axioms resetPythonCanonicalOverlay_candidate_read
+#print axioms balanceReset_ts_canonical_plain_guard_skip
+
+example :
+    let b : Int := -9007199254740991
+    let e := balanceResetMiddleEntry .python b
+    execStmt 25 (balanceProgram .python) e.1 e.2 (balanceResetMiddleStmt .python 2) =
+      .ok ⟨balanceOverlayUpdated .python (balanceResetPythonOverlayAfterHelper b) 79 b,
+        (balanceResetPythonOverlayBound b).2, .normal⟩ :=
+  (balanceReset_python_canonical_overlay_safe (-9007199254740991) (by decide) 0).2
