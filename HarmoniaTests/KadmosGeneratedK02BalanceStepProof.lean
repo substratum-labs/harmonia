@@ -634,3 +634,63 @@ example (b : Int) (k : Nat) :
 #print axioms balanceReset_python_canonical_overlay_body_safe
 #print axioms balanceReset_python_canonical_overlay_safe
 #print axioms balanceReset_ts_canonical_plain_guard_skip
+
+-- Primitive bounds checks include both endpoints in each target language.
+example (lang : TargetLang) (m : TargetMachine) (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ 9007199254740991) :
+    binaryValue lang m .lt (integerValue lang b) (integerValue lang 0) =
+      .ok (.ok (.bool false)) ∧
+    binaryValue lang m .gt (integerValue lang b) (integerValue lang 9007199254740991) =
+      .ok (.ok (.bool false)) := resetBounds_reject_comparisons m hb
+
+-- The separate TS entries loop shifts the validation binding by one node.
+example : balanceResetMiddleStmt .ts 4 = snapshotBindStmt .ts "invalid" (resetBoundsCall .ts) ∧
+    balanceResetMiddleStmt .python 3 = snapshotBindStmt .python "invalid" (resetBoundsCall .python) :=
+  ⟨(balanceReset_validation_shapes .ts).1, (balanceReset_validation_shapes .python).1⟩
+
+example {lang m f candidate k}
+    (hv : localValue m f "candidate" = .ok (.object candidate))
+    (hs : lang = .python → localValue m f "_INITIAL" = .ok (.string "Ready")) :
+    evalArgValues (k + 3) (balanceProgram lang) m f
+      (.sequence (if lang == .ts then .string "Ready" else .local "_INITIAL")
+        (.sequence (.local "candidate") .empty)) =
+      .ok ⟨m, .ok [.string "Ready", .object candidate]⟩ :=
+  resetInvariantCall_args_execute hv hs
+
+#print axioms resetBounds_reject_comparisons
+#print axioms resetBounds_comparison_execute
+#print axioms balanceReset_validation_shapes
+
+example (b : Int) (hb : b.natAbs ≤ 9007199254740991) (k : Nat) :
+    let e := balanceResetMiddleEntry .ts b
+    execStmt (k + 27) (balanceProgram .ts) e.1 e.2
+      (.sequence (balanceResetMiddleStmt .ts 2) (balanceResetOverlayLoop .ts)) =
+      .ok ⟨balanceOverlayUpdated .ts (balanceResetTsOverlayBound b).1 23 b,
+        (balanceResetTsDescriptorEntry b).2, .normal⟩ :=
+  balanceReset_ts_canonical_overlay_safe b hb k
+
+example :
+    let b : Int := 9007199254740991
+    let e := balanceResetMiddleEntry .ts b
+    execStmt 27 (balanceProgram .ts) e.1 e.2
+      (.sequence (balanceResetMiddleStmt .ts 2) (balanceResetOverlayLoop .ts)) =
+      .ok ⟨balanceOverlayUpdated .ts (balanceResetTsOverlayBound b).1 23 b,
+        (balanceResetTsDescriptorEntry b).2, .normal⟩ :=
+  balanceReset_ts_canonical_overlay_safe (9007199254740991 : Int) (by decide) 0
+
+-- A negative safe value survives the overlay and fails the later minimum
+-- predicate; it does not acquire a constructor-success claim.
+example :
+    let final := balanceOverlayUpdated .ts (balanceResetTsOverlayBound (-1)).1 23 (-1)
+    resetCandidateBalanceRead final (balanceResetTsDescriptorEntry (-1)).2 =
+      .ok (some (integerValue .ts (-1))) ∧
+    binaryValue .ts final .lt (integerValue .ts (-1)) (integerValue .ts 0) =
+      .ok (.ok (.bool true)) :=
+  ⟨balanceReset_ts_canonical_overlay_candidate_read (-1), rfl⟩
+
+#print axioms balanceReset_ts_canonical_overlay_loop_safe
+#print axioms balanceReset_ts_canonical_overlay_safe
+#print axioms balanceReset_ts_canonical_overlay_bounded
+
+#print axioms balanceReset_ts_canonical_overlay_bounds_bind
+#print axioms balanceReset_python_canonical_overlay_bounds_bind

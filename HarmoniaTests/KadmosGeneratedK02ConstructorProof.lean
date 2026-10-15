@@ -860,3 +860,68 @@ example :
       .ok ⟨balanceOverlayUpdated .python (balanceResetPythonOverlayAfterHelper b) 79 b,
         (balanceResetPythonOverlayBound b).2, .normal⟩ :=
   (balanceReset_python_canonical_overlay_safe (-9007199254740991) (by decide) 0).2
+
+-- Bounded canonical overlay output feeds the actual primitive bounds checks.
+example (b : Int) (hb : 0 ≤ b ∧ b ≤ 9007199254740991) (k : Nat) :
+    let e := balanceResetMiddleEntry .python b
+    let final := balanceOverlayUpdated .python (balanceResetPythonOverlayAfterHelper b) 79 b
+    let ff := (balanceResetPythonOverlayBound b).2
+    execStmt (k + 25) (balanceProgram .python) e.1 e.2 (balanceResetMiddleStmt .python 2) =
+      .ok ⟨final, ff, .normal⟩ ∧
+    resetCandidateBalanceRead final ff = .ok (some (integerValue .python b)) ∧
+    binaryValue .python final .lt (integerValue .python b) (integerValue .python 0) =
+      .ok (.ok (.bool false)) ∧
+    binaryValue .python final .gt (integerValue .python b) (integerValue .python 9007199254740991) =
+      .ok (.ok (.bool false)) :=
+  balanceReset_python_canonical_overlay_bounded b hb k
+
+example (lang : TargetLang) (m : TargetMachine) :
+    binaryValue lang m .lt (integerValue lang (-1)) (integerValue lang 0) =
+      .ok (.ok (.bool true)) ∧
+    binaryValue lang m .gt (integerValue lang 9007199254740992)
+      (integerValue lang 9007199254740991) = .ok (.ok (.bool true)) := by
+  cases lang <;> exact ⟨rfl, rfl⟩
+
+#print axioms resetBoundsCall_eq_body
+#print axioms resetInvariantCall_eq_closure
+#print axioms balanceReset_validation_bind_skip
+#print axioms balanceReset_python_canonical_overlay_bounded
+
+-- The actual TS reset separates supplied-seed descriptor copying (node 2)
+-- from the entries overlay (node 3).
+example (b : Int) (k : Nat) :
+    let e := balanceResetMiddleEntry .ts b
+    let copied := balanceResetTsDescriptorEntry b
+    execStmt (k + 26) (balanceProgram .ts) e.1 e.2 (balanceResetMiddleStmt .ts 2) =
+      .ok ⟨copied.1, copied.2, .normal⟩ :=
+  balanceReset_ts_canonical_descriptor_copy_safe b k
+
+example (b : Int) (hb : b.natAbs ≤ 9007199254740991) (k : Nat) :
+    let e := balanceResetMiddleEntry .ts b
+    execStmt (k + 27) (balanceProgram .ts) e.1 e.2
+      (.sequence (balanceResetMiddleStmt .ts 2) (balanceResetOverlayLoop .ts)) =
+      .ok ⟨balanceOverlayUpdated .ts (balanceResetTsOverlayBound b).1 23 b,
+        (balanceResetTsDescriptorEntry b).2, .normal⟩ :=
+  balanceReset_ts_canonical_overlay_safe b hb k
+
+example (b : Int) :
+    resetCandidateBalanceRead
+      (balanceOverlayUpdated .ts (balanceResetTsOverlayBound b).1 23 b)
+      (balanceResetTsDescriptorEntry b).2 = .ok (some (integerValue .ts b)) :=
+  balanceReset_ts_canonical_overlay_candidate_read b
+
+example :
+    let b : Int := -9007199254740991
+    let e := balanceResetMiddleEntry .ts b
+    execStmt 27 (balanceProgram .ts) e.1 e.2
+      (.sequence (balanceResetMiddleStmt .ts 2) (balanceResetOverlayLoop .ts)) =
+      .ok ⟨balanceOverlayUpdated .ts (balanceResetTsOverlayBound b).1 23 b,
+        (balanceResetTsDescriptorEntry b).2, .normal⟩ :=
+  balanceReset_ts_canonical_overlay_safe (-9007199254740991) (by decide) 0
+
+#print axioms balanceReset_ts_canonical_descriptor_copy_safe
+#print axioms balanceReset_ts_canonical_overlay_safe
+#print axioms balanceReset_ts_canonical_overlay_candidate_read
+
+#print axioms balanceReset_ts_canonical_overlay_bounds_bind
+#print axioms balanceReset_python_canonical_overlay_bounds_bind

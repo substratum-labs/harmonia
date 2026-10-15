@@ -5804,6 +5804,1981 @@ theorem balanceReset_ts_canonical_plain_guard_skip (b : Int) (k : Nat) :
   · rfl
 
 
+section Batch14CanonicalTsOverlay
+set_option maxRecDepth 65536
+set_option maxHeartbeats 10000000
+
+
+def resetTsDescriptorObject (m : TargetMachine) (b : Int) : HeapObject :=
+  ⟨.jsOrdinary, some m.objectPrototype,
+    [("value", ⟨some (integerValue .ts b), none, none, true, true, true⟩),
+     ("get", ⟨some .undefined, none, none, true, true, true⟩),
+     ("set", ⟨some .undefined, none, none, true, true, true⟩),
+     ("enumerable", ⟨some (.bool true), none, none, true, true, true⟩),
+     ("writable", ⟨some (.bool true), none, none, true, true, true⟩),
+     ("configurable", ⟨some (.bool true), none, none, true, true, true⟩)],
+    [], [], false, false⟩
+
+def resetTsDescriptorMap (m : TargetMachine) : HeapObject :=
+  ⟨.jsOrdinary, some m.objectPrototype,
+    [("balance", ⟨some (.object (m.nextObject + 1)), none, none, true, true, true⟩)],
+    [], [], false, false⟩
+
+def resetTsDescriptorsMachine (m : TargetMachine) (b : Int) : TargetMachine :=
+  let blank : HeapObject := ⟨.jsOrdinary, some m.objectPrototype, [], [], [], false, false⟩
+  let entry := (allocObject (allocObject m blank).1 (resetTsDescriptorObject m b)).1
+  { entry with objects := entry.objects.map (fun pair =>
+    (pair.1, if pair.1 == m.nextObject then resetTsDescriptorMap m else pair.2)) }
+
+set_option maxHeartbeats 10000000 in
+theorem resetTsDescriptors_execute {m ref b}
+    (ho : objectAt m ref = .ok (balanceHeapObject .ts m b)) :
+    hostCall .ts m .objectOwnDescriptors none [.object ref] =
+      .ok ⟨resetTsDescriptorsMachine m b, .ok (.object m.nextObject)⟩ := by
+  change (do
+    let obj ← objectAt m ref
+    let (withResult, resultRef) := allocObject m
+      (⟨.jsOrdinary, some m.objectPrototype, [], [], [], false, false⟩ : HeapObject)
+    let mut current := withResult
+    for (key, descriptor) in obj.own do
+      let (withEntry, entryRef) := allocObject current
+        (⟨.jsOrdinary, some current.objectPrototype,
+          [("value", ⟨some (descriptor.value.getD .undefined), none, none, true, true, true⟩),
+           ("get", ⟨some (descriptor.get.map TargetValue.closure |>.getD .undefined), none, none, true, true, true⟩),
+           ("set", ⟨some (descriptor.set.map TargetValue.closure |>.getD .undefined), none, none, true, true, true⟩),
+           ("enumerable", ⟨some (.bool descriptor.enumerable), none, none, true, true, true⟩),
+           ("writable", ⟨some (.bool descriptor.writable), none, none, true, true, true⟩),
+           ("configurable", ⟨some (.bool descriptor.configurable), none, none, true, true, true⟩)],
+          [], [], false, false⟩ : HeapObject)
+      current ← writeOwn withEntry resultRef key (.object entryRef)
+    pure (⟨current, .ok (.object resultRef)⟩ : ExprOutcome)) = _
+  rw [ho]
+  have h : m.nextObject + 1 ≠ m.nextObject := Nat.ne_of_gt (Nat.lt_succ_self _)
+  simp only [balanceHeapObject, balanceDataDescriptor, resetTsDescriptorsMachine,
+    resetTsDescriptorObject, resetTsDescriptorMap, allocObject, writeOwn, objectAt,
+    replaceObject, List.lookup, beq_eq_false_iff_ne.mpr h, beq_eq_false_iff_ne.mpr (Ne.symm h),
+    List.forIn_cons, List.forIn_nil, Bind.bind, Except.bind, Pure.pure, Except.pure,
+    List.lookup_cons, List.map_cons, List.map_nil, List.append_nil, beq_self_eq_true,
+    Bool.false_eq_true, Bool.true_eq_false, if_false, if_true, Option.getD, Option.map_none,
+    List.lookup_nil, Bool.false_or, Bool.or_false, Bool.not_false, Bool.not_true,
+    or_false, false_or, reduceCtorEq, List.any_nil,
+    Option.isNone, String.reduceBEq, dite_false, dite_true]
+  rfl
+
+
+def resetTsDescriptorPairBound (m : TargetMachine) (f : TargetFrame)
+    (descriptor : TargetValue) : TargetMachine × TargetFrame :=
+  let named := allocCell m (.string "balance") false
+  let valued := allocCell named.1 descriptor false
+  (valued.1, { f with locals := ("descriptor", named.1.nextCell) :: ("name", m.nextCell) :: f.locals })
+
+def resetTsDefineLiteral (m : TargetMachine) (b : Int) : HeapObject :=
+  ⟨.jsOrdinary, some m.objectPrototype,
+    [("value", ⟨some (integerValue .ts b), none, none, true, true, true⟩),
+     ("enumerable", ⟨some (.bool true), none, none, true, true, true⟩),
+     ("writable", ⟨some (.bool true), none, none, true, true, true⟩),
+     ("configurable", ⟨some (.bool true), none, none, true, true, true⟩)], [], [], false, false⟩
+
+/-- Physical allocation/cell-write model for the supplied-seed TS descriptor copy. -/
+def resetTsDescriptorCopyModel (m : TargetMachine) (f : TargetFrame) (b : Int)
+    (overridesCell : CellRef) : TargetMachine × TargetFrame :=
+  let proto := snapshotBound .ts m f "proto" (.object m.objectPrototype)
+  let descriptors := resetTsDescriptorsMachine proto.1 b
+  let bound := snapshotBound .ts descriptors proto.2 "descriptors" (.object m.nextObject)
+  let overrides := allocObject bound.1
+    (⟨.jsOrdinary, some m.objectPrototype, [], [], [], false, false⟩ : HeapObject)
+  let written := { overrides.1 with cells := overrides.1.cells.map (fun pair =>
+    (pair.1, if pair.1 == overridesCell then TargetValue.object overrides.2 else pair.2)) }
+  let iterated := oneEntryMachine .ts written "balance" (.object (m.nextObject + 1))
+  let pair := resetTsDescriptorPairBound iterated bound.2 (.object (m.nextObject + 1))
+  let literal := (allocObject pair.1 (resetTsDefineLiteral pair.1 b)).1
+  let final := { literal with objects := literal.objects.map (fun entry =>
+    (entry.1, if entry.1 == overrides.2 then balanceHeapObject .ts m b else entry.2)) }
+  (final, bound.2)
+
+
+
+def resetTsOwnDescriptorsExpr : TargetExpr :=
+  .call (.property (.local "Object") "getOwnPropertyDescriptors")
+    (.sequence (.local "initialContext") .empty)
+
+theorem resetTsOwnDescriptorsExpr_execute {m f ref object b k}
+    (hg : localValue m f "Object" = .ok (.object object))
+    (hc : readPropertyValue .ts m (.object object) "getOwnPropertyDescriptors" =
+      .ok ⟨m, .ok (.builtin .objectOwnDescriptors)⟩)
+    (hr : localValue m f "initialContext" = .ok (.object ref))
+    (ho : objectAt m ref = .ok (balanceHeapObject .ts m b)) :
+    evalExpr (k + 4) (balanceProgram .ts) m f resetTsOwnDescriptorsExpr =
+      .ok ⟨resetTsDescriptorsMachine m b, .ok (.object m.nextObject)⟩ := by
+  apply evalExpr_adequate (.callBuiltin (.property (.localRead hg)
+    (by simpa only [balanceProgram_lang] using hc))
+    (.cons (.localRead hr) .empty) (by decide) ?_) (by omega)
+  simpa only [balanceProgram_lang] using resetTsDescriptors_execute ho
+
+
+def resetTsProtoExpr : TargetExpr :=
+  .call (.property (.local "Object") "getPrototypeOf")
+    (.sequence (.local "initialContext") .empty)
+
+theorem resetTsProtoExpr_execute {m f ref object b k}
+    (hg : localValue m f "Object" = .ok (.object object))
+    (hc : readPropertyValue .ts m (.object object) "getPrototypeOf" =
+      .ok ⟨m, .ok (.builtin .objectGetPrototypeOf)⟩)
+    (hr : localValue m f "initialContext" = .ok (.object ref))
+    (ho : objectAt m ref = .ok (balanceHeapObject .ts m b)) :
+    evalExpr (k + 4) (balanceProgram .ts) m f resetTsProtoExpr =
+      .ok ⟨m, .ok (.object m.objectPrototype)⟩ := by
+  apply evalExpr_adequate (.callBuiltin (.property (.localRead hg)
+    (by simpa only [balanceProgram_lang] using hc))
+    (.cons (.localRead hr) .empty) (by decide) ?_) (by omega)
+  rw [balanceProgram_lang]
+  change (do let object ← objectAt m ref
+             pure (⟨m, .ok (object.prototype.map TargetValue.object |>.getD .null)⟩ : ExprOutcome)) = _
+  rw [ho]
+  rfl
+
+def resetTsProtoGuard : TargetExpr :=
+  .andThen
+    (.binary .strictNe (.local "proto") (.property (.local "Object") "prototype"))
+    (.binary .strictNe (.local "proto") .null)
+
+theorem resetTsProtoGuard_execute {m f object k}
+    (hg : localValue m f "Object" = .ok (.object object))
+    (hc : readPropertyValue .ts m (.object object) "prototype" =
+      .ok ⟨m, .ok (.object m.objectPrototype)⟩)
+    (hp : localValue m f "proto" = .ok (.object m.objectPrototype)) :
+    evalExpr (k + 4) (balanceProgram .ts) m f resetTsProtoGuard =
+      .ok ⟨m, .ok (.bool false)⟩ := by
+  have left : DepthDerivesExpr (balanceProgram .ts) m f
+      (.binary .strictNe (.local "proto") (.property (.local "Object") "prototype"))
+      ⟨m, .ok (.bool false)⟩ 2 :=
+    .binary (by decide) (.localRead hp) (.property (.localRead hg)
+      (by simpa only [balanceProgram_lang] using hc)) (by
+        simp [balanceProgram_lang, binaryValue])
+  change evalExpr (k + 4) _ _ _ (.andThen _ _) = _
+  rw [evalExpr, evalExpr_adequate left (by omega)]
+  rfl
+
+
+set_option maxRecDepth 65536 in
+set_option maxHeartbeats 10000000 in
+theorem balanceReset_ts_descriptor_prefix_shape :
+    firstStmt (restStmt (ifNoStmt (balanceResetMiddleStmt .ts 2))) =
+      .letLocal "proto" false resetTsProtoExpr ∧
+    firstStmt (restStmt (restStmt (ifNoStmt (balanceResetMiddleStmt .ts 2)))) =
+      .ifThenElse resetTsProtoGuard
+        (ifYesStmt (firstStmt (restStmt (restStmt (ifNoStmt (balanceResetMiddleStmt .ts 2)))))) .empty ∧
+    firstStmt (restStmt (restStmt (restStmt (ifNoStmt (balanceResetMiddleStmt .ts 2))))) =
+      .letLocal "descriptors" false resetTsOwnDescriptorsExpr := by
+  simp only [balanceResetMiddleStmt, balanceResetProtected, balanceResetSnapshots,
+    balanceStoredReset, balanceResetLookup, balancePreparation_ts_eq]
+  decide +kernel
+
+
+theorem resetTsLiteral_writeOwn {m object key value}
+    (hf : ∀ e ∈ m.objects, e.1 ≠ m.nextObject)
+    (hk : object.own.lookup key = none) (hfr : object.frozen = false)
+    (hkind : object.kind ≠ .mappingProxy) :
+    writeOwn (allocObject m object).1 m.nextObject key value =
+      .ok (allocObject m {object with own := object.own ++
+        [(key, ⟨some value, none, none, true, true, true⟩)]}).1 := by
+  simp [writeOwn, objectAt_allocObject_fresh, hk, hfr,
+    beq_eq_false_iff_ne.mpr hkind, replaceObject_allocObject hf,
+    Bind.bind, Except.bind, Pure.pure, Except.pure]
+
+def resetTsDefineFields : TargetExpr :=
+  .objectEntry "value" (.property (.local "descriptor") "value")
+    (.objectEntry "enumerable" (.bool true)
+      (.objectEntry "writable" (.bool true) (.objectEntry "configurable" (.bool true) .empty)))
+
+theorem resetTsDefineLiteral_execute {m f b k}
+    (hf : ∀ e ∈ m.objects, e.1 ≠ m.nextObject)
+    (he : DepthDerivesExpr (balanceProgram .ts) (allocObject m (literalObject .ts m)).1 f
+      (.property (.local "descriptor") "value")
+      ⟨(allocObject m (literalObject .ts m)).1, .ok (integerValue .ts b)⟩ 1) :
+    evalExpr (k + 6) (balanceProgram .ts) m f (.object resetTsDefineFields) =
+      .ok ⟨(allocObject m (resetTsDefineLiteral m b)).1, .ok (.object m.nextObject)⟩ := by
+  apply evalExpr_adequate (.objectFields (rank := 4) ?_) (by omega)
+  rw [balanceProgram_lang]
+  unfold resetTsDefineFields
+  apply DepthDerivesFields.entry (rf := 3) he (resetTsLiteral_writeOwn hf rfl rfl (by simp [literalObject]))
+  apply DepthDerivesFields.entry (rf := 2) (.bool true) (resetTsLiteral_writeOwn hf rfl rfl (by simp [literalObject]))
+  apply DepthDerivesFields.entry (rf := 1) (.bool true) (resetTsLiteral_writeOwn hf rfl rfl (by simp [literalObject]))
+  apply DepthDerivesFields.entry (rf := 0) (.bool true) (resetTsLiteral_writeOwn hf rfl rfl (by simp [literalObject]))
+  exact .empty
+
+
+theorem resetTsDefineProperty_execute {m target descriptor b}
+    (ht : objectAt m target = .ok (literalObject .ts m))
+    (hd : objectAt m descriptor = .ok (resetTsDefineLiteral m b)) :
+    hostCall .ts m .objectDefineProperty none [.object target, .string "balance", .object descriptor] =
+      .ok ⟨{ m with objects := m.objects.map (fun entry =>
+        (entry.1, if entry.1 == target then balanceHeapObject .ts m b else entry.2)) },
+        .ok (.object target)⟩ := by
+  change (do
+    let object ← objectAt m target
+    if object.frozen then pure (⟨m, .error (.exception "TypeError" "frozen target")⟩ : ExprOutcome) else do
+      let valueDescriptor ← readOwn m descriptor "value"
+      let value ← match valueDescriptor with
+        | some entry => match entry.value with
+          | some v => .ok v
+          | none => .error .badDescriptor
+        | none => .error .badDescriptor
+      let flag (name : String) : Except TargetError Bool := do
+        match ← readOwn m descriptor name with
+        | some entry => match entry.value with
+          | some (TargetValue.bool b) => pure b
+          | _ => throw TargetError.badDescriptor
+        | none => pure false
+      let newDescriptor : Descriptor :=
+        ⟨some value, none, none, ← flag "enumerable", ← flag "writable", ← flag "configurable"⟩
+      let own := if object.own.any (fun (entry : String × Descriptor) => entry.1 == "balance") then
+        object.own.map (fun (entry : String × Descriptor) => if entry.1 == "balance" then ("balance", newDescriptor) else entry)
+        else object.own ++ [("balance", newDescriptor)]
+      let updated ← replaceObject m target {object with own := own}
+      pure (⟨updated, .ok (.object target)⟩ : ExprOutcome)) = _
+  simp [ht, hd, literalObject, resetTsDefineLiteral, balanceHeapObject,
+    balanceDataDescriptor, readOwn, replaceObject,
+    Bind.bind, Except.bind, Pure.pure, Except.pure, List.lookup]
+
+
+def resetTsDescriptorDataGuard : TargetExpr :=
+  .unary .not (.binary .inObject (.string "value") (.local "descriptor"))
+
+theorem resetTsDescriptorDataGuard_execute {m f descriptor b k}
+    (hr : localValue m f "descriptor" = .ok (.object descriptor))
+    (ho : objectAt m descriptor = .ok (resetTsDescriptorObject m b)) :
+    evalExpr (k + 3) (balanceProgram .ts) m f resetTsDescriptorDataGuard =
+      .ok ⟨m, .ok (.bool false)⟩ := by
+  have inner : DepthDerivesExpr (balanceProgram .ts) m f
+      (.binary .inObject (.string "value") (.local "descriptor"))
+      ⟨m, .ok (.bool true)⟩ 1 :=
+    .binary (by decide) (.string "value") (.localRead hr) (by
+      simp [balanceProgram_lang, binaryValue, ho, resetTsDescriptorObject,
+        Bind.bind, Except.bind, Pure.pure, Except.pure, List.lookup])
+  change evalExpr (k + 3) _ _ _ (.unary .not _) = _
+  rw [evalExpr, evalExpr_adequate inner (by omega)]
+  rfl
+
+def resetTsDefineExpr : TargetExpr :=
+  .call (.property (.local "Object") "defineProperty")
+    (.sequence (.local "overrides") (.sequence (.local "name")
+      (.sequence (.object resetTsDefineFields) .empty)))
+
+theorem resetTsDefineExpr_execute {m f object target b k}
+    (hg : localValue m f "Object" = .ok (.object object))
+    (hc : readPropertyValue .ts m (.object object) "defineProperty" =
+      .ok ⟨m, .ok (.builtin .objectDefineProperty)⟩)
+    (ht : localValue m f "overrides" = .ok (.object target))
+    (hn : localValue m f "name" = .ok (.string "balance"))
+    (hf : ∀ e ∈ m.objects, e.1 ≠ m.nextObject)
+    (he : DepthDerivesExpr (balanceProgram .ts) (allocObject m (literalObject .ts m)).1 f
+      (.property (.local "descriptor") "value")
+      ⟨(allocObject m (literalObject .ts m)).1, .ok (integerValue .ts b)⟩ 1)
+    (ho : objectAt (allocObject m (resetTsDefineLiteral m b)).1 target =
+      .ok (literalObject .ts (allocObject m (resetTsDefineLiteral m b)).1)) :
+    evalExpr (k + 10) (balanceProgram .ts) m f resetTsDefineExpr =
+      .ok ⟨{ (allocObject m (resetTsDefineLiteral m b)).1 with
+        objects := (allocObject m (resetTsDefineLiteral m b)).1.objects.map (fun entry =>
+          (entry.1, if entry.1 == target then balanceHeapObject .ts m b else entry.2)) },
+        .ok (.object target)⟩ := by
+  have hcallee : evalExpr (k + 9) (balanceProgram .ts) m f
+      (.property (.local "Object") "defineProperty") =
+      .ok ⟨m, .ok (.builtin .objectDefineProperty)⟩ :=
+    evalExpr_adequate (.property (.localRead hg) (by simpa only [balanceProgram_lang] using hc)) (by omega)
+  have hov : evalExpr (k + 8) (balanceProgram .ts) m f (.local "overrides") =
+      .ok ⟨m, .ok (.object target)⟩ := evalExpr_adequate (.localRead ht) (by omega)
+  have hname : evalExpr (k + 7) (balanceProgram .ts) m f (.local "name") =
+      .ok ⟨m, .ok (.string "balance")⟩ := evalExpr_adequate (.localRead hn) (by omega)
+  have hhost := resetTsDefineProperty_execute ho (b := b)
+    (by exact objectAt_allocObject_fresh _ _)
+  change evalExpr (k + 10) _ _ _ (.call _ _) = _
+  rw [evalExpr, hcallee]
+  simp only [Bind.bind, Except.bind]
+  rw [evalArgValues]
+  simp only [hov, Bind.bind, Except.bind]
+  rw [evalArgValues]
+  simp only [hname, Bind.bind, Except.bind]
+  rw [evalArgValues, resetTsDefineLiteral_execute hf he]
+  simp only [Bind.bind, Except.bind]
+  rw [evalArgValues]
+  simpa only [balanceProgram_lang, Bind.bind, Except.bind, Pure.pure, Except.pure] using hhost
+
+
+def resetTsDescriptorCopyBody (bad : TargetStmt) : TargetStmt :=
+  .sequence (.ifThenElse resetTsDescriptorDataGuard bad .empty)
+    (.sequence (.doExpr resetTsDefineExpr) .empty)
+
+theorem resetTsDescriptorCopyBody_execute {m f object target descriptor b k bad}
+    (hg : localValue m f "Object" = .ok (.object object))
+    (hc : readPropertyValue .ts m (.object object) "defineProperty" =
+      .ok ⟨m, .ok (.builtin .objectDefineProperty)⟩)
+    (ht : localValue m f "overrides" = .ok (.object target))
+    (hn : localValue m f "name" = .ok (.string "balance"))
+    (hr : localValue m f "descriptor" = .ok (.object descriptor))
+    (hd : objectAt m descriptor = .ok (resetTsDescriptorObject m b))
+    (hf : ∀ e ∈ m.objects, e.1 ≠ m.nextObject)
+    (he : DepthDerivesExpr (balanceProgram .ts) (allocObject m (literalObject .ts m)).1 f
+      (.property (.local "descriptor") "value")
+      ⟨(allocObject m (literalObject .ts m)).1, .ok (integerValue .ts b)⟩ 1)
+    (ho : objectAt (allocObject m (resetTsDefineLiteral m b)).1 target =
+      .ok (literalObject .ts (allocObject m (resetTsDefineLiteral m b)).1)) :
+    execStmt (k + 14) (balanceProgram .ts) m f (resetTsDescriptorCopyBody bad) =
+      .ok ⟨{ (allocObject m (resetTsDefineLiteral m b)).1 with
+        objects := (allocObject m (resetTsDefineLiteral m b)).1.objects.map (fun entry =>
+          (entry.1, if entry.1 == target then balanceHeapObject .ts m b else entry.2)) }, f, .normal⟩ := by
+  have hguard : execStmt (k + 13) (balanceProgram .ts) m f
+      (.ifThenElse resetTsDescriptorDataGuard bad .empty) = .ok ⟨m, f, .normal⟩ := by
+    rw [execIf_of_false (resetTsDescriptorDataGuard_execute (k := k + 9) hr hd) rfl]
+    exact execStmt_adequate .empty (by omega)
+  have hcall : execStmt (k + 12) (balanceProgram .ts) m f (.doExpr resetTsDefineExpr) =
+      .ok ⟨{ (allocObject m (resetTsDefineLiteral m b)).1 with
+        objects := (allocObject m (resetTsDefineLiteral m b)).1.objects.map (fun entry =>
+          (entry.1, if entry.1 == target then balanceHeapObject .ts m b else entry.2)) }, f, .normal⟩ := by
+    rw [execStmt, resetTsDefineExpr_execute (k := k + 1) hg hc ht hn hf he ho]
+    rfl
+  unfold resetTsDescriptorCopyBody
+  rw [execSequence_of_normal hguard, execSequence_of_normal hcall]
+  exact execStmt_adequate .empty (by omega)
+
+
+def resetTsCopyProtoEntry (m : TargetMachine) (f : TargetFrame) : TargetMachine × TargetFrame :=
+  snapshotBound .ts m f "proto" (.object m.objectPrototype)
+
+def resetTsCopyDescriptorEntry (m : TargetMachine) (f : TargetFrame) (b : Int) :
+    TargetMachine × TargetFrame :=
+  let p := resetTsCopyProtoEntry m f
+  snapshotBound .ts (resetTsDescriptorsMachine p.1 b) p.2 "descriptors" (.object m.nextObject)
+
+def resetTsCopyOverridesEntry (m : TargetMachine) (f : TargetFrame) (b : Int) (cell : CellRef) :
+    TargetMachine × TargetFrame :=
+  let d := resetTsCopyDescriptorEntry m f b
+  let overrides := allocObject d.1 (literalObject .ts d.1)
+  ({ overrides.1 with cells := overrides.1.cells.map (fun pair =>
+    (pair.1, if pair.1 == cell then TargetValue.object overrides.2 else pair.2)) }, d.2)
+
+def resetTsCopyIterationEntry (m : TargetMachine) (f : TargetFrame) (b : Int) (cell : CellRef) :
+    TargetMachine × TargetFrame :=
+  let o := resetTsCopyOverridesEntry m f b cell
+  (oneEntryMachine .ts o.1 "balance" (.object (m.nextObject + 1)), o.2)
+
+def resetTsCopyBoundEntry (m : TargetMachine) (f : TargetFrame) (b : Int) (cell : CellRef) :
+    TargetMachine × TargetFrame :=
+  let i := resetTsCopyIterationEntry m f b cell
+  resetTsDescriptorPairBound i.1 i.2 (.object (m.nextObject + 1))
+
+def resetTsCopyPlainError : TargetStmt :=
+  .throwValue (.newExpr (.call (.local "Error")
+    (.sequence (.string "INVALID_BOUNDS: initial context must be a plain object") .empty)))
+
+def resetTsCopyAccessorError : TargetStmt :=
+  .throwValue (.newExpr (.call (.local "Error")
+    (.sequence (.string "INVALID_BOUNDS: accessor") .empty)))
+
+def resetTsDescriptorContinuation : TargetStmt :=
+  .sequence (.letLocal "proto" false resetTsProtoExpr)
+    (.sequence (.ifThenElse resetTsProtoGuard resetTsCopyPlainError .empty)
+      (.sequence (.letLocal "descriptors" false resetTsOwnDescriptorsExpr)
+        (.sequence (.assign (.local "overrides") (.object .empty))
+          (.sequence (.forDo ["name", "descriptor"]
+            (.call (.property (.local "Object") "entries")
+              (.sequence (.local "descriptors") .empty))
+            (resetTsDescriptorCopyBody resetTsCopyAccessorError)) .empty))))
+
+set_option maxRecDepth 65536 in
+set_option maxHeartbeats 10000000 in
+theorem balanceReset_ts_descriptor_continuation_shape :
+    restStmt (ifNoStmt (balanceResetMiddleStmt .ts 2)) = resetTsDescriptorContinuation := by
+  simp only [balanceResetMiddleStmt, balanceResetProtected, balanceResetSnapshots,
+    balanceStoredReset, balanceResetLookup, balancePreparation_ts_eq]
+  decide +kernel
+
+
+structure ResetTsDescriptorCopyPhysical (m : TargetMachine) (f : TargetFrame) (b : Int) (cell : CellRef) : Prop where
+  proto : ∀ k, evalExpr (k + 4) (balanceProgram .ts) m f resetTsProtoExpr =
+    .ok ⟨m, .ok (.object m.objectPrototype)⟩
+  guard : ∀ k, let p := resetTsCopyProtoEntry m f
+    evalExpr (k + 4) (balanceProgram .ts) p.1 p.2 resetTsProtoGuard = .ok ⟨p.1, .ok (.bool false)⟩
+  descriptors : ∀ k, let p := resetTsCopyProtoEntry m f
+    evalExpr (k + 4) (balanceProgram .ts) p.1 p.2 resetTsOwnDescriptorsExpr =
+      .ok ⟨resetTsDescriptorsMachine p.1 b, .ok (.object m.nextObject)⟩
+  address : let d := resetTsCopyDescriptorEntry m f b
+    snapshotAddress d.1 d.2 "overrides" = some cell
+  write : let d := resetTsCopyDescriptorEntry m f b
+    let allocated := (allocObject d.1 (literalObject .ts d.1)).1
+    writeCell allocated cell (.object d.1.nextObject) =
+      .ok (resetTsCopyOverridesEntry m f b cell).1
+  entries : ∀ k, let o := resetTsCopyOverridesEntry m f b cell
+    evalExpr (k + 4) (balanceProgram .ts) o.1 o.2
+      (.call (.property (.local "Object") "entries") (.sequence (.local "descriptors") .empty)) =
+      .ok ⟨(resetTsCopyIterationEntry m f b cell).1, .ok (.object (o.1.nextObject + 1))⟩
+  list : let o := resetTsCopyOverridesEntry m f b cell
+    let i := resetTsCopyIterationEntry m f b cell
+    objectAt i.1 (o.1.nextObject + 1) = .ok (oneEntryItems .ts o.1)
+  pair : let o := resetTsCopyOverridesEntry m f b cell
+    let i := resetTsCopyIterationEntry m f b cell
+    objectAt i.1 o.1.nextObject = .ok (oneEntryPair .ts o.1 "balance" (.object (m.nextObject + 1)))
+  body : ∀ k, let e := resetTsCopyBoundEntry m f b cell
+    execStmt (k + 14) (balanceProgram .ts) e.1 e.2 (resetTsDescriptorCopyBody resetTsCopyAccessorError) =
+      .ok ⟨(resetTsDescriptorCopyModel m f b cell).1, e.2, .normal⟩
+
+/-- Exact real-AST continuation, with the closed host/heap obligations isolated. -/
+theorem resetTsDescriptorContinuation_execute {m f b cell k}
+    (h : ResetTsDescriptorCopyPhysical m f b cell) :
+    execStmt (k + 24) (balanceProgram .ts) m f
+      (restStmt (ifNoStmt (balanceResetMiddleStmt .ts 2))) =
+      .ok ⟨(resetTsDescriptorCopyModel m f b cell).1,
+        (resetTsDescriptorCopyModel m f b cell).2, .normal⟩ := by
+  let p := resetTsCopyProtoEntry m f
+  let d := resetTsCopyDescriptorEntry m f b
+  let o := resetTsCopyOverridesEntry m f b cell
+  let i := resetTsCopyIterationEntry m f b cell
+  let bound := resetTsCopyBoundEntry m f b cell
+  have proto : execStmt (k + 23) (balanceProgram .ts) m f (.letLocal "proto" false resetTsProtoExpr) =
+      .ok ⟨p.1, p.2, .normal⟩ := by
+    exact execSnapshotBind (lang := .ts) (name := "proto") (h.proto (k + 18)) (by intro h; cases h)
+  have guard : execStmt (k + 22) (balanceProgram .ts) p.1 p.2
+      (.ifThenElse resetTsProtoGuard resetTsCopyPlainError .empty) = .ok ⟨p.1, p.2, .normal⟩ := by
+    rw [execIf_of_false (h.guard (k + 17)) rfl]
+    exact execStmt_adequate .empty (by omega)
+  have descriptors : execStmt (k + 21) (balanceProgram .ts) p.1 p.2
+      (.letLocal "descriptors" false resetTsOwnDescriptorsExpr) = .ok ⟨d.1, d.2, .normal⟩ := by
+    exact execSnapshotBind (lang := .ts) (name := "descriptors") (h.descriptors (k + 16)) (by intro h; cases h)
+  have assigned : execStmt (k + 20) (balanceProgram .ts) d.1 d.2
+      (.assign (.local "overrides") (.object .empty)) = .ok ⟨o.1, o.2, .normal⟩ := by
+    exact execStmt_adequate (.assignLocal (.objectEmpty)
+      h.address (by simpa only [balanceProgram_lang] using h.write)) (by omega)
+  have loop : execStmt (k + 19) (balanceProgram .ts) o.1 o.2
+      (.forDo ["name", "descriptor"]
+        (.call (.property (.local "Object") "entries") (.sequence (.local "descriptors") .empty))
+        (resetTsDescriptorCopyBody resetTsCopyAccessorError)) =
+      .ok ⟨(resetTsDescriptorCopyModel m f b cell).1, o.2, .normal⟩ := by
+    apply execForDo_ts_one_pair (list := oneEntryItems .ts o.1)
+      (pair := oneEntryPair .ts o.1 "balance" (.object (m.nextObject + 1)))
+      (left := .string "balance") (right := .object (m.nextObject + 1))
+      (balanceProgram_lang .ts) (h.entries (k + 14)) h.list rfl rfl h.pair rfl
+    exact h.body (k + 3)
+  rw [balanceReset_ts_descriptor_continuation_shape]
+  unfold resetTsDescriptorContinuation
+  rw [execSequence_of_normal proto, execSequence_of_normal guard,
+    execSequence_of_normal descriptors, execSequence_of_normal assigned,
+    execSequence_of_normal loop]
+  exact execStmt_adequate .empty (by omega)
+
+
+theorem resetTsDescriptorsMachine_objectAt_old {m b ref} (hf : ref < m.nextObject) :
+    objectAt (resetTsDescriptorsMachine m b) ref = objectAt m ref := by
+  have hn : ref ≠ m.nextObject := Nat.ne_of_lt hf
+  have hn1 : ref ≠ m.nextObject + 1 := Nat.ne_of_lt (Nat.lt_trans hf (Nat.lt_succ_self _))
+  unfold resetTsDescriptorsMachine objectAt
+  simp only [allocObject, Prod.fst]
+  rw [lookup_replace_payload_other _ _ hn]
+  simp only [List.lookup_cons, beq_eq_false_iff_ne.mpr hn, beq_eq_false_iff_ne.mpr hn1, if_false]
+
+theorem resetTsCopyProtoEntry_objectAt (m f ref) :
+    objectAt (resetTsCopyProtoEntry m f).1 ref = objectAt m ref := rfl
+
+theorem resetTsCopyDescriptorEntry_objectAt_old {m f b ref} (hf : ref < m.nextObject) :
+    objectAt (resetTsCopyDescriptorEntry m f b).1 ref = objectAt m ref :=
+  resetTsDescriptorsMachine_objectAt_old hf
+
+theorem resetTsCopyOverridesEntry_objectAt_old {m f b cell ref} (hf : ref < m.nextObject) :
+    objectAt (resetTsCopyOverridesEntry m f b cell).1 ref = objectAt m ref := by
+  change objectAt (allocObject (resetTsCopyDescriptorEntry m f b).1
+    (literalObject .ts (resetTsCopyDescriptorEntry m f b).1)).1 ref = _
+  rw [objectAt_allocObject_other]
+  · exact resetTsCopyDescriptorEntry_objectAt_old hf
+  · exact Nat.ne_of_lt (Nat.lt_trans hf (Nat.lt_add_of_pos_right (by decide : 0 < 2)))
+
+set_option maxHeartbeats 1000000 in
+theorem resetTsCopyIterationEntry_objectAt_old {m f b cell ref} (hf : ref < m.nextObject) :
+    objectAt (resetTsCopyIterationEntry m f b cell).1 ref = objectAt m ref := by
+  change objectAt (oneEntryMachine .ts (resetTsCopyOverridesEntry m f b cell).1 "balance"
+    (.object (m.nextObject + 1))) ref = _
+  unfold oneEntryMachine
+  rw [objectAt_allocObject_other, objectAt_allocObject_other]
+  · exact resetTsCopyOverridesEntry_objectAt_old hf
+  · exact Nat.ne_of_lt (Nat.lt_trans hf (Nat.lt_add_of_pos_right (by decide : 0 < 3)))
+  · exact Nat.ne_of_lt (Nat.lt_trans hf (Nat.lt_add_of_pos_right (by decide : 0 < 4)))
+
+theorem resetTsCopyBoundEntry_objectAt_old {m f b cell ref} (hf : ref < m.nextObject) :
+    objectAt (resetTsCopyBoundEntry m f b cell).1 ref = objectAt m ref :=
+  resetTsCopyIterationEntry_objectAt_old (m := m) (f := f) (b := b) (cell := cell) (ref := ref) hf
+
+
+def resetTsCopyStage (stage : Nat) (m : TargetMachine) (f : TargetFrame) (b : Int) (cell : CellRef) :
+    TargetMachine × TargetFrame :=
+  match stage with
+  | 0 => resetTsCopyProtoEntry m f
+  | 1 => resetTsCopyDescriptorEntry m f b
+  | 2 => resetTsCopyOverridesEntry m f b cell
+  | 3 => resetTsCopyIterationEntry m f b cell
+  | _ => resetTsCopyBoundEntry m f b cell
+
+def resetTsCopyFieldsEqual (e z : TargetMachine × TargetFrame) : Prop :=
+  e.2 = z.2 ∧ e.1.cells = z.1.cells ∧ e.1.globals = z.1.globals ∧
+    e.1.nextCell = z.1.nextCell ∧ e.1.nextObject = z.1.nextObject ∧
+    e.1.objectPrototype = z.1.objectPrototype ∧ e.1.checkerRef = z.1.checkerRef
+
+set_option maxHeartbeats 1000000 in
+theorem resetTsCopyStage_fields_congr {m n f g b c cell stage}
+    (hf : f = g) (hc : m.cells = n.cells) (hg : m.globals = n.globals)
+    (hn : m.nextCell = n.nextCell) (ho : m.nextObject = n.nextObject)
+    (hp : m.objectPrototype = n.objectPrototype) (hk : m.checkerRef = n.checkerRef) :
+    resetTsCopyFieldsEqual (resetTsCopyStage stage m f b cell) (resetTsCopyStage stage n g c cell) := by
+  unfold resetTsCopyStage
+  split <;>
+    simp only [resetTsCopyFieldsEqual, resetTsCopyProtoEntry, resetTsCopyDescriptorEntry,
+      resetTsCopyOverridesEntry, resetTsCopyIterationEntry, resetTsCopyBoundEntry,
+      resetTsDescriptorsMachine, snapshotBound, resetTsDescriptorPairBound,
+      allocObject, allocCell, oneEntryMachine, Prod.fst, Prod.snd] <;>
+    simp only [hf, hc, hg, hn, ho, hp, hk] <;> trivial
+
+
+
+theorem resetTsDescriptorsMachine_entry (m : TargetMachine) (b : Int) :
+    objectAt (resetTsDescriptorsMachine m b) (m.nextObject + 1) = .ok (resetTsDescriptorObject m b) := by
+  have h : m.nextObject + 1 ≠ m.nextObject := Nat.ne_of_gt (Nat.lt_succ_self _)
+  unfold resetTsDescriptorsMachine objectAt
+  simp only [allocObject, Prod.fst]
+  rw [lookup_replace_payload_other _ _ h]
+  simp only [List.lookup_cons, beq_self_eq_true, if_true]
+
+theorem resetTsDescriptorsMachine_map (m : TargetMachine) (b : Int) :
+    objectAt (resetTsDescriptorsMachine m b) m.nextObject = .ok (resetTsDescriptorMap m) := by
+  have h : m.nextObject + 1 ≠ m.nextObject := Nat.ne_of_gt (Nat.lt_succ_self _)
+  simp only [resetTsDescriptorsMachine, objectAt, allocObject, Prod.fst,
+    List.map_cons, List.lookup_cons, beq_eq_false_iff_ne.mpr h, beq_eq_false_iff_ne.mpr (Ne.symm h),
+    if_false, beq_self_eq_true, if_true]
+
+theorem oneEntryMachine_objectAt_old {lang m key value ref} (hf : ref < m.nextObject) :
+    objectAt (oneEntryMachine lang m key value) ref = objectAt m ref := by
+  unfold oneEntryMachine
+  rw [objectAt_allocObject_other, objectAt_allocObject_other]
+  · exact Nat.ne_of_lt hf
+  · exact Nat.ne_of_lt (Nat.lt_trans hf (Nat.lt_succ_self _))
+
+set_option maxHeartbeats 1000000 in
+theorem resetTsCopyBoundEntry_descriptor {m f b cell} :
+    objectAt (resetTsCopyBoundEntry m f b cell).1 (m.nextObject + 1) =
+      .ok (resetTsDescriptorObject (resetTsCopyBoundEntry m f b cell).1 b) := by
+  change objectAt (oneEntryMachine .ts (resetTsCopyOverridesEntry m f b cell).1 "balance"
+    (.object (m.nextObject + 1))) (m.nextObject + 1) = .ok (resetTsDescriptorObject m b)
+  rw [oneEntryMachine_objectAt_old]
+  · change objectAt (allocObject (resetTsCopyDescriptorEntry m f b).1
+      (literalObject .ts (resetTsCopyDescriptorEntry m f b).1)).1 (m.nextObject + 1) = .ok (resetTsDescriptorObject m b)
+    rw [objectAt_allocObject_other]
+    · exact resetTsDescriptorsMachine_entry (resetTsCopyProtoEntry m f).1 b
+    · exact Nat.ne_of_lt (Nat.add_lt_add_left (by decide : 1 < 2) _)
+  · exact Nat.add_lt_add_left (by decide : 1 < 3) _
+
+
+theorem resetTsCopyOverridesEntry_map {m f b cell} :
+    objectAt (resetTsCopyOverridesEntry m f b cell).1 m.nextObject =
+      .ok (resetTsDescriptorMap m) := by
+  change objectAt (allocObject (resetTsCopyDescriptorEntry m f b).1
+    (literalObject .ts (resetTsCopyDescriptorEntry m f b).1)).1 m.nextObject = _
+  rw [objectAt_allocObject_other]
+  · exact resetTsDescriptorsMachine_map (resetTsCopyProtoEntry m f).1 b
+  · exact Nat.ne_of_lt (Nat.lt_add_of_pos_right (by decide : 0 < 2))
+
+theorem resetTsCopyBoundEntry_overrides_literal {m f b cell} :
+    objectAt (allocObject (resetTsCopyBoundEntry m f b cell).1
+      (resetTsDefineLiteral (resetTsCopyBoundEntry m f b cell).1 b)).1 (m.nextObject + 2) =
+      .ok (literalObject .ts m) := by
+  rw [objectAt_allocObject_other]
+  · change objectAt (oneEntryMachine .ts (resetTsCopyOverridesEntry m f b cell).1 "balance"
+      (.object (m.nextObject + 1))) (m.nextObject + 2) = _
+    rw [oneEntryMachine_objectAt_old]
+    · exact objectAt_allocObject_fresh (resetTsCopyDescriptorEntry m f b).1
+        (literalObject .ts (resetTsCopyDescriptorEntry m f b).1)
+    · exact Nat.add_lt_add_left (by decide : 2 < 3) _
+  · exact Nat.ne_of_lt (Nat.add_lt_add_left (by decide : 2 < 5) _)
+
+theorem resetTsCopyBoundEntry_descriptor_literal {m f b cell} :
+    objectAt (allocObject (resetTsCopyBoundEntry m f b cell).1
+      (literalObject .ts (resetTsCopyBoundEntry m f b cell).1)).1 (m.nextObject + 1) =
+      .ok (resetTsDescriptorObject m b) := by
+  rw [objectAt_allocObject_other]
+  · exact resetTsCopyBoundEntry_descriptor (m := m) (f := f) (b := b) (cell := cell)
+  · exact Nat.ne_of_lt (Nat.add_lt_add_left (by decide : 1 < 5) _)
+
+theorem resetTsCopy_entries_execute {m f b cell k}
+    (hg : localValue (resetTsCopyOverridesEntry m f b cell).1
+      (resetTsCopyOverridesEntry m f b cell).2 "Object" = .ok (.object 3))
+    (hc : readPropertyValue .ts (resetTsCopyOverridesEntry m f b cell).1 (.object 3) "entries" =
+      .ok ⟨(resetTsCopyOverridesEntry m f b cell).1, .ok (.builtin .objectEntries)⟩)
+    (hd : localValue (resetTsCopyOverridesEntry m f b cell).1
+      (resetTsCopyOverridesEntry m f b cell).2 "descriptors" = .ok (.object m.nextObject)) :
+    let o := resetTsCopyOverridesEntry m f b cell
+    evalExpr (k + 4) (balanceProgram .ts) o.1 o.2
+      (.call (.property (.local "Object") "entries") (.sequence (.local "descriptors") .empty)) =
+      .ok ⟨(resetTsCopyIterationEntry m f b cell).1, .ok (.object (o.1.nextObject + 1))⟩ := by
+  apply evalExpr_adequate (.callBuiltin (.property (.localRead hg)
+    (by simpa only [balanceProgram_lang] using hc)) (.cons (.localRead hd) .empty) (by decide) ?_) (by omega)
+  rw [balanceProgram_lang]
+  exact hostEntries_one resetTsCopyOverridesEntry_map rfl
+
+
+theorem oneEntryMachine_ts_objects (m : TargetMachine) (key : String) (value : TargetValue) :
+    objectAt (oneEntryMachine .ts m key value) (m.nextObject + 1) = .ok (oneEntryItems .ts m) ∧
+    objectAt (oneEntryMachine .ts m key value) m.nextObject = .ok (oneEntryPair .ts m key value) := by
+  have h : m.nextObject ≠ m.nextObject + 1 := Nat.ne_of_lt (Nat.lt_succ_self _)
+  simp only [oneEntryMachine, objectAt, allocObject, Prod.fst, List.lookup_cons,
+    beq_self_eq_true, if_true, beq_eq_false_iff_ne.mpr h, if_false]
+  constructor <;> trivial
+
+
+theorem resetTsDescriptorCopyModel_final (m f b cell) :
+    (resetTsDescriptorCopyModel m f b cell).1 =
+      let bound := resetTsCopyBoundEntry m f b cell
+      let literal := (allocObject bound.1 (resetTsDefineLiteral bound.1 b)).1
+      { literal with objects := literal.objects.map (fun entry =>
+        (entry.1, if entry.1 == m.nextObject + 2 then balanceHeapObject .ts m b else entry.2)) } := rfl
+
+theorem resetTsCopyDescriptorValue_read {m ref b}
+    (hr : ref ≠ m.checkerRef) (hp : ref ≠ m.objectPrototype)
+    (ho : objectAt m ref = .ok (resetTsDescriptorObject m b)) :
+    readPropertyValue .ts m (.object ref) "value" = .ok ⟨m, .ok (integerValue .ts b)⟩ := by
+  simp [readPropertyValue, beq_eq_false_iff_ne.mpr hr, beq_eq_false_iff_ne.mpr hp,
+    ho, resetTsDescriptorObject, readOwn, List.lookup,
+    Bind.bind, Except.bind, Pure.pure, Except.pure]
+  rfl
+
+theorem balanceResetTsCopyInitial_fields (b : Int) :
+    resetTsCopyFieldsEqual (balanceResetMiddleEntry .ts b) (balanceResetMiddleEntry .ts 0) := by
+  have h := balanceCanonicalResetStage_footprint .ts b 3 (by decide)
+  unfold resetTsCopyFieldsEqual
+  rw [balanceResetMiddleEntry_model, balanceResetMiddleEntry_model]
+  simp only [resetCandidateMiddleModel, resetTsOverridesEntry, snapshotBound,
+    allocCell, allocObject, Prod.fst, Prod.snd, beq_self_eq_true, if_true]
+  simp only [h.2.1, h.2.2.1, h.2.2.2.1, h.2.2.2.2.1, h.2.2.2.2.2.1,
+    h.2.2.2.2.2.2.1, h.2.2.2.2.2.2.2.2]
+  trivial
+
+def balanceResetTsCopyStage (stage : Nat) (b : Int) : TargetMachine × TargetFrame :=
+  let e := balanceResetMiddleEntry .ts b
+  resetTsCopyStage stage e.1 e.2 b 26
+
+theorem balanceResetTsCopyStage_fields (stage : Nat) (b : Int) :
+    resetTsCopyFieldsEqual (balanceResetTsCopyStage stage b) (balanceResetTsCopyStage stage 0) := by
+  have h := balanceResetTsCopyInitial_fields b
+  exact resetTsCopyStage_fields_congr h.1 h.2.1 h.2.2.1 h.2.2.2.1 h.2.2.2.2.1
+    h.2.2.2.2.2.1 h.2.2.2.2.2.2
+
+theorem balanceResetTsCopyStage_localValue (stage : Nat) (b : Int) (name : String) :
+    localValue (balanceResetTsCopyStage stage b).1 (balanceResetTsCopyStage stage b).2 name =
+      localValue (balanceResetTsCopyStage stage 0).1 (balanceResetTsCopyStage stage 0).2 name := by
+  have h := balanceResetTsCopyStage_fields stage b
+  exact localValue_fields_congr h.1 h.2.1 h.2.2.1
+
+def resetTsCopyLocalInventory : List (Nat × String × TargetValue) :=
+  [(0, "Object", .object 3), (0, "proto", .object 0), (0, "initialContext", .object 20),
+   (1, "Object", .object 3), (1, "descriptors", .object 24),
+   (2, "Object", .object 3), (2, "descriptors", .object 24),
+   (4, "Object", .object 3), (4, "overrides", .object 26),
+   (4, "name", .string "balance"), (4, "descriptor", .object 25)]
+
+def resetTsCopyHostTable : HeapObject :=
+  (objectAt (balanceCanonicalResetStage .ts 0 3).1 3).toOption.getD
+    ⟨.jsOrdinary, some 0, [], [], [], false, false⟩
+
+def resetTsCopyHostInventory : List (String × TargetValue) :=
+  [("getPrototypeOf", .builtin .objectGetPrototypeOf), ("prototype", .object 0),
+   ("getOwnPropertyDescriptors", .builtin .objectOwnDescriptors),
+   ("entries", .builtin .objectEntries), ("defineProperty", .builtin .objectDefineProperty)]
+
+def resetTsCopyFixedCheck : Prop :=
+  let e := balanceResetMiddleEntry .ts 0
+  let stage := (balanceCanonicalResetStage .ts 0 3).1
+  e.1.nextObject = 24 ∧ e.1.nextCell = 27 ∧ e.1.checkerRef = 1 ∧ e.1.objectPrototype = 0 ∧
+  stage.nextObject = 23 ∧ (balancePreparation .ts).1.nextObject = 20 ∧
+  objectAt stage 3 = .ok resetTsCopyHostTable ∧ resetTsCopyHostTable.kind = .jsOrdinary ∧
+  (resetTsCopyHostInventory.all fun entry => decide (resetTsCopyHostTable.own.lookup entry.1 =
+    some ⟨some entry.2, none, none, true, true, true⟩)) = true ∧
+  (resetTsCopyLocalInventory.all fun entry =>
+    let s := balanceResetTsCopyStage entry.1 0
+    decide (localValue s.1 s.2 entry.2.1 = .ok entry.2.2)) = true ∧
+  snapshotAddress (balanceResetTsCopyStage 1 0).1 (balanceResetTsCopyStage 1 0).2 "overrides" = some 26 ∧
+  e.1.cells.lookup 26 = some .undefined ∧ e.1.writableCells.lookup 26 = some true ∧
+  (balanceResetTsCopyStage 4 0).1.objects.all (fun entry => entry.1 != 29) = true ∧
+  localValue e.1 e.2 "Object" = .ok (.object 3) ∧
+  localValue e.1 e.2 "initialContext" = .ok (.object 20)
+
+instance : Decidable resetTsCopyFixedCheck := by unfold resetTsCopyFixedCheck; infer_instance
+
+set_option maxRecDepth 65536 in
+set_option maxHeartbeats 10000000 in
+theorem resetTsCopyFixedCheck_true : resetTsCopyFixedCheck := by
+  simp only [resetTsCopyFixedCheck, balanceResetTsCopyStage, resetTsCopyStage,
+    resetTsCopyProtoEntry, resetTsCopyDescriptorEntry, resetTsCopyOverridesEntry,
+    resetTsCopyIterationEntry, resetTsCopyBoundEntry,
+    balanceResetMiddleEntry, balanceResetCandidateEntry,
+    balanceCanonicalResetStage, balanceCanonicalResetEntry, balanceResetBodyEntry,
+    balancePythonResetBodyEntry, balanceConstructorBodyEntry, balanceConstructorBoundEntry,
+    balanceConstructorArgumentEntry, balanceStoredReset, balanceResetLookup, balanceStoredConstructor,
+    balanceConstructorLookup, balanceConstructorName, balancePreparation_ts_eq]
+  decide +kernel
+
+
+
+theorem resetTsCopyStage_keys_congr {m n f g b c cell stage}
+    (ho : m.nextObject = n.nextObject)
+    (hkeys : m.objects.map Prod.fst = n.objects.map Prod.fst) :
+    (resetTsCopyStage stage m f b cell).1.objects.map Prod.fst =
+      (resetTsCopyStage stage n g c cell).1.objects.map Prod.fst := by
+  unfold resetTsCopyStage
+  split <;>
+    simp only [resetTsCopyProtoEntry, resetTsCopyDescriptorEntry,
+      resetTsCopyOverridesEntry, resetTsCopyIterationEntry, resetTsCopyBoundEntry,
+      resetTsDescriptorsMachine, snapshotBound, resetTsDescriptorPairBound,
+      allocObject, allocCell, oneEntryMachine, Prod.fst, Prod.snd,
+      List.map_cons, List.map_map, Function.comp_def] <;>
+    simp only [ho, hkeys]
+
+theorem resetTsCopyInitialModel_keys_congr {m n f g seed}
+    (hn : m.nextObject = n.nextObject)
+    (hk : m.objects.map Prod.fst = n.objects.map Prod.fst) :
+    (resetCandidateMiddleModel .ts (m,f) seed).1.objects.map Prod.fst =
+      (resetCandidateMiddleModel .ts (n,g) seed).1.objects.map Prod.fst := by
+  simp only [resetCandidateMiddleModel, resetTsOverridesEntry, snapshotBound,
+    allocCell, allocObject, Prod.fst, Prod.snd, beq_self_eq_true, if_true, List.map_cons]
+  rw [hn,hk]
+
+theorem balanceResetTsCopyInitial_keys (b : Int) :
+    (balanceResetMiddleEntry .ts b).1.objects.map Prod.fst =
+      (balanceResetMiddleEntry .ts 0).1.objects.map Prod.fst := by
+  have h := balanceCanonicalResetStage_footprint .ts b 3 (by decide)
+  have hk := balanceCanonicalResetStage_keys .ts b 3 (by decide)
+  rw [balanceResetMiddleEntry_model, balanceResetMiddleEntry_model]
+  exact resetTsCopyInitialModel_keys_congr
+    (m := (balanceCanonicalResetStage .ts b 3).1) (n := (balanceCanonicalResetStage .ts 0 3).1)
+    (f := (balanceCanonicalResetStage .ts b 3).2) (g := (balanceCanonicalResetStage .ts 0 3).2)
+    (seed := (balancePreparation .ts).1.nextObject) h.2.2.2.2.1 hk
+
+
+theorem balanceResetTsCopyStage_keys (stage : Nat) (b : Int) :
+    (balanceResetTsCopyStage stage b).1.objects.map Prod.fst =
+      (balanceResetTsCopyStage stage 0).1.objects.map Prod.fst :=
+  resetTsCopyStage_keys_congr (balanceResetTsCopyInitial_fields b).2.2.2.2.1
+    (balanceResetTsCopyInitial_keys b)
+
+theorem balanceResetTsCopyStage_local {stage b key value}
+    (he : (stage, key, value) ∈ resetTsCopyLocalInventory) :
+    localValue (balanceResetTsCopyStage stage b).1 (balanceResetTsCopyStage stage b).2 key = .ok value := by
+  rw [balanceResetTsCopyStage_localValue]
+  obtain ⟨_, _, _, _, _, _, _, _, _, hl, _⟩ := resetTsCopyFixedCheck_true
+  have h := (List.all_eq_true.mp hl) (stage,key,value) he
+  simpa only [decide_eq_true_eq] using h
+
+theorem balanceResetTsCopyInitial_numbers (b : Int) :
+    let e := balanceResetMiddleEntry .ts b
+    e.1.nextObject = 24 ∧ e.1.nextCell = 27 ∧ e.1.checkerRef = 1 ∧ e.1.objectPrototype = 0 := by
+  obtain ⟨hn, hc, hk, hp, _⟩ := resetTsCopyFixedCheck_true
+  have h := balanceResetTsCopyInitial_fields b
+  exact ⟨h.2.2.2.2.1.trans hn, h.2.2.2.1.trans hc,
+    h.2.2.2.2.2.2.trans hk, h.2.2.2.2.2.1.trans hp⟩
+
+theorem balanceResetTsCopyInitial_object3 (b : Int) :
+    objectAt (balanceResetMiddleEntry .ts b).1 3 = .ok resetTsCopyHostTable := by
+  obtain ⟨_, _, _, _, hn, hs, host, _⟩ := resetTsCopyFixedCheck_true
+  have footprint := balanceCanonicalResetStage_footprint .ts b 3 (by decide)
+  have hne : 3 ≠ (balanceCanonicalResetStage .ts b 3).1.nextObject := by
+    rw [footprint.2.2.2.2.1, hn]; decide
+  rw [balanceResetMiddleEntry_model,
+    resetCandidateMiddleModel_objectAt_other (m := (balanceCanonicalResetStage .ts b 3).1)
+      (f := (balanceCanonicalResetStage .ts b 3).2)
+      (seed := (balancePreparation .ts).1.nextObject) (ref := 3) hne]
+  exact (balanceCanonicalResetStage_objectAt .ts b 3 (by decide) 3
+    (by rw [hs]; decide)).trans host
+
+theorem balanceResetTsCopyStage_object3 (stage : Nat) (b : Int) :
+    objectAt (balanceResetTsCopyStage stage b).1 3 = .ok resetTsCopyHostTable := by
+  have hlt : 3 < (balanceResetMiddleEntry .ts b).1.nextObject := by
+    rw [(balanceResetTsCopyInitial_numbers b).1]; decide
+  unfold balanceResetTsCopyStage resetTsCopyStage
+  split
+  · exact (resetTsCopyProtoEntry_objectAt (balanceResetMiddleEntry .ts b).1
+      (balanceResetMiddleEntry .ts b).2 3).trans (balanceResetTsCopyInitial_object3 b)
+  · exact (resetTsCopyDescriptorEntry_objectAt_old (m := (balanceResetMiddleEntry .ts b).1)
+      (f := (balanceResetMiddleEntry .ts b).2) (b := b) (ref := 3) hlt).trans (balanceResetTsCopyInitial_object3 b)
+  · exact (resetTsCopyOverridesEntry_objectAt_old (m := (balanceResetMiddleEntry .ts b).1)
+      (f := (balanceResetMiddleEntry .ts b).2) (b := b) (cell := 26) (ref := 3) hlt).trans (balanceResetTsCopyInitial_object3 b)
+  · exact (resetTsCopyIterationEntry_objectAt_old (m := (balanceResetMiddleEntry .ts b).1)
+      (f := (balanceResetMiddleEntry .ts b).2) (b := b) (cell := 26) (ref := 3) hlt).trans (balanceResetTsCopyInitial_object3 b)
+  · exact (resetTsCopyBoundEntry_objectAt_old (m := (balanceResetMiddleEntry .ts b).1)
+      (f := (balanceResetMiddleEntry .ts b).2) (b := b) (cell := 26) (ref := 3) hlt).trans (balanceResetTsCopyInitial_object3 b)
+
+theorem resetTsCopyOrdinary_read {m ref object key value}
+    (hr : ref ≠ m.checkerRef) (hp : ref ≠ m.objectPrototype)
+    (ho : objectAt m ref = .ok object) (hk : object.kind = .jsOrdinary)
+    (hv : object.own.lookup key = some ⟨some value, none, none, true, true, true⟩) :
+    readPropertyValue .ts m (.object ref) key = .ok ⟨m, .ok value⟩ := by
+  simp [readPropertyValue, beq_eq_false_iff_ne.mpr hr, beq_eq_false_iff_ne.mpr hp,
+    ho, hk, readOwn, hv, Bind.bind, Except.bind, Pure.pure, Except.pure]
+  rfl
+
+theorem resetTsCopyStage_hostFields (stage : Nat) (m f b cell) :
+    let e := resetTsCopyStage stage m f b cell
+    e.1.checkerRef = m.checkerRef ∧ e.1.objectPrototype = m.objectPrototype := by
+  unfold resetTsCopyStage
+  split <;> simp only [resetTsCopyProtoEntry, resetTsCopyDescriptorEntry, resetTsCopyOverridesEntry,
+    resetTsCopyIterationEntry, resetTsCopyBoundEntry, resetTsDescriptorsMachine,
+    snapshotBound, resetTsDescriptorPairBound, allocObject, allocCell, oneEntryMachine,
+    Prod.fst, Prod.snd] <;> trivial
+
+theorem resetTsCopyHost_read {m key value}
+    (he : (key,value) ∈ resetTsCopyHostInventory)
+    (hc : m.checkerRef = 1) (hp : m.objectPrototype = 0)
+    (ho : objectAt m 3 = .ok resetTsCopyHostTable) :
+    readPropertyValue .ts m (.object 3) key = .ok ⟨m, .ok value⟩ := by
+  obtain ⟨_, _, _, _, _, _, _, hk, hall, _⟩ := resetTsCopyFixedCheck_true
+  have hv : resetTsCopyHostTable.own.lookup key =
+      some ⟨some value, none, none, true, true, true⟩ :=
+    of_decide_eq_true ((List.all_eq_true.mp hall) (key,value) he)
+  exact resetTsCopyOrdinary_read (m := m) (ref := 3) (object := resetTsCopyHostTable)
+    (by rw [hc]; decide) (by rw [hp]; decide) ho hk hv
+
+theorem balanceResetTsCopyStage_numbers (stage : Nat) (b : Int) :
+    let e := balanceResetTsCopyStage stage b
+    e.1.checkerRef = 1 ∧ e.1.objectPrototype = 0 := by
+  have hn := balanceResetTsCopyInitial_numbers b
+  have hg := resetTsCopyStage_hostFields stage (balanceResetMiddleEntry .ts b).1
+    (balanceResetMiddleEntry .ts b).2 b 26
+  exact ⟨hg.1.trans hn.2.2.1, hg.2.trans hn.2.2.2⟩
+
+
+theorem resetTsCopyBoundEntry_nextObject (m f b cell) :
+    (resetTsCopyBoundEntry m f b cell).1.nextObject = m.nextObject + 5 := by
+  simp only [resetTsCopyProtoEntry, resetTsCopyDescriptorEntry, resetTsCopyOverridesEntry,
+    resetTsCopyIterationEntry, resetTsCopyBoundEntry, resetTsDescriptorsMachine,
+    snapshotBound, resetTsDescriptorPairBound, allocObject, allocCell, oneEntryMachine,
+    Prod.fst, Prod.snd]
+
+
+theorem balanceResetTsCopyStage_fresh (b : Int) :
+    ∀ entry ∈ (balanceResetTsCopyStage 4 b).1.objects,
+      entry.1 ≠ (balanceResetTsCopyStage 4 b).1.nextObject := by
+  have hn := (balanceResetTsCopyInitial_numbers b).1
+  have hnext : (balanceResetTsCopyStage 4 b).1.nextObject = 29 := by
+    exact (resetTsCopyBoundEntry_nextObject (balanceResetMiddleEntry .ts b).1
+      (balanceResetMiddleEntry .ts b).2 b 26).trans (by rw [hn])
+  obtain ⟨_, _, _, _, _, _, _, _, _, _, _, _, _, hf, _⟩ := resetTsCopyFixedCheck_true
+  have hm (xs : List (ObjRef × HeapObject)) :
+      xs.all (fun e => e.1 != 29) = (xs.map Prod.fst).all (fun ref => ref != 29) := by
+    simp only [List.all_map]; rfl
+  apply objects_all_fresh
+  rw [hnext, hm, balanceResetTsCopyStage_keys, ← hm]
+  exact hf
+
+theorem balanceResetTsCopyInitial_writable (b : Int) :
+    (balanceResetMiddleEntry .ts b).1.writableCells =
+      (balanceResetMiddleEntry .ts 0).1.writableCells := rfl
+
+theorem resetTsCopy_write_of_cells {m f b cell}
+    (hv : m.cells.lookup cell = some .undefined)
+    (hw : m.writableCells.lookup cell = some true)
+    (hn0 : cell ≠ m.nextCell) (hn1 : cell ≠ m.nextCell + 1) :
+    let d := resetTsCopyDescriptorEntry m f b
+    let allocated := (allocObject d.1 (literalObject .ts d.1)).1
+    writeCell allocated cell (.object d.1.nextObject) =
+      .ok (resetTsCopyOverridesEntry m f b cell).1 := by
+  simp only [resetTsCopyDescriptorEntry, resetTsCopyProtoEntry, snapshotBound,
+    resetTsCopyOverridesEntry, resetTsDescriptorsMachine, allocCell, allocObject, Prod.fst, Prod.snd,
+    writeCell, List.lookup_cons, beq_eq_false_iff_ne.mpr hn0, beq_eq_false_iff_ne.mpr hn1,
+    if_false, hv, hw, reduceCtorEq, Bool.false_eq_true,
+    Bind.bind, Except.bind, Pure.pure, Except.pure]
+  all_goals rfl
+
+theorem balanceResetTsCopy_write (b : Int) :
+    let e := balanceResetMiddleEntry .ts b
+    let d := resetTsCopyDescriptorEntry e.1 e.2 b
+    let allocated := (allocObject d.1 (literalObject .ts d.1)).1
+    writeCell allocated 26 (.object d.1.nextObject) =
+      .ok (resetTsCopyOverridesEntry e.1 e.2 b 26).1 := by
+  have hn := (balanceResetTsCopyInitial_numbers b).2.1
+  obtain ⟨_, _, _, _, _, _, _, _, _, _, _, hcell, hw, _⟩ := resetTsCopyFixedCheck_true
+  have hcellb : (balanceResetMiddleEntry .ts b).1.cells.lookup 26 = some .undefined := by
+    rw [balanceResetMiddleEntry_cells]; exact hcell
+  have hwb : (balanceResetMiddleEntry .ts b).1.writableCells.lookup 26 = some true := by
+    rw [balanceResetTsCopyInitial_writable]; exact hw
+  exact resetTsCopy_write_of_cells hcellb hwb
+    (by rw [hn]; decide) (by rw [hn]; decide)
+
+
+
+theorem resetTsCopyBoundEntry_prototype (m f b cell) :
+    (resetTsCopyBoundEntry m f b cell).1.objectPrototype = m.objectPrototype := by
+  simp only [resetTsCopyProtoEntry, resetTsCopyDescriptorEntry, resetTsCopyOverridesEntry,
+    resetTsCopyIterationEntry, resetTsCopyBoundEntry, resetTsDescriptorsMachine,
+    snapshotBound, resetTsDescriptorPairBound, allocObject, allocCell, oneEntryMachine,
+    Prod.fst, Prod.snd]
+
+
+theorem resetTsCopyBalance_prototype_congr {m n : TargetMachine} {b : Int}
+    (hp : m.objectPrototype = n.objectPrototype) : balanceHeapObject .ts m b = balanceHeapObject .ts n b := by
+  unfold balanceHeapObject
+  rw [hp]
+
+theorem resetTsCopyDescriptor_prototype_congr {m n : TargetMachine} {b : Int}
+    (hp : m.objectPrototype = n.objectPrototype) : resetTsDescriptorObject m b = resetTsDescriptorObject n b := by
+  unfold resetTsDescriptorObject
+  rw [hp]
+
+theorem resetTsCopyLiteral_prototype_congr {m n : TargetMachine}
+    (hp : m.objectPrototype = n.objectPrototype) : literalObject .ts m = literalObject .ts n := by
+  unfold literalObject
+  rw [hp]
+
+theorem resetTsCopyInitialModel_prototype (m f seed) :
+    (resetCandidateMiddleModel .ts (m,f) seed).1.objectPrototype = m.objectPrototype := by
+  simp only [resetCandidateMiddleModel, resetTsOverridesEntry, snapshotBound,
+    allocCell, allocObject, Prod.fst, Prod.snd, beq_self_eq_true, if_true]
+
+theorem resetTsCopySnapshots_prototype (m f) :
+    (resetSnapshotsInstalled .ts m f).1.objectPrototype = m.objectPrototype := by
+  simp only [resetSnapshotsInstalled, resetSnapshotHistory, resetSnapshotContext,
+    resetSnapshotState, snapshotRollbackInstalled, functionInstalled, snapshotBound,
+    allocCell, allocObject, allocClosure, Prod.fst, Prod.snd, beq_self_eq_true, if_true]
+
+theorem balanceResetTsCopyInitial_prototype (b : Int) :
+    (balanceResetMiddleEntry .ts b).1.objectPrototype = (balancePreparation .ts).1.objectPrototype := by
+  have initial := resetTsCopyInitialModel_prototype (balanceCanonicalResetStage .ts b 3).1
+    (balanceCanonicalResetStage .ts b 3).2 (balancePreparation .ts).1.nextObject
+  rw [← balanceResetMiddleEntry_model] at initial
+  apply initial.trans
+  change (resetSnapshotsInstalled .ts (balanceCanonicalResetEntry .ts b).1
+    (balanceCanonicalResetEntry .ts b).2).1.objectPrototype = _
+  rw [resetTsCopySnapshots_prototype]
+  change (balanceResetBodyEntry .ts b).1.objectPrototype = _
+  simp only [balanceResetBodyEntry, balanceConstructorBodyEntry, balanceConstructorBoundEntry,
+    balanceConstructorArgumentEntry, allocCell, allocObject, allocClosure, Prod.fst, Prod.snd]
+
+theorem balanceResetTsCopy_seed (b : Int) :
+    objectAt (balanceResetMiddleEntry .ts b).1 20 =
+      .ok (balanceHeapObject .ts (balanceResetMiddleEntry .ts b).1 b) := by
+  obtain ⟨_, _, _, _, _, hs, _⟩ := resetTsCopyFixedCheck_true
+  have h := balanceResetMiddleEntry_ts_seed_fixed b
+  rw [hs] at h
+  have hp : (balancePreparation .ts).1.objectPrototype =
+      (balanceResetMiddleEntry .ts b).1.objectPrototype := (balanceResetTsCopyInitial_prototype b).symm
+  have heq := resetTsCopyBalance_prototype_congr
+    (m := (balancePreparation .ts).1) (n := (balanceResetMiddleEntry .ts b).1) (b := b) hp
+  exact h.trans (congrArg Except.ok heq)
+
+theorem balanceResetTsCopy_initial_reads (b : Int) :
+    let e := balanceResetMiddleEntry .ts b
+    localValue e.1 e.2 "Object" = .ok (.object 3) ∧
+      localValue e.1 e.2 "initialContext" = .ok (.object 20) := by
+  obtain ⟨_, _, _, _, _, _, _, _, _, _, _, _, _, _, ho, hi⟩ := resetTsCopyFixedCheck_true
+  exact ⟨(balanceResetMiddleEntry_localValue .ts b "Object").trans ho,
+    (balanceResetMiddleEntry_localValue .ts b "initialContext").trans hi⟩
+
+set_option maxHeartbeats 10000000 in
+
+theorem balanceResetTsCopy_proto (b : Int) :
+    let e := balanceResetMiddleEntry .ts b
+    ∀ k, evalExpr (k + 4) (balanceProgram .ts) e.1 e.2 resetTsProtoExpr =
+      .ok ⟨e.1, .ok (.object e.1.objectPrototype)⟩ := by
+  dsimp only
+  let e := balanceResetMiddleEntry .ts b
+  have nums := balanceResetTsCopyInitial_numbers b
+  have hn : e.1.nextObject = 24 := nums.1
+  have hlocal := balanceResetTsCopy_initial_reads b
+  have host (stage : Nat) (key : String) (value : TargetValue)
+      (he : (key,value) ∈ resetTsCopyHostInventory) :
+      readPropertyValue .ts (balanceResetTsCopyStage stage b).1 (.object 3) key =
+        .ok ⟨(balanceResetTsCopyStage stage b).1, .ok value⟩ :=
+    resetTsCopyHost_read he (balanceResetTsCopyStage_numbers stage b).1
+      (balanceResetTsCopyStage_numbers stage b).2 (balanceResetTsCopyStage_object3 stage b)
+  intro k
+  exact resetTsProtoExpr_execute (m := e.1) (f := e.2) (ref := 20) (object := 3) (b := b) (k := k) hlocal.1
+    (resetTsCopyHost_read (by decide) nums.2.2.1 nums.2.2.2
+      (balanceResetTsCopyInitial_object3 b)) hlocal.2 (balanceResetTsCopy_seed b)
+
+theorem balanceResetTsCopy_guard (b : Int) :
+    let e := balanceResetMiddleEntry .ts b
+    let p := resetTsCopyProtoEntry e.1 e.2
+    ∀ k, evalExpr (k + 4) (balanceProgram .ts) p.1 p.2 resetTsProtoGuard =
+      .ok ⟨p.1, .ok (.bool false)⟩ := by
+  dsimp only
+  let e := balanceResetMiddleEntry .ts b
+  have nums := balanceResetTsCopyInitial_numbers b
+  have hn : e.1.nextObject = 24 := nums.1
+  have hlocal := balanceResetTsCopy_initial_reads b
+  have host (stage : Nat) (key : String) (value : TargetValue)
+      (he : (key,value) ∈ resetTsCopyHostInventory) :
+      readPropertyValue .ts (balanceResetTsCopyStage stage b).1 (.object 3) key =
+        .ok ⟨(balanceResetTsCopyStage stage b).1, .ok value⟩ :=
+    resetTsCopyHost_read he (balanceResetTsCopyStage_numbers stage b).1
+      (balanceResetTsCopyStage_numbers stage b).2 (balanceResetTsCopyStage_object3 stage b)
+  intro k
+  have hp : localValue (balanceResetTsCopyStage 0 b).1 (balanceResetTsCopyStage 0 b).2 "proto" =
+      .ok (.object (balanceResetTsCopyStage 0 b).1.objectPrototype) := by
+    rw [(balanceResetTsCopyStage_numbers 0 b).2]
+    exact balanceResetTsCopyStage_local (b := b) (by decide : (0,"proto",TargetValue.object 0) ∈ _)
+  have hc : readPropertyValue .ts (balanceResetTsCopyStage 0 b).1 (.object 3) "prototype" =
+      .ok ⟨(balanceResetTsCopyStage 0 b).1, .ok (.object (balanceResetTsCopyStage 0 b).1.objectPrototype)⟩ := by
+    rw [(balanceResetTsCopyStage_numbers 0 b).2]
+    exact host 0 "prototype" (.object 0) (by decide)
+  exact resetTsProtoGuard_execute
+    (balanceResetTsCopyStage_local (b := b) (by decide : (0,"Object",TargetValue.object 3) ∈ _)) hc hp
+
+theorem balanceResetTsCopy_descriptors (b : Int) :
+    let e := balanceResetMiddleEntry .ts b
+    let p := resetTsCopyProtoEntry e.1 e.2
+    ∀ k, evalExpr (k + 4) (balanceProgram .ts) p.1 p.2 resetTsOwnDescriptorsExpr =
+      .ok ⟨resetTsDescriptorsMachine p.1 b, .ok (.object e.1.nextObject)⟩ := by
+  dsimp only
+  let e := balanceResetMiddleEntry .ts b
+  have nums := balanceResetTsCopyInitial_numbers b
+  have hn : e.1.nextObject = 24 := nums.1
+  have hlocal := balanceResetTsCopy_initial_reads b
+  have host (stage : Nat) (key : String) (value : TargetValue)
+      (he : (key,value) ∈ resetTsCopyHostInventory) :
+      readPropertyValue .ts (balanceResetTsCopyStage stage b).1 (.object 3) key =
+        .ok ⟨(balanceResetTsCopyStage stage b).1, .ok value⟩ :=
+    resetTsCopyHost_read he (balanceResetTsCopyStage_numbers stage b).1
+      (balanceResetTsCopyStage_numbers stage b).2 (balanceResetTsCopyStage_object3 stage b)
+  intro k
+  let p := resetTsCopyProtoEntry e.1 e.2
+  have hp : e.1.objectPrototype = p.1.objectPrototype := rfl
+  have ho : objectAt p.1 20 = .ok (balanceHeapObject .ts p.1 b) :=
+    (resetTsCopyProtoEntry_objectAt e.1 e.2 20).trans
+      ((balanceResetTsCopy_seed b).trans (congrArg Except.ok
+        (resetTsCopyBalance_prototype_congr (m := e.1) (n := p.1) (b := b) hp)))
+  have peq : balanceResetTsCopyStage 0 b = p := rfl
+  have hg := balanceResetTsCopyStage_local (b := b)
+    (by decide : (0,"Object",TargetValue.object 3) ∈ resetTsCopyLocalInventory)
+  have hi := balanceResetTsCopyStage_local (b := b)
+    (by decide : (0,"initialContext",TargetValue.object 20) ∈ resetTsCopyLocalInventory)
+  have hc := host 0 "getOwnPropertyDescriptors" (.builtin .objectOwnDescriptors) (by decide)
+  rw [peq] at hg hi hc
+  have result := resetTsOwnDescriptorsExpr_execute (m := p.1) (f := p.2) (ref := 20)
+    (object := 3) (b := b) (k := k) hg hc hi ho
+  have hpN : p.1.nextObject = e.1.nextObject := rfl
+  rw [hpN] at result
+  exact result
+
+theorem balanceResetTsCopy_descriptor_object (b : Int) :
+    let e := balanceResetMiddleEntry .ts b
+    let bound := resetTsCopyBoundEntry e.1 e.2 b 26
+    objectAt bound.1 25 = .ok (resetTsDescriptorObject bound.1 b) := by
+  have h := resetTsCopyBoundEntry_descriptor
+    (m := (balanceResetMiddleEntry .ts b).1) (f := (balanceResetMiddleEntry .ts b).2) (b := b) (cell := 26)
+  rw [(balanceResetTsCopyInitial_numbers b).1] at h
+  exact h
+
+theorem balanceResetTsCopyRaw_local {stage b key value raw}
+    (heq : balanceResetTsCopyStage stage b = raw)
+    (he : (stage,key,value) ∈ resetTsCopyLocalInventory) :
+    localValue raw.1 raw.2 key = .ok value := by
+  have h := balanceResetTsCopyStage_local (b := b) he
+  rw [heq] at h
+  exact h
+
+theorem balanceResetTsCopyRaw_host {stage b key value raw}
+    (heq : balanceResetTsCopyStage stage b = raw)
+    (he : (key,value) ∈ resetTsCopyHostInventory) :
+    readPropertyValue .ts raw.1 (.object 3) key = .ok ⟨raw.1, .ok value⟩ := by
+  have h := resetTsCopyHost_read he (balanceResetTsCopyStage_numbers stage b).1
+    (balanceResetTsCopyStage_numbers stage b).2 (balanceResetTsCopyStage_object3 stage b)
+  rw [heq] at h
+  exact h
+theorem balanceResetTsCopy_physical (b : Int) :
+    let e := balanceResetMiddleEntry .ts b
+    ResetTsDescriptorCopyPhysical e.1 e.2 b 26 := by
+  let e := balanceResetMiddleEntry .ts b
+  have nums := balanceResetTsCopyInitial_numbers b
+  have hn : e.1.nextObject = 24 := nums.1
+  have hlocal := balanceResetTsCopy_initial_reads b
+  have host (stage : Nat) (key : String) (value : TargetValue)
+      (he : (key,value) ∈ resetTsCopyHostInventory) :
+      readPropertyValue .ts (balanceResetTsCopyStage stage b).1 (.object 3) key =
+        .ok ⟨(balanceResetTsCopyStage stage b).1, .ok value⟩ :=
+    resetTsCopyHost_read he (balanceResetTsCopyStage_numbers stage b).1
+      (balanceResetTsCopyStage_numbers stage b).2 (balanceResetTsCopyStage_object3 stage b)
+  constructor
+  · exact balanceResetTsCopy_proto b
+  · exact balanceResetTsCopy_guard b
+  · exact balanceResetTsCopy_descriptors b
+  · obtain ⟨_, _, _, _, _, _, _, _, _, _, ha, _⟩ := resetTsCopyFixedCheck_true
+    have h := balanceResetTsCopyStage_fields 1 b
+    exact (snapshotAddress_fields_congr
+      (m := (balanceResetTsCopyStage 1 b).1) (n := (balanceResetTsCopyStage 1 0).1)
+      (f := (balanceResetTsCopyStage 1 b).2) (g := (balanceResetTsCopyStage 1 0).2)
+      h.1 h.2.2.1).trans ha
+  · exact balanceResetTsCopy_write b
+  · intro k
+    let o := resetTsCopyOverridesEntry e.1 e.2 b 26
+    have heq : balanceResetTsCopyStage 2 b = o := rfl
+    have hg := balanceResetTsCopyRaw_local heq
+      (by decide : (2,"Object",TargetValue.object 3) ∈ resetTsCopyLocalInventory)
+    have hd := balanceResetTsCopyRaw_local heq
+      (by decide : (2,"descriptors",TargetValue.object 24) ∈ resetTsCopyLocalInventory)
+    have hc := balanceResetTsCopyRaw_host heq
+      (by decide : ("entries",TargetValue.builtin .objectEntries) ∈ resetTsCopyHostInventory)
+    apply resetTsCopy_entries_execute (m := e.1) (f := e.2) (b := b) (cell := 26) (k := k) hg hc
+    rw [hn]
+    exact hd
+  · exact (oneEntryMachine_ts_objects (resetTsCopyOverridesEntry e.1 e.2 b 26).1
+      "balance" (.object (e.1.nextObject + 1))).1
+  · exact (oneEntryMachine_ts_objects (resetTsCopyOverridesEntry e.1 e.2 b 26).1
+      "balance" (.object (e.1.nextObject + 1))).2
+  · intro k
+    let bound := resetTsCopyBoundEntry e.1 e.2 b 26
+    let fresh := (allocObject bound.1 (literalObject .ts bound.1)).1
+    have bpair : balanceResetTsCopyStage 4 b = bound := rfl
+    have bfields := balanceResetTsCopyStage_numbers 4 b
+    rw [bpair] at bfields
+    have hg : localValue bound.1 bound.2 "Object" = .ok (.object 3) :=
+      balanceResetTsCopyRaw_local (stage := 4) (b := b) (raw := bound) (by rfl) (by decide : (4,"Object",TargetValue.object 3) ∈ resetTsCopyLocalInventory)
+    have ht : localValue bound.1 bound.2 "overrides" = .ok (.object 26) :=
+      balanceResetTsCopyRaw_local (stage := 4) (b := b) (raw := bound) (by rfl) (by decide : (4,"overrides",TargetValue.object 26) ∈ resetTsCopyLocalInventory)
+    have hname : localValue bound.1 bound.2 "name" = .ok (.string "balance") :=
+      balanceResetTsCopyRaw_local (stage := 4) (b := b) (raw := bound) (by rfl) (by decide : (4,"name",TargetValue.string "balance") ∈ resetTsCopyLocalInventory)
+    have hdlocal : localValue bound.1 bound.2 "descriptor" = .ok (.object 25) :=
+      balanceResetTsCopyRaw_local (stage := 4) (b := b) (raw := bound) (by rfl) (by decide : (4,"descriptor",TargetValue.object 25) ∈ resetTsCopyLocalInventory)
+    have hd : objectAt bound.1 25 = .ok (resetTsDescriptorObject bound.1 b) :=
+      balanceResetTsCopy_descriptor_object b
+    have hpFresh : e.1.objectPrototype = fresh.objectPrototype :=
+      (resetTsCopyBoundEntry_prototype e.1 e.2 b 26).symm
+    have hdBase : objectAt fresh (e.1.nextObject + 1) = .ok (resetTsDescriptorObject e.1 b) :=
+      resetTsCopyBoundEntry_descriptor_literal (m := e.1) (f := e.2) (b := b) (cell := 26)
+    have hdIndex : objectAt fresh (e.1.nextObject + 1) = objectAt fresh 25 :=
+      congrArg (fun ref => objectAt fresh ref) (congrArg (fun n => n + 1) hn)
+    have hdfresh : objectAt fresh 25 = .ok (resetTsDescriptorObject fresh b) :=
+      hdIndex.symm.trans (hdBase.trans (congrArg Except.ok
+        (resetTsCopyDescriptor_prototype_congr (m := e.1) (n := fresh) (b := b) hpFresh)))
+    have hdfreshLocal : localValue fresh bound.2 "descriptor" = .ok (.object 25) :=
+      (localValue_fields_congr (m := fresh) (n := bound.1)
+        (f := bound.2) (g := bound.2) (name := "descriptor") rfl rfl rfl).trans hdlocal
+    have hFreshChecker : fresh.checkerRef = 1 := bfields.1
+    have hFreshProto : fresh.objectPrototype = 0 := bfields.2
+    have hnChecker : 25 ≠ fresh.checkerRef := fun h => (by decide : 25 ≠ 1) (h.trans hFreshChecker)
+    have hnProto : 25 ≠ fresh.objectPrototype := fun h => (by decide : 25 ≠ 0) (h.trans hFreshProto)
+    have hvalue := resetTsCopyDescriptorValue_read hnChecker hnProto hdfresh
+    have hprogram : readPropertyValue (balanceProgram .ts).lang fresh (.object 25) "value" =
+        .ok ⟨fresh, .ok (integerValue .ts b)⟩ :=
+      Eq.mpr (congrArg (fun lang => readPropertyValue lang fresh (.object 25) "value" =
+        .ok ⟨fresh, .ok (integerValue .ts b)⟩) (balanceProgram_lang .ts)) hvalue
+    have he : DepthDerivesExpr (balanceProgram .ts) fresh bound.2
+        (.property (.local "descriptor") "value") ⟨fresh, .ok (integerValue .ts b)⟩ 1 :=
+      DepthDerivesExpr.property (program := balanceProgram .ts) (.localRead hdfreshLocal) hprogram
+    let literal := (allocObject bound.1 (resetTsDefineLiteral bound.1 b)).1
+    have hvBase : objectAt literal (e.1.nextObject + 2) = .ok (literalObject .ts e.1) :=
+      resetTsCopyBoundEntry_overrides_literal (m := e.1) (f := e.2) (b := b) (cell := 26)
+    have hvIndex : objectAt literal (e.1.nextObject + 2) = objectAt literal 26 :=
+      congrArg (fun ref => objectAt literal ref) (congrArg (fun n => n + 2) hn)
+    have hpLiteral : e.1.objectPrototype = literal.objectPrototype :=
+      (resetTsCopyBoundEntry_prototype e.1 e.2 b 26).symm
+    have hover : objectAt literal 26 = .ok (literalObject .ts literal) :=
+      hvIndex.symm.trans (hvBase.trans (congrArg Except.ok
+        (resetTsCopyLiteral_prototype_congr (m := e.1) (n := literal) hpLiteral)))
+    have beq : balanceResetTsCopyStage 4 b = bound := rfl
+    have hfields := balanceResetTsCopyStage_numbers 4 b
+    have hfresh := balanceResetTsCopyStage_fresh b
+    rw [beq] at hfields hfresh
+    have body := resetTsDescriptorCopyBody_execute (m := bound.1) (f := bound.2)
+      (object := 3) (target := 26) (descriptor := 25) (b := b) (k := k) (bad := resetTsCopyAccessorError) hg
+      (balanceResetTsCopyRaw_host beq
+        (by decide : ("defineProperty",TargetValue.builtin .objectDefineProperty) ∈ resetTsCopyHostInventory))
+      ht hname hdlocal hd hfresh he hover
+    have hp : bound.1.objectPrototype = e.1.objectPrototype :=
+      resetTsCopyBoundEntry_prototype e.1 e.2 b 26
+    rw [resetTsCopyBalance_prototype_congr (m := bound.1) (n := e.1) (b := b) hp] at body
+    rw [resetTsDescriptorCopyModel_final, hn]
+    exact body
+
+theorem balanceReset_ts_canonical_descriptor_copy_safe (b : Int) (k : Nat) :
+    let e := balanceResetMiddleEntry .ts b
+    execStmt (k + 26) (balanceProgram .ts) e.1 e.2 (balanceResetMiddleStmt .ts 2) =
+      .ok ⟨(resetTsDescriptorCopyModel e.1 e.2 b 26).1,
+        (resetTsDescriptorCopyModel e.1 e.2 b 26).2, .normal⟩ := by
+  have hi := (balanceResetTsCopy_initial_reads b).2
+  dsimp only
+  rw [balanceReset_ts_seed_present (k := k + 21) hi,
+    balanceReset_ts_canonical_plain_guard_skip b (k + 18)]
+  exact resetTsDescriptorContinuation_execute (balanceResetTsCopy_physical b)
+
+
+theorem resetTsDescriptorCopyModel_objectAt_old {m f b cell ref}
+    (hf : ref < m.nextObject) :
+    objectAt (resetTsDescriptorCopyModel m f b cell).1 ref = objectAt m ref := by
+  have h (i : Nat) : ref ≠ m.nextObject + i :=
+    Nat.ne_of_lt (Nat.lt_of_lt_of_le hf (Nat.le_add_right _ _))
+  unfold objectAt resetTsDescriptorCopyModel
+  simp only [snapshotBound, resetTsDescriptorsMachine, resetTsDescriptorPairBound,
+    allocObject, allocCell, oneEntryMachine, Prod.fst, Prod.snd]
+  rw [lookup_replace_payload_other _ _ (h 2)]
+  simp only [List.lookup_cons, beq_eq_false_iff_ne.mpr (h 5),
+    beq_eq_false_iff_ne.mpr (h 4), beq_eq_false_iff_ne.mpr (h 3),
+    beq_eq_false_iff_ne.mpr (h 2), if_false]
+  have h0 : ref ≠ m.nextObject := by simpa only [Nat.add_zero] using h 0
+  rw [lookup_replace_payload_other _ _ h0]
+  simp only [List.lookup_cons, beq_eq_false_iff_ne.mpr (h 1),
+    beq_eq_false_iff_ne.mpr h0, if_false]
+
+
+def balanceResetTsDescriptorEntry (b : Int) : TargetMachine × TargetFrame :=
+  let e := balanceResetMiddleEntry .ts b
+  resetTsDescriptorCopyModel e.1 e.2 b 26
+
+theorem resetTsDescriptorCopyModel_fields_congr {m n f g b c cell}
+    (hf : f = g) (hc : m.cells = n.cells) (hg : m.globals = n.globals)
+    (hn : m.nextCell = n.nextCell) (ho : m.nextObject = n.nextObject)
+    (hp : m.objectPrototype = n.objectPrototype) (hk : m.checkerRef = n.checkerRef) :
+    let e := resetTsDescriptorCopyModel m f b cell
+    let z := resetTsDescriptorCopyModel n g c cell
+    e.2 = z.2 ∧ e.1.cells = z.1.cells ∧ e.1.globals = z.1.globals ∧
+      e.1.nextCell = z.1.nextCell ∧ e.1.nextObject = z.1.nextObject ∧
+      e.1.objectPrototype = z.1.objectPrototype ∧ e.1.checkerRef = z.1.checkerRef := by
+  simp only [resetTsDescriptorCopyModel, resetTsDescriptorsMachine, snapshotBound,
+    resetTsDescriptorPairBound, allocObject, allocCell, oneEntryMachine, Prod.fst, Prod.snd]
+  simp only [hf, hc, hg, hn, ho, hp, hk]
+  trivial
+
+theorem balanceResetTsDescriptorEntry_fields (b : Int) :
+    let e := balanceResetTsDescriptorEntry b
+    let z := balanceResetTsDescriptorEntry 0
+    e.2 = z.2 ∧ e.1.cells = z.1.cells ∧ e.1.globals = z.1.globals ∧
+      e.1.nextCell = z.1.nextCell ∧ e.1.nextObject = z.1.nextObject ∧
+      e.1.objectPrototype = z.1.objectPrototype ∧ e.1.checkerRef = z.1.checkerRef := by
+  have h := balanceResetTsCopyInitial_fields b
+  dsimp only [balanceResetTsDescriptorEntry]
+  exact resetTsDescriptorCopyModel_fields_congr
+    (m := (balanceResetMiddleEntry .ts b).1) (n := (balanceResetMiddleEntry .ts 0).1)
+    (f := (balanceResetMiddleEntry .ts b).2) (g := (balanceResetMiddleEntry .ts 0).2)
+    (b := b) (c := 0) (cell := 26)
+    h.1 h.2.1 h.2.2.1 h.2.2.2.1 h.2.2.2.2.1 h.2.2.2.2.2.1 h.2.2.2.2.2.2
+
+theorem balanceResetTsDescriptorEntry_localValue (b : Int) (name : String) :
+    localValue (balanceResetTsDescriptorEntry b).1 (balanceResetTsDescriptorEntry b).2 name =
+      localValue (balanceResetTsDescriptorEntry 0).1 (balanceResetTsDescriptorEntry 0).2 name := by
+  have h := balanceResetTsDescriptorEntry_fields b
+  exact localValue_fields_congr
+    (m := (balanceResetTsDescriptorEntry b).1) (n := (balanceResetTsDescriptorEntry 0).1)
+    (f := (balanceResetTsDescriptorEntry b).2) (g := (balanceResetTsDescriptorEntry 0).2)
+    h.1 h.2.1 h.2.2.1
+
+def resetTsCanonicalTableObject (ref : ObjRef) : HeapObject :=
+  (objectAt (balanceCanonicalResetStage .ts 0 3).1 ref).toOption.getD
+    (literalObject .ts TargetMachine.empty)
+
+def resetTsCanonicalOverlayTables : List (Nat × String × TargetValue) :=
+  [(3, "entries", .builtin .objectEntries), (3, "hasOwn", .builtin .objectHasOwn),
+   (7, "context", .object 10), (10, "balance", .object 11),
+   (11, "type", .string "integer"), (5, "isSafeInteger", .builtin .jsIsSafeInteger)]
+
+def resetTsCanonicalOverlayTablesCheck : Bool :=
+  resetTsCanonicalOverlayTables.all fun entry =>
+    let m := (balanceCanonicalResetStage .ts 0 3).1
+    decide (objectAt m entry.1 = .ok (resetTsCanonicalTableObject entry.1) ∧
+      entry.1 ≠ 1 ∧ entry.1 ≠ 0 ∧
+      (resetTsCanonicalTableObject entry.1).kind = .jsOrdinary ∧
+      (resetTsCanonicalTableObject entry.1).own.lookup entry.2.1 =
+        some ⟨some entry.2.2, none, none, true, true, true⟩)
+
+theorem resetTsCanonicalOverlayTablesCheck_true : resetTsCanonicalOverlayTablesCheck = true := by
+  simp only [resetTsCanonicalOverlayTablesCheck, resetTsCanonicalTableObject,
+    balanceCanonicalResetStage, balanceCanonicalResetEntry, balanceResetBodyEntry,
+    balancePythonResetBodyEntry, balanceConstructorBodyEntry, balanceConstructorBoundEntry,
+    balanceConstructorArgumentEntry, balanceStoredReset, balanceResetLookup, balanceStoredConstructor,
+    balanceConstructorLookup, balanceConstructorName, balancePreparation_ts_eq]
+  decide +kernel
+
+theorem resetTsOrdinaryTable_read {m ref object key value}
+    (hr : ref ≠ m.checkerRef) (hp : ref ≠ m.objectPrototype)
+    (ho : objectAt m ref = .ok object) (hk : object.kind = .jsOrdinary)
+    (hv : object.own.lookup key = some ⟨some value, none, none, true, true, true⟩) :
+    readPropertyValue .ts m (.object ref) key = .ok ⟨m, .ok value⟩ := by
+  simp [readPropertyValue, beq_eq_false_iff_ne.mpr hr, beq_eq_false_iff_ne.mpr hp,
+    ho, hk, readOwn, hv, Bind.bind, Except.bind, Pure.pure, Except.pure]
+  rfl
+
+theorem resetTsCanonicalOverlayTable_read {m : TargetMachine} {entry}
+    (he : entry ∈ resetTsCanonicalOverlayTables)
+    (hc : m.checkerRef = 1) (hp : m.objectPrototype = 0)
+    (ho : objectAt m entry.1 = objectAt (balanceCanonicalResetStage .ts 0 3).1 entry.1) :
+    readPropertyValue .ts m (.object entry.1) entry.2.1 = .ok ⟨m, .ok entry.2.2⟩ := by
+  have checks := (List.all_eq_true.mp resetTsCanonicalOverlayTablesCheck_true) entry he
+  simp only [decide_eq_true_eq] at checks
+  obtain ⟨obj, hn, hz, hk, hv⟩ := checks
+  apply resetTsOrdinaryTable_read
+  · rw [hc]; exact hn
+  · rw [hp]; exact hz
+  · exact ho.trans obj
+  · exact hk
+  · exact hv
+
+def resetTsCanonicalOverlayBindings : List (String × TargetValue) :=
+  [("Object", .object 3), ("world", .object 7),
+   ("contextDefinitions", .object 10), ("Number", .object 5), ("candidate", .object 23)]
+
+def resetTsCanonicalOverlayBindingsCheck : Bool :=
+  let e := balanceResetMiddleEntry .ts 0
+  resetTsCanonicalOverlayBindings.all fun entry => decide (localValue e.1 e.2 entry.1 = .ok entry.2)
+
+theorem resetTsCanonicalOverlayBindingsCheck_true : resetTsCanonicalOverlayBindingsCheck = true := by
+  simp only [resetTsCanonicalOverlayBindingsCheck, balanceResetMiddleEntry,
+    balanceResetCandidateEntry, balanceCanonicalResetStage, balanceCanonicalResetEntry,
+    balanceResetBodyEntry, balancePythonResetBodyEntry, balanceConstructorBodyEntry,
+    balanceConstructorBoundEntry, balanceConstructorArgumentEntry, balanceStoredReset,
+    balanceResetLookup, balanceStoredConstructor, balanceConstructorLookup,
+    balanceConstructorName, balancePreparation_ts_eq]
+  decide +kernel
+
+/-- Fixed canonical tables discharge the TS overlay premises after any allocation
+    sequence preserving these physical reads. No helper execution is assumed. -/
+def resetTsCanonicalOverlay_physical {m : TargetMachine} {f : TargetFrame} {b : Int}
+    (hc : m.checkerRef = 1) (hp : m.objectPrototype = 0)
+    (ho : ∀ ref, ref ∈ [3, 5, 7, 10, 11] →
+      objectAt m ref = objectAt (balanceCanonicalResetStage .ts 0 3).1 ref)
+    (hl : ∀ entry, entry ∈ resetTsCanonicalOverlayBindings →
+      localValue m f entry.1 = localValue (balanceResetMiddleEntry .ts 0).1
+        (balanceResetMiddleEntry .ts 0).2 entry.1)
+    (hn : localValue m f "name" = .ok (.string "balance"))
+    (hv : localValue m f "value" = .ok (integerValue .ts b)) :
+    ResetTsOverlayPhysical m f b := by
+  have loc (entry) (he : entry ∈ resetTsCanonicalOverlayBindings) :
+      localValue m f entry.1 = .ok entry.2 := by
+    have check := (List.all_eq_true.mp resetTsCanonicalOverlayBindingsCheck_true) entry he
+    simp only [decide_eq_true_eq] at check
+    exact (hl entry he).trans check
+  have tab (entry) (he : entry ∈ resetTsCanonicalOverlayTables)
+      (hr : entry.1 ∈ [3, 5, 7, 10, 11]) :=
+    resetTsCanonicalOverlayTable_read he hc hp (ho entry.1 hr)
+  refine ⟨3, 7, 10, 10, 11, 5, hv, hn, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  · exact loc ("Object", .object 3) (by decide)
+  · exact tab (3, "hasOwn", .builtin .objectHasOwn) (by decide) (by decide)
+  · exact loc ("world", .object 7) (by decide)
+  · exact tab (7, "context", .object 10) (by decide) (by decide)
+  · have checks := (List.all_eq_true.mp resetTsCanonicalOverlayTablesCheck_true)
+      (10, "balance", .object 11) (by decide)
+    simp only [decide_eq_true_eq] at checks
+    refine ⟨⟨some (.object 11), none, none, true, true, true⟩, ?_⟩
+    simp only [readOwn, ho 10 (by decide), checks.1, Bind.bind, Except.bind,
+      checks.2.2.2.2, Pure.pure, Except.pure]
+  · exact loc ("contextDefinitions", .object 10) (by decide)
+  · exact tab (10, "balance", .object 11) (by decide) (by decide)
+  · exact tab (11, "type", .string "integer") (by decide) (by decide)
+  · exact loc ("Number", .object 5) (by decide)
+  · exact tab (5, "isSafeInteger", .builtin .jsIsSafeInteger) (by decide) (by decide)
+
+def balanceResetTsOverlayBound (b : Int) : TargetMachine × TargetFrame :=
+  let e := balanceResetTsDescriptorEntry b
+  resetOverlayPairBinding .ts (resetIterableMachine .ts e.1 b) e.2 (integerValue .ts b)
+
+def resetTsDescriptorPostBindingsCheck : Bool :=
+  let e := balanceResetTsDescriptorEntry 0
+  let z := balanceResetMiddleEntry .ts 0
+  resetTsCanonicalOverlayBindings.all fun entry =>
+    let ref := (snapshotAddress e.1 e.2 entry.1).getD 0
+    decide (entry.1 ≠ "name" ∧ entry.1 ≠ "value" ∧ entry.1 ≠ "this" ∧ entry.1 ≠ "self" ∧
+      snapshotAddress e.1 e.2 entry.1 = some ref ∧ ref < e.1.nextCell ∧
+      localValue e.1 e.2 entry.1 = localValue z.1 z.2 entry.1)
+
+set_option maxRecDepth 65536 in
+set_option maxHeartbeats 10000000 in
+theorem resetTsDescriptorPostBindingsCheck_true : resetTsDescriptorPostBindingsCheck = true := by
+  simp only [resetTsDescriptorPostBindingsCheck, balanceResetTsDescriptorEntry,
+    balanceResetMiddleEntry, balanceResetCandidateEntry, balanceCanonicalResetStage,
+    balanceCanonicalResetEntry, balanceResetBodyEntry, balancePythonResetBodyEntry,
+    balanceConstructorBodyEntry, balanceConstructorBoundEntry, balanceConstructorArgumentEntry,
+    balanceStoredReset, balanceResetLookup, balanceStoredConstructor, balanceConstructorLookup,
+    balanceConstructorName, balancePreparation_ts_eq]
+  decide +kernel
+
+theorem balanceResetTsOverlayBound_environment (b : Int) {entry}
+    (he : entry ∈ resetTsCanonicalOverlayBindings) :
+    localValue (balanceResetTsOverlayBound b).1 (balanceResetTsOverlayBound b).2 entry.1 =
+      localValue (balanceResetMiddleEntry .ts 0).1 (balanceResetMiddleEntry .ts 0).2 entry.1 := by
+  have check := (List.all_eq_true.mp resetTsDescriptorPostBindingsCheck_true) entry he
+  simp only [decide_eq_true_eq] at check
+  obtain ⟨hn, hv, ht, hs, ha, hf, hl⟩ := check
+  have fields := balanceResetTsDescriptorEntry_fields b
+  let e := balanceResetTsDescriptorEntry b
+  let z := balanceResetTsDescriptorEntry 0
+  let ref := (snapshotAddress z.1 z.2 entry.1).getD 0
+  have address : snapshotAddress e.1 e.2 entry.1 = some ref := by
+    rw [snapshotAddress_fields_congr (m := e.1) (n := z.1)
+      (f := e.2) (g := z.2) fields.1 fields.2.2.1]; exact ha
+  have fresh : ref < e.1.nextCell := by rw [fields.2.2.2.1]; exact hf
+  have iterAddress : snapshotAddress (resetIterableMachine .ts e.1 b) e.2 entry.1 = some ref := address
+  have iterFresh : ref < (resetIterableMachine .ts e.1 b).nextCell := fresh
+  unfold balanceResetTsOverlayBound
+  rw [resetOverlayPairBinding_preserves_local ⟨hn,hv,ht,hs⟩ iterAddress iterFresh,
+    resetIterableMachine_localValue, balanceResetTsDescriptorEntry_localValue]
+  exact hl
+
+
+theorem resetTsDescriptorCopyModel_overrides_object {m f b cell} :
+    objectAt (resetTsDescriptorCopyModel m f b cell).1 (m.nextObject + 2) =
+      .ok (balanceHeapObject .ts (resetTsDescriptorCopyModel m f b cell).1 b) := by
+  have h3 : m.nextObject + 2 ≠ m.nextObject + 3 := Nat.ne_of_lt (Nat.lt_succ_self _)
+  have h4 : m.nextObject + 2 ≠ m.nextObject + 4 :=
+    Nat.ne_of_lt (Nat.lt_of_lt_of_le (Nat.lt_succ_self _) (Nat.le_succ _))
+  have h5 : m.nextObject + 2 ≠ m.nextObject + 5 :=
+    Nat.ne_of_lt (Nat.lt_of_lt_of_le
+      (Nat.lt_of_lt_of_le (Nat.lt_succ_self _) (Nat.le_succ _)) (Nat.le_succ _))
+  simp only [resetTsDescriptorCopyModel, resetTsDescriptorsMachine, snapshotBound,
+    resetTsDescriptorPairBound, allocObject, allocCell, oneEntryMachine,
+    objectAt, List.lookup, balanceHeapObject, beq_eq_false_iff_ne.mpr h3,
+    beq_eq_false_iff_ne.mpr h4, beq_eq_false_iff_ne.mpr h5, Nat.add_assoc, Prod.fst, Prod.snd,
+    List.map_cons, List.lookup_cons, beq_self_eq_true, if_true, if_false]
+
+
+
+
+def resetTsCanonicalOldReferencesCheck : Bool :=
+  let stage := (balanceCanonicalResetStage .ts 0 3).1
+  [3,5,7,10,11].all fun ref =>
+    decide (ref < stage.nextObject ∧ ref ≠ (balancePreparation .ts).1.nextObject)
+
+set_option maxRecDepth 65536 in
+set_option maxHeartbeats 10000000 in
+theorem resetTsCanonicalOldReferencesCheck_true : resetTsCanonicalOldReferencesCheck = true := by
+  simp only [resetTsCanonicalOldReferencesCheck,
+    balanceCanonicalResetStage, balanceCanonicalResetEntry, balanceResetBodyEntry,
+    balancePythonResetBodyEntry, balanceConstructorBodyEntry, balanceConstructorBoundEntry,
+    balanceConstructorArgumentEntry, balanceStoredReset, balanceResetLookup, balanceStoredConstructor,
+    balanceConstructorLookup, balanceConstructorName, balancePreparation_ts_eq]
+  decide +kernel
+
+theorem balanceResetTsOverlayBound_old_object (b : Int) {ref}
+    (hf : ref < (balanceCanonicalResetStage .ts 0 3).1.nextObject)
+    (hs : ref ≠ (balancePreparation .ts).1.nextObject) :
+    objectAt (balanceResetTsOverlayBound b).1 ref =
+      objectAt (balanceCanonicalResetStage .ts 0 3).1 ref := by
+  have foot := balanceCanonicalResetStage_footprint .ts b 3 (by decide)
+  have freshStage : ref < (balanceCanonicalResetStage .ts b 3).1.nextObject := by
+    rw [foot.2.2.2.2.1]; exact hf
+  have freshMiddle : ref < (balanceResetMiddleEntry .ts b).1.nextObject :=
+    Nat.lt_of_lt_of_le freshStage (Nat.le_succ _)
+  have freshPost : ref < (balanceResetTsDescriptorEntry b).1.nextObject :=
+    Nat.lt_of_lt_of_le freshMiddle (Nat.le_add_right _ 6)
+  unfold balanceResetTsOverlayBound
+  rw [resetOverlayPairBinding_objectAt, resetIterableMachine_objectAt_other freshPost]
+  unfold balanceResetTsDescriptorEntry
+  rw [resetTsDescriptorCopyModel_objectAt_old freshMiddle,
+    balanceResetMiddleEntry_model,
+    resetCandidateMiddleModel_objectAt_other (Nat.ne_of_lt freshStage)]
+  exact balanceCanonicalResetStage_objectAt .ts b 3 (by decide) ref hs
+
+
+def resetTsDescriptorPostFixedCheck : Prop :=
+  let e := balanceResetTsDescriptorEntry 0
+  let middle := balanceResetMiddleEntry .ts 0
+  e.1.checkerRef = 1 ∧ e.1.objectPrototype = 0 ∧
+    (balanceCanonicalResetStage .ts 0 3).1.nextObject = 23 ∧ middle.1.nextObject = 24 ∧
+    e.1.nextObject = 30 ∧ localValue e.1 e.2 "overrides" = .ok (.object 26)
+
+instance : Decidable resetTsDescriptorPostFixedCheck := by
+  unfold resetTsDescriptorPostFixedCheck; infer_instance
+
+set_option maxRecDepth 65536 in
+set_option maxHeartbeats 10000000 in
+theorem resetTsDescriptorPostFixedCheck_true : resetTsDescriptorPostFixedCheck := by
+  simp only [resetTsDescriptorPostFixedCheck, balanceResetTsDescriptorEntry,
+    balanceResetMiddleEntry, balanceResetCandidateEntry, balanceCanonicalResetStage,
+    balanceCanonicalResetEntry, balanceResetBodyEntry, balancePythonResetBodyEntry,
+    balanceConstructorBodyEntry, balanceConstructorBoundEntry, balanceConstructorArgumentEntry,
+    balanceStoredReset, balanceResetLookup, balanceStoredConstructor, balanceConstructorLookup,
+    balanceConstructorName, balancePreparation_ts_eq]
+  decide +kernel
+
+def balanceResetTsOverlayBound_physical (b : Int) :
+    ResetTsOverlayPhysical (balanceResetTsOverlayBound b).1 (balanceResetTsOverlayBound b).2 b := by
+  have fields := balanceResetTsDescriptorEntry_fields b
+  have fixed := resetTsDescriptorPostFixedCheck_true
+  have checker : (balanceResetTsDescriptorEntry b).1.checkerRef = 1 :=
+    fields.2.2.2.2.2.2.trans fixed.1
+  have proto : (balanceResetTsDescriptorEntry b).1.objectPrototype = 0 :=
+    fields.2.2.2.2.2.1.trans fixed.2.1
+  apply resetTsCanonicalOverlay_physical
+    (m := (balanceResetTsOverlayBound b).1) (f := (balanceResetTsOverlayBound b).2)
+    checker proto
+  · intro ref hr
+    have h := (List.all_eq_true.mp resetTsCanonicalOldReferencesCheck_true) ref hr
+    simp only [decide_eq_true_eq] at h
+    exact balanceResetTsOverlayBound_old_object b h.1 h.2
+  · intro entry he; exact balanceResetTsOverlayBound_environment b he
+  · exact (resetOverlayPairBinding_reads .ts _ _ _).1
+  · exact (resetOverlayPairBinding_reads .ts _ _ _).2
+
+theorem balanceResetTsDescriptorEntry_old_object (b : Int) {ref}
+    (hf : ref < (balanceCanonicalResetStage .ts 0 3).1.nextObject)
+    (hs : ref ≠ (balancePreparation .ts).1.nextObject) :
+    objectAt (balanceResetTsDescriptorEntry b).1 ref =
+      objectAt (balanceCanonicalResetStage .ts 0 3).1 ref := by
+  have foot := balanceCanonicalResetStage_footprint .ts b 3 (by decide)
+  have freshStage : ref < (balanceCanonicalResetStage .ts b 3).1.nextObject := by
+    rw [foot.2.2.2.2.1]; exact hf
+  have freshMiddle : ref < (balanceResetMiddleEntry .ts b).1.nextObject :=
+    Nat.lt_of_lt_of_le freshStage (Nat.le_succ _)
+  unfold balanceResetTsDescriptorEntry
+  rw [resetTsDescriptorCopyModel_objectAt_old freshMiddle,
+    balanceResetMiddleEntry_model,
+    resetCandidateMiddleModel_objectAt_other (Nat.ne_of_lt freshStage)]
+  exact balanceCanonicalResetStage_objectAt .ts b 3 (by decide) ref hs
+
+theorem balanceResetTsDescriptorEntry_entries (b : Int) :
+    readPropertyValue .ts (balanceResetTsDescriptorEntry b).1 (.object 3) "entries" =
+      .ok ⟨(balanceResetTsDescriptorEntry b).1, .ok (.builtin .objectEntries)⟩ := by
+  have fields := balanceResetTsDescriptorEntry_fields b
+  have fixed := resetTsDescriptorPostFixedCheck_true
+  have old := (List.all_eq_true.mp resetTsCanonicalOldReferencesCheck_true) 3 (by decide)
+  simp only [decide_eq_true_eq] at old
+  exact resetTsCanonicalOverlayTable_read (entry := (3,"entries",.builtin .objectEntries))
+    (by decide) (fields.2.2.2.2.2.2.trans fixed.1)
+    (fields.2.2.2.2.2.1.trans fixed.2.1)
+    (balanceResetTsDescriptorEntry_old_object b old.1 old.2)
+
+
+theorem balanceResetTsDescriptorEntry_environment (b : Int) {entry}
+    (he : entry ∈ resetTsCanonicalOverlayBindings) :
+    localValue (balanceResetTsDescriptorEntry b).1 (balanceResetTsDescriptorEntry b).2 entry.1 =
+      .ok entry.2 := by
+  have post := (List.all_eq_true.mp resetTsDescriptorPostBindingsCheck_true) entry he
+  have base := (List.all_eq_true.mp resetTsCanonicalOverlayBindingsCheck_true) entry he
+  simp only [decide_eq_true_eq] at post base
+  rw [balanceResetTsDescriptorEntry_localValue]
+  exact post.2.2.2.2.2.2.trans base
+
+theorem balanceResetTsDescriptorEntry_overrides (b : Int) :
+    localValue (balanceResetTsDescriptorEntry b).1 (balanceResetTsDescriptorEntry b).2 "overrides" =
+      .ok (.object 26) ∧
+    objectAt (balanceResetTsDescriptorEntry b).1 26 =
+      .ok (balanceHeapObject .ts (balanceResetTsDescriptorEntry b).1 b) := by
+  have fixed := resetTsDescriptorPostFixedCheck_true
+  have fields := balanceResetTsCopyInitial_fields b
+  have n : (balanceResetMiddleEntry .ts b).1.nextObject = 24 := fields.2.2.2.2.1.trans fixed.2.2.2.1
+  constructor
+  · rw [balanceResetTsDescriptorEntry_localValue]; exact fixed.2.2.2.2.2
+  · have obj := resetTsDescriptorCopyModel_overrides_object
+      (m := (balanceResetMiddleEntry .ts b).1) (f := (balanceResetMiddleEntry .ts b).2)
+      (b := b) (cell := 26)
+    change objectAt (balanceResetTsDescriptorEntry b).1
+      ((balanceResetMiddleEntry .ts b).1.nextObject + 2) = _ at obj
+    rw [n] at obj
+    exact obj
+
+theorem resetTsDescriptorCopyModel_prototype (m : TargetMachine) (f : TargetFrame) (b : Int) (cell : CellRef) :
+    (resetTsDescriptorCopyModel m f b cell).1.objectPrototype = m.objectPrototype := by
+  simp only [resetTsDescriptorCopyModel, resetTsDescriptorsMachine, snapshotBound,
+    resetTsDescriptorPairBound, allocObject, allocCell, oneEntryMachine, Prod.fst, Prod.snd]
+
+theorem resetTsOverlayBinding_prototype (m : TargetMachine) (f : TargetFrame) (b : Int) :
+    (resetOverlayPairBinding .ts (resetIterableMachine .ts m b) f (integerValue .ts b)).1.objectPrototype =
+      m.objectPrototype := by
+  simp only [resetOverlayPairBinding, resetIterableMachine, oneEntryMachine, forPairBound,
+    allocObject, allocCell, Prod.fst, Prod.snd, beq_self_eq_true, if_true]
+
+theorem balanceHeapObject_prototype_congr {lang : TargetLang} {m n : TargetMachine} (b : Int)
+    (hp : m.objectPrototype = n.objectPrototype) :
+    balanceHeapObject lang m b = balanceHeapObject lang n b := by
+  simp only [balanceHeapObject, hp]
+
+theorem balanceResetTsOverlayBound_candidate (b : Int) :
+    localValue (balanceResetTsOverlayBound b).1 (balanceResetTsOverlayBound b).2 "candidate" =
+      .ok (.object 23) ∧
+    objectAt (balanceResetTsOverlayBound b).1 23 =
+      .ok (balanceHeapObject .ts (balanceResetTsOverlayBound b).1 100) := by
+  have fixed := resetTsDescriptorPostFixedCheck_true
+  have fields := balanceResetTsDescriptorEntry_fields b
+  have middle := balanceResetTsCopyInitial_fields b
+  have foot := balanceCanonicalResetStage_footprint .ts b 3 (by decide)
+  have np : (balanceResetTsDescriptorEntry b).1.nextObject = 30 := fields.2.2.2.2.1.trans fixed.2.2.2.2.1
+  have nm : (balanceResetMiddleEntry .ts b).1.nextObject = 24 := middle.2.2.2.2.1.trans fixed.2.2.2.1
+  have candidate := balanceResetMiddleEntry_candidate_object .ts b
+  rw [foot.2.2.2.2.1, fixed.2.2.1] at candidate
+  constructor
+  · have env := balanceResetTsOverlayBound_environment b
+      (entry := ("candidate", .object 23)) (by decide)
+    have base := (List.all_eq_true.mp resetTsCanonicalOverlayBindingsCheck_true)
+      ("candidate", .object 23) (by decide)
+    simp only [decide_eq_true_eq] at base
+    exact env.trans base
+  · have hf : 23 < (balanceResetTsDescriptorEntry b).1.nextObject := by rw [np]; decide
+    have hm : 23 < (balanceResetMiddleEntry .ts b).1.nextObject := by rw [nm]; decide
+    have old : objectAt (balanceResetTsOverlayBound b).1 23 =
+        objectAt (balanceResetMiddleEntry .ts b).1 23 := by
+      unfold balanceResetTsOverlayBound
+      rw [resetOverlayPairBinding_objectAt, resetIterableMachine_objectAt_other hf]
+      unfold balanceResetTsDescriptorEntry
+      exact resetTsDescriptorCopyModel_objectAt_old
+        (m := (balanceResetMiddleEntry .ts b).1) (f := (balanceResetMiddleEntry .ts b).2)
+        (b := b) (cell := 26) hm
+    have p1 : (balanceResetTsOverlayBound b).1.objectPrototype =
+        (balanceResetTsDescriptorEntry b).1.objectPrototype :=
+      resetTsOverlayBinding_prototype (balanceResetTsDescriptorEntry b).1
+        (balanceResetTsDescriptorEntry b).2 b
+    have p2 : (balanceResetTsDescriptorEntry b).1.objectPrototype =
+        (balanceResetMiddleEntry .ts b).1.objectPrototype :=
+      resetTsDescriptorCopyModel_prototype (balanceResetMiddleEntry .ts b).1
+        (balanceResetMiddleEntry .ts b).2 b 26
+    have heap := balanceHeapObject_prototype_congr (lang := .ts)
+      (m := (balanceResetMiddleEntry .ts b).1) (n := (balanceResetTsOverlayBound b).1) 100
+      (p1.trans p2).symm
+    exact old.trans (candidate.trans (congrArg Except.ok heap))
+
+
+theorem balanceReset_ts_canonical_overlay_loop_safe (b : Int)
+    (hb : b.natAbs ≤ 9007199254740991) (k : Nat) :
+    let e := balanceResetTsDescriptorEntry b
+    execStmt (k + 12) (balanceProgram .ts) e.1 e.2 (balanceResetOverlayLoop .ts) =
+      .ok ⟨balanceOverlayUpdated .ts (balanceResetTsOverlayBound b).1 23 b, e.2, .normal⟩ := by
+  exact balanceReset_ts_seed_loop_safe (balanceResetTsDescriptorEntry_entries b)
+    (balanceResetTsDescriptorEntry_environment b (entry := ("Object", .object 3)) (by decide))
+    (balanceResetTsDescriptorEntry_overrides b).1 (balanceResetTsDescriptorEntry_overrides b).2
+    (balanceResetTsOverlayBound_physical b)
+    (balanceResetTsOverlayBound_candidate b).1 (balanceResetTsOverlayBound_candidate b).2 hb
+
+
+
+/-- The real bounds method call allocates its receiver-bound closure and its
+    values parameter before entering the source body. This boundary is uniform
+    in the candidate payload; it does not assume successful helper execution. -/
+def resetBoundsBodyEntry (m : TargetMachine) (method : TargetClosure) (candidate : ObjRef) :
+    TargetMachine × TargetFrame :=
+  let active := { method with receiver := some m.checkerRef }
+  let bound := (allocClosure m active).1
+  ((allocCell bound (.object candidate) true).1,
+    { closureFrame active with locals := [("values", bound.nextCell)] })
+
+theorem resetBoundsCall_eq_body {lang m f methodRef method candidate error k}
+    (hr : localValue m f (if lang == .ts then "this" else "self") =
+      .ok (.object m.checkerRef))
+    (hv : localValue m f "candidate" = .ok (.object candidate))
+    (hf : readCheckerField m (if lang == .ts then "checkBounds" else "_bounds") = .error error)
+    (hm : m.classMethods.lookup (if lang == .ts then "checkBounds" else "_bounds") = some methodRef)
+    (hc : closureAt m methodRef = .ok method)
+    (hp : method.params = [⟨"values", none⟩]) :
+    evalExpr (k + 3) (balanceProgram lang) m f (resetBoundsCall lang) = (do
+      let body ← execStmt (k + 2) (balanceProgram lang)
+        (resetBoundsBodyEntry m method candidate).1
+        (resetBoundsBodyEntry m method candidate).2 method.body
+      closureResult lang body) := by
+  let active := { method with receiver := some m.checkerRef }
+  let bound := (allocClosure m active).1
+  have he : DepthDerivesExpr (balanceProgram lang) m f
+      (.property (resetReceiver lang) (if lang == .ts then "checkBounds" else "_bounds"))
+      ⟨bound, .ok (.closure m.nextClosure)⟩ 1 := by
+    apply DepthDerivesExpr.property (.localRead hr)
+    rw [balanceProgram_lang]
+    exact readCheckerMethod_bound hf hm hc
+  have value : localValue bound f "candidate" = .ok (.object candidate) := hv
+  have ha : DepthDerivesArgs (balanceProgram lang) bound f
+      (.sequence (.local "candidate") .empty) ⟨bound, .ok [.object candidate]⟩ 1 :=
+    .cons (.localRead value) .empty
+  have stored : closureAt bound m.nextClosure = .ok active := by
+    simp [bound, closureAt, allocClosure, List.lookup]
+  have params : DepthBindsProvided (balanceProgram lang) bound (closureFrame active)
+      active.params active.pythonDefaults [.object candidate]
+      (resetBoundsBodyEntry m method candidate).1
+      (resetBoundsBodyEntry m method candidate).2 1 := by
+    change DepthBindsProvided (balanceProgram lang) bound (closureFrame active)
+      method.params active.pythonDefaults _ _ _ 1
+    rw [hp]
+    exact .cons (by simp) .empty
+  have h := evalStoredCall_eq he ha stored params (k := k + 2)
+    (Nat.lt_succ_of_le (Nat.succ_le_succ (Nat.zero_le k)))
+    (Nat.lt_succ_of_le (Nat.succ_le_succ (Nat.zero_le k)))
+    (Nat.lt_succ_of_le (Nat.succ_le_succ (Nat.zero_le k)))
+  simpa only [resetBoundsCall, balanceProgram_lang] using h
+
+/-- Both generated invariant calls supply Ready and the actual candidate.
+    Evaluating their argument list neither allocates nor inspects the balance. -/
+theorem resetInvariantCall_args_execute {lang m f candidate k}
+    (hv : localValue m f "candidate" = .ok (.object candidate))
+    (hs : lang = .python → localValue m f "_INITIAL" = .ok (.string "Ready")) :
+    evalArgValues (k + 3) (balanceProgram lang) m f
+      (.sequence (if lang == .ts then .string "Ready" else .local "_INITIAL")
+        (.sequence (.local "candidate") .empty)) =
+      .ok ⟨m, .ok [.string "Ready", .object candidate]⟩ := by
+  have state : DepthDerivesExpr (balanceProgram lang) m f
+      (if lang == .ts then .string "Ready" else .local "_INITIAL")
+      ⟨m, .ok (.string "Ready")⟩ 0 := by
+    cases lang with
+    | ts => exact .string "Ready"
+    | python => exact .localRead (hs rfl)
+  exact evalArgs_adequate (.cons state (.cons (.localRead hv) .empty))
+    (Nat.lt_succ_of_le (Nat.succ_le_succ (Nat.succ_le_succ (Nat.zero_le k))))
+
+/-- The invariant call performs real receiver dispatch and then invokes the
+    fresh closure with its two supplied arguments. Default binding and the
+    emitted evaluator body remain inside callClosure, without a success premise. -/
+theorem resetInvariantCall_eq_closure {lang m f methodRef method candidate error k}
+    (hr : localValue m f (if lang == .ts then "this" else "self") =
+      .ok (.object m.checkerRef))
+    (hv : localValue m f "candidate" = .ok (.object candidate))
+    (hs : lang = .python → localValue m f "_INITIAL" = .ok (.string "Ready"))
+    (hf : readCheckerField m (if lang == .ts then "checkInvariants" else "_invariant") = .error error)
+    (hm : m.classMethods.lookup (if lang == .ts then "checkInvariants" else "_invariant") = some methodRef)
+    (hc : closureAt m methodRef = .ok method) :
+    let bound := (allocClosure m { method with receiver := some m.checkerRef }).1
+    evalExpr (k + 4) (balanceProgram lang) m f (resetInvariantCall lang) =
+      callClosure (k + 3) (balanceProgram lang) bound m.nextClosure
+        [.string "Ready", .object candidate] := by
+  dsimp only
+  let bound := (allocClosure m { method with receiver := some m.checkerRef }).1
+  have callee : DepthDerivesExpr (balanceProgram lang) m f
+      (.property (resetReceiver lang) (if lang == .ts then "checkInvariants" else "_invariant"))
+      ⟨bound, .ok (.closure m.nextClosure)⟩ 1 := by
+    apply DepthDerivesExpr.property (.localRead hr)
+    rw [balanceProgram_lang]
+    exact readCheckerMethod_bound hf hm hc
+  have value : localValue bound f "candidate" = .ok (.object candidate) := hv
+  have state : lang = .python → localValue bound f "_INITIAL" = .ok (.string "Ready") := hs
+  unfold resetInvariantCall
+  rw [evalExpr, evalExpr_adequate callee
+    (Nat.lt_succ_of_le (Nat.succ_le_succ (Nat.zero_le (k + 1))))]
+  simp only [Bind.bind, Except.bind]
+  rw [resetInvariantCall_args_execute value state]
+
+/-- The source bounds comparisons reject neither endpoint nor any interior
+    bounded integer. These are actual interpreter binary operations. -/
+theorem resetBounds_reject_comparisons {lang : TargetLang} (m : TargetMachine) {b : Int}
+    (hb : 0 ≤ b ∧ b ≤ 9007199254740991) :
+    binaryValue lang m .lt (integerValue lang b) (integerValue lang 0) =
+      .ok (.ok (.bool false)) ∧
+    binaryValue lang m .gt (integerValue lang b) (integerValue lang 9007199254740991) =
+      .ok (.ok (.bool false)) := by
+  have hmin : ¬ b < 0 := Int.not_lt.mpr hb.1
+  have hmax : ¬ (9007199254740991 : Int) < b := Int.not_lt.mpr hb.2
+  constructor
+  · cases lang <;>
+      change Except.ok (Except.ok (TargetValue.bool (decide (b < 0)))) = _ <;>
+      simp only [hmin, decide_false]
+  · cases lang <;>
+      change Except.ok (Except.ok (TargetValue.bool (decide ((9007199254740991 : Int) < b)))) = _ <;>
+      simp only [hmax, decide_false]
+
+/-- The comparison nodes occurring in both emitted bounds methods execute
+    constructively for every bounded value once their physical reads are known. -/
+theorem resetBounds_comparison_execute {lang m f b minimum maximum k}
+    (hv : localValue m f "value" = .ok (integerValue lang b))
+    (hmin : evalExpr (k + 2) (balanceProgram lang) m f minimum =
+      .ok ⟨m, .ok (integerValue lang 0)⟩)
+    (hmax : evalExpr (k + 2) (balanceProgram lang) m f maximum =
+      .ok ⟨m, .ok (integerValue lang 9007199254740991)⟩)
+    (hb : 0 ≤ b ∧ b ≤ 9007199254740991) :
+    evalExpr (k + 3) (balanceProgram lang) m f (.binary .lt (.local "value") minimum) =
+      .ok ⟨m, .ok (.bool false)⟩ ∧
+    evalExpr (k + 3) (balanceProgram lang) m f (.binary .gt (.local "value") maximum) =
+      .ok ⟨m, .ok (.bool false)⟩ := by
+  have comparisons := resetBounds_reject_comparisons (lang := lang) m hb
+  constructor
+  · rw [evalExpr, evalExpr_adequate (.localRead hv) (Nat.zero_lt_succ _)]
+    simp only [Bind.bind, Except.bind]
+    rw [hmin]
+    simp [Bind.bind, Except.bind, Pure.pure, Except.pure, balanceProgram_lang, comparisons.1]
+  · rw [evalExpr, evalExpr_adequate (.localRead hv) (Nat.zero_lt_succ _)]
+    simp only [Bind.bind, Except.bind]
+    rw [hmax]
+    simp [Bind.bind, Except.bind, Pure.pure, Except.pure, balanceProgram_lang, comparisons.2]
+
+/-- Source node numbers differ by one because TS has a separate entries loop. -/
+def resetValidationIndex (lang : TargetLang) : Nat := if lang == .ts then 4 else 3
+
+def resetValidationResult (lang : TargetLang) : TargetValue :=
+  if lang == .ts then .undefined else .null
+
+set_option maxRecDepth 65536 in
+set_option maxHeartbeats 10000000 in
+theorem balanceReset_validation_shapes (lang : TargetLang) :
+    balanceResetMiddleStmt lang (resetValidationIndex lang) =
+      snapshotBindStmt lang "invalid" (resetBoundsCall lang) ∧
+    balanceResetMiddleStmt lang (resetValidationIndex lang + 1) =
+      .ifThenElse (.local "invalid")
+        (ifYesStmt (balanceResetMiddleStmt lang (resetValidationIndex lang + 1))) .empty ∧
+    balanceResetMiddleStmt lang (resetValidationIndex lang + 2) =
+      snapshotBindStmt lang "violated" (resetInvariantCall lang) ∧
+    balanceResetMiddleStmt lang (resetValidationIndex lang + 3) =
+      .ifThenElse (.local "violated")
+        (ifYesStmt (balanceResetMiddleStmt lang (resetValidationIndex lang + 3))) .empty := by
+  cases lang <;>
+    unfold balanceResetMiddleStmt balanceResetProtected balanceResetSnapshots
+      balanceStoredReset balanceResetLookup balancePreparation resetValidationIndex
+  · rw [balanceProgram_of_parse BalancePrograms.balanceTsProgram_source]; decide +kernel
+  · rw [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]; decide +kernel
+
+/-- Binding a successful helper result preserves all allocations performed by
+    that helper, then skips the real source rejection branch. -/
+theorem balanceReset_validation_bind_skip {lang m final f k} (invariant : Bool)
+    (he : evalExpr (k + 2) (balanceProgram lang) m f
+      (if invariant then resetInvariantCall lang else resetBoundsCall lang) =
+      .ok ⟨final, .ok (resetValidationResult lang)⟩)
+    (hn : lang = .python → snapshotAddress m f (if invariant then "violated" else "invalid") = none) :
+    let name := if invariant then "violated" else "invalid"
+    let bound := snapshotBound lang final f name (resetValidationResult lang)
+    let index := resetValidationIndex lang + (if invariant then 2 else 0)
+    execStmt (k + 3) (balanceProgram lang) m f (balanceResetMiddleStmt lang index) =
+      .ok ⟨bound.1, bound.2, .normal⟩ ∧
+    execStmt (k + 3) (balanceProgram lang) bound.1 bound.2
+      (balanceResetMiddleStmt lang (index + 1)) = .ok ⟨bound.1, bound.2, .normal⟩ := by
+  dsimp only
+  have shapes := balanceReset_validation_shapes lang
+  have bindShape : balanceResetMiddleStmt lang
+      (resetValidationIndex lang + (if invariant then 2 else 0)) =
+      snapshotBindStmt lang (if invariant then "violated" else "invalid")
+        (if invariant then resetInvariantCall lang else resetBoundsCall lang) := by
+    cases invariant
+    · simpa using shapes.1
+    · exact shapes.2.2.1
+  have skipShape : balanceResetMiddleStmt lang
+      (resetValidationIndex lang + (if invariant then 2 else 0) + 1) =
+      .ifThenElse (.local (if invariant then "violated" else "invalid"))
+        (ifYesStmt (balanceResetMiddleStmt lang
+          (resetValidationIndex lang + (if invariant then 2 else 0) + 1))) .empty := by
+    cases invariant
+    · simpa using shapes.2.1
+    · simpa only [Nat.add_assoc] using shapes.2.2.2
+  constructor
+  · rw [bindShape]
+    exact execSnapshotBind he hn
+  · rw [skipShape]
+    have read : localValue
+        (snapshotBound lang final f (if invariant then "violated" else "invalid") (resetValidationResult lang)).1
+        (snapshotBound lang final f (if invariant then "violated" else "invalid") (resetValidationResult lang)).2
+        (if invariant then "violated" else "invalid") = .ok (resetValidationResult lang) := by
+      cases invariant <;> cases lang <;>
+        simp [snapshotBound, localValue, readCell, allocCell, List.lookup]
+    exact execStmt_adequate (.ifFalse (.localRead read)
+      (by cases lang <;> rfl) .empty)
+      (Nat.lt_succ_of_le (Nat.succ_le_succ (Nat.zero_le (k + 1))))
+
+/-- Actual canonical Python statement-2 execution feeds a candidate whose
+    descriptor satisfies both primitive validation predicates for every bounded
+    balance. Successful execution of the two validation bodies is still open. -/
+theorem balanceReset_python_canonical_overlay_bounded (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ 9007199254740991) (k : Nat) :
+    let e := balanceResetMiddleEntry .python b
+    let final := balanceOverlayUpdated .python (balanceResetPythonOverlayAfterHelper b) 79 b
+    let ff := (balanceResetPythonOverlayBound b).2
+    execStmt (k + 25) (balanceProgram .python) e.1 e.2 (balanceResetMiddleStmt .python 2) =
+      .ok ⟨final, ff, .normal⟩ ∧
+    resetCandidateBalanceRead final ff = .ok (some (integerValue .python b)) ∧
+    binaryValue .python final .lt (integerValue .python b) (integerValue .python 0) =
+      .ok (.ok (.bool false)) ∧
+    binaryValue .python final .gt (integerValue .python b) (integerValue .python 9007199254740991) =
+      .ok (.ok (.bool false)) := by
+  have candidate := balanceReset_python_canonical_post_candidate b
+  have range := balanceOverlayUpdated_candidate_range candidate.1 candidate.2 hb
+  have comparisons := resetBounds_reject_comparisons
+    (lang := .python) (balanceOverlayUpdated .python (balanceResetPythonOverlayAfterHelper b) 79 b) hb
+  exact ⟨(balanceReset_python_canonical_overlay_safe b (balance_natAbs hb) k).2,
+    range.1, comparisons⟩
+
+
+/-- The TS loop restores its caller frame; non-binder reads agree with the
+    temporary iteration frame at the same physical machine. -/
+theorem resetOverlayPairBinding_old_frame_read {lang m f value name}
+    (hn : name ≠ "name") (hv : name ≠ "value") :
+    localValue (resetOverlayPairBinding lang m f value).1 f name =
+      localValue (resetOverlayPairBinding lang m f value).1
+        (resetOverlayPairBinding lang m f value).2 name := by
+  simp only [localValue, resetOverlayPairBinding, forPairBound, allocCell,
+    Prod.fst, Prod.snd, List.lookup_cons,
+    beq_eq_false_iff_ne.mpr hn, beq_eq_false_iff_ne.mpr hv, if_false]
+
+theorem balanceReset_ts_canonical_overlay_candidate_read (b : Int) :
+    resetCandidateBalanceRead
+      (balanceOverlayUpdated .ts (balanceResetTsOverlayBound b).1 23 b)
+      (balanceResetTsDescriptorEntry b).2 = .ok (some (integerValue .ts b)) := by
+  have candidateLocal : localValue (balanceResetTsOverlayBound b).1
+      (balanceResetTsDescriptorEntry b).2 "candidate" = .ok (.object 23) :=
+    (resetOverlayPairBinding_old_frame_read (lang := .ts)
+      (m := resetIterableMachine .ts (balanceResetTsDescriptorEntry b).1 b)
+      (f := (balanceResetTsDescriptorEntry b).2) (value := integerValue .ts b)
+      (name := "candidate") (by decide) (by decide)).trans
+      (balanceResetTsOverlayBound_candidate b).1
+  exact balanceOverlayUpdated_candidate_read candidateLocal (balanceResetTsOverlayBound_candidate b).2
+
+/-- The actual TS supplied-seed statement and the following entries loop form
+    the complete canonical overlay prefix. Validation is a later source node. -/
+theorem balanceReset_ts_canonical_overlay_safe (b : Int)
+    (hb : b.natAbs ≤ 9007199254740991) (k : Nat) :
+    let e := balanceResetMiddleEntry .ts b
+    execStmt (k + 27) (balanceProgram .ts) e.1 e.2
+      (.sequence (balanceResetMiddleStmt .ts 2) (balanceResetOverlayLoop .ts)) =
+      .ok ⟨balanceOverlayUpdated .ts (balanceResetTsOverlayBound b).1 23 b,
+        (balanceResetTsDescriptorEntry b).2, .normal⟩ := by
+  dsimp only
+  rw [execSequence_of_normal (balanceReset_ts_canonical_descriptor_copy_safe b k)]
+  exact balanceReset_ts_canonical_overlay_loop_safe b hb (k + 14)
+
+/-- Complete canonical TS overlay execution and physical validation predicates
+    for every nonnegative bounded balance; helper-body execution is separate. -/
+theorem balanceReset_ts_canonical_overlay_bounded (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ 9007199254740991) (k : Nat) :
+    let e := balanceResetMiddleEntry .ts b
+    let final := balanceOverlayUpdated .ts (balanceResetTsOverlayBound b).1 23 b
+    let ff := (balanceResetTsDescriptorEntry b).2
+    execStmt (k + 27) (balanceProgram .ts) e.1 e.2
+      (.sequence (balanceResetMiddleStmt .ts 2) (balanceResetOverlayLoop .ts)) =
+      .ok ⟨final, ff, .normal⟩ ∧
+    resetCandidateBalanceRead final ff = .ok (some (integerValue .ts b)) ∧
+    binaryValue .ts final .lt (integerValue .ts b) (integerValue .ts 0) =
+      .ok (.ok (.bool false)) ∧
+    binaryValue .ts final .gt (integerValue .ts b) (integerValue .ts 9007199254740991) =
+      .ok (.ok (.bool false)) := by
+  exact ⟨balanceReset_ts_canonical_overlay_safe b (balance_natAbs hb) k,
+    balanceReset_ts_canonical_overlay_candidate_read b,
+    resetBounds_reject_comparisons (lang := .ts) _ hb⟩
+
+/-- Join the complete canonical TS overlay to the actual bounds-result binding
+    and rejection guard. Whole helper execution remains an explicit premise;
+    its final machine, including all allocations, is preserved. -/
+theorem balanceReset_ts_canonical_overlay_bounds_bind (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ 9007199254740991) (k : Nat) {helperFinal}
+    (he : evalExpr (k + 26) (balanceProgram .ts)
+      (balanceOverlayUpdated .ts (balanceResetTsOverlayBound b).1 23 b)
+      (balanceResetTsDescriptorEntry b).2 (resetBoundsCall .ts) =
+      .ok ⟨helperFinal, .ok .undefined⟩) :
+    let e := balanceResetMiddleEntry .ts b
+    let bound := snapshotBound .ts helperFinal (balanceResetTsDescriptorEntry b).2 "invalid" .undefined
+    execStmt (k + 28) (balanceProgram .ts) e.1 e.2
+      (.sequence (.sequence (balanceResetMiddleStmt .ts 2) (balanceResetOverlayLoop .ts))
+        (balanceResetMiddleStmt .ts 4)) = .ok ⟨bound.1, bound.2, .normal⟩ ∧
+    execStmt (k + 27) (balanceProgram .ts) bound.1 bound.2
+      (balanceResetMiddleStmt .ts 5) = .ok ⟨bound.1, bound.2, .normal⟩ := by
+  have bindings := balanceReset_validation_bind_skip (lang := .ts) (k := k + 24)
+    false he (by intro h; cases h)
+  dsimp only
+  constructor
+  · rw [execSequence_of_normal (balanceReset_ts_canonical_overlay_safe b (balance_natAbs hb) k)]
+    exact bindings.1
+  · exact bindings.2
+
+/-- Python's canonical overlay occupies one source node; the same bounds-call
+    premise joins it to the actual following binding and rejection guard. -/
+theorem balanceReset_python_canonical_overlay_bounds_bind (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ 9007199254740991) (k : Nat) {helperFinal}
+    (he : evalExpr (k + 24) (balanceProgram .python)
+      (balanceOverlayUpdated .python (balanceResetPythonOverlayAfterHelper b) 79 b)
+      (balanceResetPythonOverlayBound b).2 (resetBoundsCall .python) =
+      .ok ⟨helperFinal, .ok .null⟩)
+    (hn : snapshotAddress
+      (balanceOverlayUpdated .python (balanceResetPythonOverlayAfterHelper b) 79 b)
+      (balanceResetPythonOverlayBound b).2 "invalid" = none) :
+    let e := balanceResetMiddleEntry .python b
+    let bound := snapshotBound .python helperFinal (balanceResetPythonOverlayBound b).2 "invalid" .null
+    execStmt (k + 26) (balanceProgram .python) e.1 e.2
+      (.sequence (balanceResetMiddleStmt .python 2) (balanceResetMiddleStmt .python 3)) =
+      .ok ⟨bound.1, bound.2, .normal⟩ ∧
+    execStmt (k + 25) (balanceProgram .python) bound.1 bound.2
+      (balanceResetMiddleStmt .python 4) = .ok ⟨bound.1, bound.2, .normal⟩ := by
+  have bindings := balanceReset_validation_bind_skip (lang := .python) (k := k + 22)
+    false he (by intro _; exact hn)
+  dsimp only
+  constructor
+  · rw [execSequence_of_normal (balanceReset_python_canonical_overlay_safe b (balance_natAbs hb) k).2]
+    exact bindings.1
+  · exact bindings.2
+
+end Batch14CanonicalTsOverlay
+
 end CanonicalResetComposition
 
 end Harmonia.Applications.Kadmos.Generated

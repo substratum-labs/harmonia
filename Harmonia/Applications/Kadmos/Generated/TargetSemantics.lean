@@ -2370,4 +2370,40 @@ theorem evalTupleTwo_eq {k program m f left right}
   simp only [evalArrayElems]
   rfl
 
+/-- TypeScript one-pair iteration with arbitrary binder names. -/
+def tsForPairBound (m : TargetMachine) (f : TargetFrame)
+    (leftName rightName : String) (left right : TargetValue) : TargetMachine × TargetFrame :=
+  let named := allocCell m left false
+  let valued := allocCell named.1 right false
+  (valued.1, { f with locals := (rightName, named.1.nextCell) :: (leftName, m.nextCell) :: f.locals })
+
+theorem execForDo_ts_one_pair {program m source final f ff listRef pairRef list pair
+    leftName rightName left right k iterable body}
+    (hlang : program.lang = .ts)
+    (he : evalExpr (k + 2) program m f iterable = .ok ⟨source, .ok (.object listRef)⟩)
+    (hl : objectAt source listRef = .ok list) (hk : list.kind = .jsArray)
+    (hi : list.items = [.object pairRef]) (hp : objectAt source pairRef = .ok pair)
+    (hv : pair.items = [left, right])
+    (hb : execStmt (k + 1) program
+      (tsForPairBound source f leftName rightName left right).1
+      (tsForPairBound source f leftName rightName left right).2 body = .ok ⟨final, ff, .normal⟩) :
+    execStmt (k + 3) program m f (.forDo [leftName, rightName] iterable body) =
+      .ok ⟨final, f, .normal⟩ := by
+  rw [execStmt, he]
+  simp only [Bind.bind, Except.bind, hl, hk, hlang, List.forIn_cons]
+  rw [hi]
+  simp only [execForItems, bindLoopValue, hp, hv, bindOne, hlang,
+    show (TargetLang.ts == .python) = false from rfl,
+    Bool.false_eq_true, if_false, Bind.bind, Except.bind, Pure.pure, Except.pure]
+  change (do
+    let result ← execStmt (k + 1) program
+      (tsForPairBound source f leftName rightName left right).1
+      (tsForPairBound source f leftName rightName left right).2 body
+    match result.control with
+    | .normal | .continued "loop" => _
+    | .broke "loop" => _
+    | _ => _) = _
+  rw [hb]
+  rfl
+
 end Harmonia.Applications.Kadmos.Generated
