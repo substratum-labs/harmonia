@@ -2469,4 +2469,51 @@ theorem execForDo_named_one_pair {program m source final f ff listRef pairRef li
 
 
 
+/-- One parameter with no source default stores `none` in either language.
+    This public equation lets clients reduce the private defaults interpreter
+    without adding metaprogramming imports to certified application modules. -/
+theorem evalDefaults_single_noDefault (k : Nat) (program : TargetProgram)
+    (m : TargetMachine) (f : TargetFrame) (name : String) :
+    evalDefaults (k + 2) program m f [⟨name, none⟩] =
+      .ok ⟨m, .ok [none]⟩ := by
+  cases h : program.lang <;>
+    simp only [evalDefaults, evalOneDefault, h, beq_self_eq_true,
+      show (TargetLang.ts == .python) = false from rfl,
+      Bool.false_eq_true, if_false, if_true, Bind.bind, Except.bind,
+      Pure.pure, Except.pure]
+
+/-- Sealing changes only the stored write permission for the selected cell. -/
+theorem sealCell_eq_permissions (m : TargetMachine) (ref : CellRef) :
+    sealCell m ref = { m with writableCells :=
+      (m.writableCells.map (fun entry => (entry.1, if entry.1 == ref then false else entry.2))) } := rfl
+
+/-- Expose the basic successful-expression record without a private name. -/
+theorem done_eq_outcome (m : TargetMachine) (value : TargetValue) :
+    done m value = (⟨m, .ok value⟩ : ExprOutcome) := rfl
+
+/-- Integer literals retain the language's specified number tag. -/
+theorem number_eq_taggedInteger (lang : TargetLang) (n : Int) :
+    number lang n = .number (if lang == .ts then .jsNumber else .pyInt) n := rfl
+
+/-- Python evaluates the emitted parse minimum default; TS stores no default. -/
+theorem evalDefaults_single_integerZero (k : Nat) (program : TargetProgram)
+    (m : TargetMachine) (f : TargetFrame) (name : String) :
+    evalDefaults (k + 3) program m f [⟨name, some (.integer 0)⟩] =
+      .ok ⟨m, .ok [if program.lang == .python then
+        some (.number .pyInt 0) else none]⟩ := by
+  cases h : program.lang <;>
+    simp only [evalDefaults, evalOneDefault, evalExpr, h, beq_self_eq_true,
+      show (TargetLang.ts == .python) = false from rfl,
+      Bool.false_eq_true, if_false, if_true, Bind.bind, Except.bind,
+      Pure.pure, Except.pure, number, done,
+      show (TargetLang.python == .ts) = false from rfl]
+
+/-- The supported exact float conversion is independent of its input tag. -/
+theorem host_float_exact_tag (m : TargetMachine) (tag : NumberTag) (n : Int)
+    (h : n.natAbs ≤ 9007199254740991) :
+    hostCall .python m .float none [.number tag n] =
+      .ok (done m (.number .pyFloat n)) := by
+  change hostCall .python m .float none [.number .pyInt n] = _
+  exact host_float_exact m n h
+
 end Harmonia.Applications.Kadmos.Generated

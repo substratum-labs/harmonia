@@ -2131,3 +2131,131 @@ Review evidence: `/tmp/t398-b15/source-review.txt`, `source-reviewer-results.jso
 | `docs/verification/2026-10-12-t398-generated-axioms.txt` | `a94f455259e0f2797a8b25b7409a97bab531b89780c96bd4501fba2c199bc72a` |
 
 The reviewed scope remains the universal canonical bounds checkpoint and stated invariant advancement. Runtime tokenizer/Pratt whole-body execution, unconditional full reset/constructor/step correspondence, final HeapWF/BalanceRep, `targetConstruct_sound`, whole-source admission and native/hosted-Linux guarantees remain open. This matches the authorized Batch 15 advancement scope; no broader guarantee is inferred. T-398 remains **IN_PROGRESS**. Branch and worktree are preserved; no push or PR #5 merge is performed. The authorized next action is the clean local checkpoint commit.
+
+## T-398 Batch 16 canonical invariant and constructor execution (2026-10-15)
+
+This slice resumes clean `301400b44c66015f6fa37c67b3cadc249a0a734e` in the isolated `5b89` worktree on `feat/t396-generated-correspondence`, under Yong's autonomous delegation authorization. Batch 16 verification and independent evidence review are complete. At receipt recording time, the authorized next action is the clean local checkpoint commit. No push or PR #5 merge is authorized or performed.
+
+### Proven scope and assumptions
+
+For either target language and every integer `0 ≤ b ≤ 9007199254740991`, `resetInvariant_canonical_execute` executes the actual parsed invariant method on `balanceResetPostBounds lang b`, the canonical `snapshotBound` machine/frame with `invalid` bound to the real validation result. It returns `undefined` in TS and `null` in Python with the exact helper heap. The lookup of `Ready` and tokenization of `balance >= 0` use fixed source tables and strings. The identifier reads `integerValue lang b`; numeric validation and comparison remain symbolic. Python float conversion uses the explicit safe-integer bound, and the comparison uses constructive nonnegativity. No helper-success, invariant-body-success, or execution-success premise remains in the public canonical contracts.
+
+`balanceReset_canonical_execute` discharges publication and finally cleanup. `balanceConstructor_canonical_execute` includes the original source constructor, seed copy, and restored caller frame. `targetConstruct_sound` gives the exact constructed machine; `balanceCanonicalConstructed_rep` and `targetConstruct_balance_rep` establish the complete physical `BalanceRep`. Existing representation predicates and executable definitions are unchanged. Canonical allocation/binding results advance the globals evidence; no general `CanonicalGlobals` theorem is claimed.
+
+| Source execution | TS | Python |
+|---|---:|---:|
+| Invariant expression fuel | 80 | 74 |
+| Original reset-body fuel | 96 | 89 |
+| Original constructor-body fuel | 99 | 99 |
+| Final cells / closures | 69 / 19 | 144 / 26 |
+| Candidate / history / copied seed references | 23 / 44 / 45 | 79 / 100 / 101 |
+| Constructed next-object counter | 46 | 102 |
+
+The models retain all intermediate allocations. Closure bodies select the actual admitted program AST. Universal input-machine/frame bridges, zero-balance copied-heap checks and all-integer numeric-payload footprint congruences connect the models to execution and physical well-formedness. Native diagnostics suggested the explicit models; those diagnostics are **not proofs**. The interval theorem concerns canonical seeds, not arbitrary imported globals or arbitrary heaps. The remaining generated step, whole-source admission, and native/hosted-Linux gates stay separate; legacy 2PC/SMT/C experiments have no new behavioral-correspondence claim. T-398 overall remains **IN_PROGRESS**.
+
+### Source certificate and dependency boundary
+
+`BalanceInvariantCertificate.lean` imports only `Init`. Its 14,157-row/161-name syntax DAG expands into ordinary defining equations, congruences, constructive `Decidable` transports and closed kernel decisions. Normal elaboration and kernel checking validate the expanded proof on every rebuild. No external proof-search evaluator, solver result, compiled proof artifact, or native decision oracle is imported into the product. The accepted scratch consumer had exactly `[propext, Quot.sound]` and a fresh 277-module Init/project-only closure excluding `Lean`, `DemandEvaluator`, and `OwnerDemandWholeAccepted`.
+
+The source transformation retargeted helper/model names and replaced 1,596 unique diagnostic trace nodes (1,615 expanded occurrences) with `skip`; independent structural comparison confirmed that no computational proof step was removed. The accepted export input SHA-256 is `9b84257ad5f1c7a12d2ae669e120eaad7b2f8680e420ac529452ac322c66bc32`. The resulting certificate SHA-256 is in the frozen table below. `scripts/normalize_balance_invariant_certificate.py` retains the normalization recipe and structural validator. Replay reproduces the certificate exactly and normalization is idempotent. Nine malformed-input cases are rejected: self child, invalid kind, invalid identifier, invalid parameter, signed index, Unicode index, empty child, external import and invalid root. These structural checks improve diagnostics; they do not replace the kernel proof. Private `TargetSemantics` equation names require the pinned Lean/source ABI; semantic edits may require regenerating the certificate.
+
+Six public proof-only equations in `TargetSemantics` expose defaults, sealing, successful outcomes, number tags and exact float conversion. Core, Distributed, legacy experiments, source fixtures, the Lean 4.16.0 pin and the axiom whitelist are unchanged.
+
+### Verification and resource evidence
+
+The first full-build attempt ended with native stack overflow (Lean exit 134 after 2303.16 seconds), without a reported proof error; it is excluded from acceptance and preserved in `/tmp/t398-b16/final-failed-stack/`. The Harmonia library now uses `--tstack=131072`, the same resource capacity already used by closed-certificate targets. A strict live-code inventory guard accepts exactly that library setting and rejects comments, altered flags and extra compiler options. Existing target-specific stack checks remain in place. All 17 inventory mutation tests pass; the whitelist is unchanged.
+
+The capacity preflight passed all 62 commands. It freshly kernel-built `BalanceSimulation` in 3168.64 seconds, the full constructor root in 491.77 seconds and the full balance-step root in 312.95 seconds. Both roots carry the same **105 new direct examples**, including universal interfaces, recursor congruence and closed `0`/`S` endpoints. This preflight is preserved in `/tmp/t398-b16/final-preflight-stack/`.
+
+The final accepting run then passed **62/62 commands** against the final ten-file snapshot: **58 serial Lake invocations** with at most one explicit target (the default build has its single configured default executable), followed by four Python commands. Every frozen hash was checked before and after every command, and recorded intervals do not overlap. Cached replay uses the same successfully kernel-built source/configuration postimages. The Generated inventory is **22 source modules / 37 test modules / 65 certified-closure modules / 28 test targets / 34 World inventory entries**. Inventory mutation tests pass **17/17**, artifact mutation tests **8/8**, and certificate-maintenance mutations **9/9**. Only the pre-existing Bridge unnecessary-`simpa` lint was observed.
+
+The strict Generated audit covers **10,417 theorems / 14,303 declarations**. Observed axioms and whitelist are both exactly **`[propext, Quot.sound]`**. The portable `2026-10-12-t398-generated-axioms.txt` was regenerated from that audit and checked for exact equality with all **10,417 sorted, unique theorem/dependency pairs**. Batch 16 proof additions contain no `sorry`, `admit`, `sorryAx`, `Classical.choice`, `native_decide`, new protocol axiom, unsafe declaration or `omega`. Existing uses of `omega` are not new Batch 16 additions; the complete strict axiom audit remains decisive.
+
+Final run evidence is `/tmp/t398-b16/final/{results.json,hashes.json,audit-summary.json,acceptance-check.json}` plus the numbered command logs. Certificate replay/mutation evidence is `/tmp/t398-b16/certificate-maintenance-validation.json`. Failed, interrupted, stale and unvalidated prototype checks are excluded from acceptance; no prototype evaluator or 14/29 MB alternative certificate is staged.
+
+### Final accepting commands
+
+| # | Command | Exit |
+|---:|---|---:|
+| 1 | `lake build Harmonia.Applications.Kadmos.Generated.TargetSemantics` | 0 |
+| 2 | `lake build Harmonia.Applications.Kadmos.Generated.BalanceSimulation` | 0 |
+| 3 | `lake build` | 0 |
+| 4 | `lake build HarmoniaTests.KadmosGeneratedK02ConstructorProofTS` | 0 |
+| 5 | `lake build HarmoniaTests.KadmosGeneratedK02ConstructorProofPython` | 0 |
+| 6 | `lake build kadmosGeneratedK02ConstructorProofTest` | 0 |
+| 7 | `lake build HarmoniaTests.KadmosGeneratedK02BalanceStepProofCases` | 0 |
+| 8 | `lake build HarmoniaTests.KadmosGeneratedK02BalanceStepProofTS` | 0 |
+| 9 | `lake build HarmoniaTests.KadmosGeneratedK02BalanceStepProofPython` | 0 |
+| 10 | `lake build kadmosGeneratedK02BalanceStepProofTest` | 0 |
+| 11 | `lake build foundationsTest` | 0 |
+| 12 | `lake build foundationsAudit` | 0 |
+| 13 | `lake build foundationsAuditRejection` | 0 |
+| 14 | `lake build distributedTest` | 0 |
+| 15 | `lake build distributedAudit` | 0 |
+| 16 | `lake build distributedAuditRejection` | 0 |
+| 17 | `lake build kadmosWorldTest` | 0 |
+| 18 | `lake build kadmosWorldAudit` | 0 |
+| 19 | `lake build kadmosWorldAuditRejection` | 0 |
+| 20 | `lake build kadmosBridgeSyntaxTest` | 0 |
+| 21 | `lake build kadmosBridgeCertificateTest` | 0 |
+| 22 | `lake build kadmosBridgeFixturesTest` | 0 |
+| 23 | `lake build kadmosBridgeAudit` | 0 |
+| 24 | `lake build kadmosBridgeAuditRejection` | 0 |
+| 25 | `lake build kadmosGeneratedK02LexerTest` | 0 |
+| 26 | `lake build kadmosGeneratedK02SourceGrammarTest` | 0 |
+| 27 | `lake build kadmosGeneratedK02SourceLexTest` | 0 |
+| 28 | `lake build kadmosGeneratedK02SourceValidatorTest` | 0 |
+| 29 | `lake build kadmosGeneratedK02SourceModuleTest` | 0 |
+| 30 | `lake build kadmosGeneratedK02PythonBooleanSyntaxTest` | 0 |
+| 31 | `lake build kadmosGeneratedK02StatementCertificateTest` | 0 |
+| 32 | `lake build kadmosGeneratedK02PythonLinesTest` | 0 |
+| 33 | `lake build kadmosGeneratedK02SimulationTest` | 0 |
+| 34 | `lake build kadmosGeneratedK02ClosedProgramsTest` | 0 |
+| 35 | `lake build kadmosGeneratedK02MachineTest` | 0 |
+| 36 | `lake build kadmosGeneratedK02ExpressionParserTest` | 0 |
+| 37 | `lake build kadmosGeneratedK02StatementParserTest` | 0 |
+| 38 | `lake build kadmosGeneratedK02TSParserTest` | 0 |
+| 39 | `lake build kadmosGeneratedK02SemanticsTest` | 0 |
+| 40 | `lake build kadmosGeneratedK02ProgramParserTest` | 0 |
+| 41 | `lake build kadmosGeneratedK02BalanceTSParseTest` | 0 |
+| 42 | `lake build kadmosGeneratedK02BalancePythonParseTest` | 0 |
+| 43 | `lake build kadmosGeneratedK02OrderTSParseTest` | 0 |
+| 44 | `lake build kadmosGeneratedK02OrderPythonParseTest` | 0 |
+| 45 | `lake build kadmosGeneratedK02CertificateTest` | 0 |
+| 46 | `lake build kadmosGeneratedK02BalanceTSCertificateTest` | 0 |
+| 47 | `lake build kadmosGeneratedK02BalancePythonCertificateTest` | 0 |
+| 48 | `lake build kadmosGeneratedK02BalanceTSStepTest` | 0 |
+| 49 | `lake build kadmosGeneratedK02Audit` | 0 |
+| 50 | `lake build kadmosGeneratedK02AuditRejection` | 0 |
+| 51 | `lake build kadmosGeneratedK02JSONTest` | 0 |
+| 52 | `lake build kadmosGeneratedK02RegexTest` | 0 |
+| 53 | `lake build quorumTest` | 0 |
+| 54 | `lake build quorumAudit` | 0 |
+| 55 | `lake build quorumAuditRejection` | 0 |
+| 56 | `lake build capTest` | 0 |
+| 57 | `lake build capAudit` | 0 |
+| 58 | `lake build capAuditRejection` | 0 |
+| 59 | `python3 scripts/check_kadmos_generated_k02_audit.py` | 0 |
+| 60 | `python3 scripts/test_kadmos_generated_k02_audit.py` | 0 |
+| 61 | `python3 scripts/check_kadmos_generated_k02_artifacts.py` | 0 |
+| 62 | `python3 scripts/test_kadmos_generated_k02_artifacts.py` | 0 |
+
+### Frozen postimages and review
+
+The following ten code/configuration/tool hashes were stable across every final accepting command. The portable listing hash was recorded after exact regeneration.
+
+| File | SHA-256 |
+|---|---|
+| `scripts/check_kadmos_generated_k02_audit.py` | `ae7274876d0a70f1ccb46cc7348e0dbe4fc47e7d938b664078b894b351bbf786` |
+| `scripts/test_kadmos_generated_k02_audit.py` | `bf819b690a206ebee710bf0028ac7f8a9dd15c738151b496d11bf38dc0892456` |
+| `lakefile.lean` | `3f98c3fdf890d02ccf58068a7fc3461c642fda56fb772be983899120306029bf` |
+| `scripts/normalize_balance_invariant_certificate.py` | `6e86d3667c541bb722fe31ea62ad35b5d39c3b59c04c052e01c790bf8ad72d86` |
+| `Harmonia/Applications/Kadmos/Generated/BalanceInvariantCertificate.lean` | `31b7d1bb46d40e45f30cc97bbbc03ad4716c7149816d733263aafa2f30373b6d` |
+| `HarmoniaTests/AuditPolicy.lean` | `90d80cf372cd15371949ae15b3bb10d74cbf4d9903c7ba988e86a89725b50d99` |
+| `Harmonia/Applications/Kadmos/Generated/TargetSemantics.lean` | `171947e562e02938dd0ab4881d12e853a2f776628b8e48d2ddfea45caca35db5` |
+| `Harmonia/Applications/Kadmos/Generated/BalanceSimulation.lean` | `ea61ca0df426a206cbd892dd647a66c534640cd880879fb9f44fc6bc0da33407` |
+| `HarmoniaTests/KadmosGeneratedK02ConstructorProof.lean` | `4df787e54343697800883f5266dd8fbf27dbb11f9d492effd67ba7097703e2df` |
+| `HarmoniaTests/KadmosGeneratedK02BalanceStepProof.lean` | `78b59c08103830945d0c2ac1ebe2dba1ef437787c5dd70e68f267be6ba29e027` |
+| `docs/verification/2026-10-12-t398-generated-axioms.txt` | `ddc5003fc8603ca2ec0363a95437182948741668e1b9d67df9b4b29cd73a11c5` |
+
+The actual independent read-only `codex exec` source review (`/tmp/t398-b16/review-source.txt`) found **0 Critical / 0 Important** issues, independently validated the certificate transformation and scope, and confirmed all six original proof/test hashes. Its Minor maintenance suggestion is addressed by the retained normalization/validation tool and mutation checks. The final actual independent read-only `codex exec` review (`/tmp/t398-b16/review-final.txt`) returned **ACCEPT FOR LOCAL COMMIT — 0 Critical / 0 Important / 1 Minor**. It independently checked all 62 exits and serial intervals, all ten frozen hashes, successful fresh preflight builds, the exact 10,417-pair listing, all twelve intended paths, certificate structure, mirrored examples, resource capacity and strengthened inventory checks. Its Minor wording correction is applied above: the no-`omega` statement concerns Batch 16 additions. Only this factual review receipt and documentation wording changed after review; the ten frozen code/configuration/tool files and axiom listing remain unchanged. Final review report SHA-256: `45617f918a2ea634e68505de80163ef4cabe72ada005ffcd2f57db9e2793721b`. The reviewed receipt preimage SHA-256 is `b591331eb199407d7cd0ba4f869adcaa8ea77e85540e2427677b5c80f4b6c4bc`. Branch and worktree remain preserved; no push or PR #5 merge is performed.

@@ -7,6 +7,9 @@ package "harmonia" where
 
 lean_lib «Harmonia» where
   -- Root library for Harmonia formal specification and verification
+  -- Canonical execution certificates need a larger native thread stack.
+  -- This changes resource capacity, not proof trust or execution fuel.
+  moreLeanArgs := #["--tstack=131072"]
 
 @[default_target]
 lean_exe "harmonia" where

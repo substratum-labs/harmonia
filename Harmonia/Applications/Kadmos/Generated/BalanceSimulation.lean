@@ -1,3 +1,4 @@
+import Harmonia.Applications.Kadmos.Generated.BalanceInvariantCertificate
 import Harmonia.Applications.Kadmos.Generated.BalancePrograms
 import Harmonia.Applications.Kadmos.Generated.TargetSimulation
 import Harmonia.Applications.Kadmos.Generated.TargetObservation
@@ -10667,5 +10668,2804 @@ theorem balanceReset_invariant_publication_cleanup {lang m final f candidate k}
 end Batch15BoundsAndInvariant
 
 end CanonicalResetComposition
+
+/- Batch 16: actual numeric helper execution and source-order reset/constructor
+   composition. The latter retains explicit invariant/physical obligations. -/
+
+namespace T398Batch16Numeric
+set_option maxRecDepth 65536
+set_option maxHeartbeats 10000000
+
+/-- Read the actual closure installed by module execution, retaining all metadata. -/
+def stored (lang : TargetLang) (name : String) : TargetClosure :=
+  ((do
+    let value ← localValue (balancePreparation lang).1 (balancePreparation lang).2 name
+    match value with
+    | .closure ref => closureAt (balancePreparation lang).1 ref
+    | _ => throw TargetError.badDescriptor) : Except TargetError TargetClosure).toOption.getD
+      ⟨"missing", [], [], .empty, [], none⟩
+
+def tsDefinition : TargetStmt := firstStmt (dropStmts 6 (stored .ts "evaluateWorld").body)
+def tsBody : TargetStmt := functionBody tsDefinition
+def pyClosure : TargetClosure := stored .python "_number"
+def tsFinite : TargetExpr := .call (.property (.local "Number") "isFinite")
+  (.sequence (.local "value") .empty)
+def tsTypeBad : TargetExpr := .binary .strictNe (.unary .typeof (.local "value")) (.string "number")
+def tsGuard : TargetExpr := .orElse tsTypeBad (.unary .not tsFinite)
+def pyTypeBad : TargetExpr := .binary .notInObject
+  (.call (.local "type") (.sequence (.local "value") .empty))
+  (.tuple (.sequence (.local "int") (.sequence (.local "float") .empty)))
+def pyGuard : TargetExpr := .orElse pyTypeBad (.unary .not resetPythonSafeFinite)
+
+theorem tsDefinition_shape : tsDefinition = .defineFunction "numeric" [⟨"value", none⟩] tsBody := by
+  unfold tsBody tsDefinition stored
+  simp only [balancePreparation_ts_eq]
+  decide +kernel
+
+
+theorem tsBody_shape : tsBody = .sequence
+    (.ifThenElse tsGuard (.throwValue (.newExpr (.call (.local "Error")
+      (.sequence (.string "INVALID_EXPRESSION") .empty)))) .empty)
+    (.sequence (.returnValue (.local "value")) .empty) := by
+  unfold tsBody tsDefinition stored tsGuard tsTypeBad tsFinite
+  simp only [balancePreparation_ts_eq]
+  decide +kernel
+
+
+theorem pyClosure_metadata : pyClosure.qualifiedName = "module._number" ∧
+    pyClosure.params = [⟨"value", none⟩] ∧ pyClosure.pythonDefaults = [none] := by
+  unfold pyClosure stored
+  simp only [balancePreparation_python_eq]
+  decide +kernel
+
+
+theorem pyBody_shape : pyClosure.body = .sequence
+    (.ifThenElse pyGuard (.sequence (.throwValue (.call (.local "ValueError")
+      (.sequence (.string "INVALID_EXPRESSION: expected number") .empty))) .empty) .empty)
+    (.sequence (.returnValue resetPythonSafeFloat) .empty) := by
+  unfold pyClosure stored pyGuard pyTypeBad resetPythonSafeFloat resetPythonSafeFinite
+  simp only [balancePreparation_python_eq]
+  decide +kernel
+
+private theorem fuel_lt {i j : Nat} (k : Nat) (h : i < j) : i < k + j :=
+  Nat.lt_of_lt_of_le h (Nat.le_add_left j k)
+
+structure TsPhysical (m : TargetMachine) (f : TargetFrame) (b : Int) where
+  number : ObjRef
+  valueRead : localValue m f "value" = .ok (.number .jsNumber b)
+  numberRead : localValue m f "Number" = .ok (.object number)
+  finiteRead : readPropertyValue .ts m (.object number) "isFinite" =
+    .ok ⟨m, .ok (.builtin .isFinite)⟩
+
+/-- Python's finite-table lookup is in the heap after its real tuple allocation. -/
+structure PyPhysical (m : TargetMachine) (f : TargetFrame) (b : Int) where
+  math : ObjRef
+  valueRead : localValue m f "value" = .ok (.number .pyInt b)
+  typeRead : localValue m f "type" = .ok (.builtin .type)
+  intRead : localValue m f "int" = .ok (.builtin .int)
+  floatRead : localValue m f "float" = .ok (.builtin .float)
+  mathRead : localValue m f "math" = .ok (.object math)
+  finiteRead : readPropertyValue .python (resetSafeTupleMachine m) (.object math) "isfinite" =
+    .ok ⟨resetSafeTupleMachine m, .ok (.builtin .isFinite)⟩
+
+theorem tsTypeBad_execute {m f b k}
+    (hv : localValue m f "value" = .ok (.number .jsNumber b)) :
+    evalExpr (k + 3) (balanceProgram .ts) m f tsTypeBad = .ok ⟨m, .ok (.bool false)⟩ := by
+  unfold tsTypeBad
+  rw [evalExpr, evalExpr]
+  rw [evalExpr_adequate (.localRead hv) (Nat.zero_lt_succ k)]
+  simp only [Bind.bind, Except.bind, Pure.pure, Except.pure]
+  rw [evalExpr_adequate (.string "number") (fuel_lt k (by decide : 0 < 2))]
+  rw [balanceProgram_lang]
+  rfl
+
+theorem tsGuard_execute {m f b k} (h : TsPhysical m f b) :
+    evalExpr (k + 5) (balanceProgram .ts) m f tsGuard = .ok ⟨m, .ok (.bool false)⟩ := by
+  have finite : evalExpr (k + 3) (balanceProgram .ts) m f tsFinite =
+      .ok ⟨m, .ok (.bool true)⟩ := by
+    exact evalExpr_adequate (.callBuiltin
+      (.property (.localRead h.numberRead) (by simpa only [balanceProgram_lang] using h.finiteRead))
+      (.cons (.localRead h.valueRead) .empty) (by decide)
+      (by rw [balanceProgram_lang]; rfl)) (fuel_lt k (by decide : 2 < 3))
+  unfold tsGuard
+  rw [evalExpr, tsTypeBad_execute (k := k + 1) h.valueRead]
+  simp only [Bind.bind, Except.bind, sourceTruthy, balanceProgram_lang]
+  rw [evalExpr, finite]
+  rfl
+
+theorem tsBody_execute {m f b k} (h : TsPhysical m f b) :
+    execStmt (k + 8) (balanceProgram .ts) m f tsBody =
+      .ok ⟨m, f, .returned (.number .jsNumber b)⟩ := by
+  rw [tsBody_shape, execStmt, execStmt, tsGuard_execute (k := k + 1) h]
+  simp only [Bind.bind, Except.bind, sourceTruthy, balanceProgram_lang, Bool.false_eq_true, if_false]
+  rw [execStmt]
+  simp only [Bind.bind, Except.bind]
+  rw [execStmt, execStmt,
+    evalExpr_adequate (.localRead h.valueRead) (fuel_lt k (by decide : 0 < 5))]
+  rfl
+
+theorem pyTypeBad_execute {m f b k} (h : PyPhysical m f b) :
+    evalExpr (k + 5) (balanceProgram .python) m f pyTypeBad =
+      .ok ⟨resetSafeTupleMachine m, .ok (.bool false)⟩ := by
+  have typeCall : evalExpr (k + 4) (balanceProgram .python) m f
+      (.call (.local "type") (.sequence (.local "value") .empty)) =
+        .ok ⟨m, .ok (.builtin .int)⟩ := by
+    exact evalExpr_adequate (.callBuiltin (.localRead h.typeRead)
+      (.cons (.localRead h.valueRead) .empty) (by decide)
+      (by rw [balanceProgram_lang]; rfl)) (fuel_lt k (by decide : 2 < 4))
+  unfold pyTypeBad
+  rw [evalExpr, typeCall]
+  simp only [Bind.bind, Except.bind]
+  rw [resetSafeTuple_execute h.intRead h.floatRead, balanceProgram_lang]
+  have ho : objectAt (resetSafeTupleMachine m) m.nextObject =
+      .ok (resetSafeTupleObject [.builtin .int, .builtin .float]) := by
+    simp [resetSafeTupleMachine, resetSafeTupleStage, allocObject, objectAt, List.lookup]
+  simp [binaryValue, ho, resetSafeTupleObject, Bind.bind, Except.bind, Pure.pure, Except.pure]
+
+theorem pyGuard_execute {m f b k} (h : PyPhysical m f b) :
+    evalExpr (k + 7) (balanceProgram .python) m f pyGuard =
+      .ok ⟨resetSafeTupleMachine m, .ok (.bool false)⟩ := by
+  let n := resetSafeTupleMachine m
+  have hv : localValue n f "value" = .ok (.number .pyInt b) := h.valueRead
+  have hm : localValue n f "math" = .ok (.object h.math) := h.mathRead
+  have finite : evalExpr (k + 5) (balanceProgram .python) n f resetPythonSafeFinite =
+      .ok ⟨n, .ok (.bool true)⟩ := by
+    exact evalExpr_adequate (.callBuiltin
+      (.property (.localRead hm) (by simpa only [balanceProgram_lang] using h.finiteRead))
+      (.cons (.localRead hv) .empty) (by decide)
+      (by rw [balanceProgram_lang]; rfl)) (fuel_lt k (by decide : 2 < 5))
+  unfold pyGuard
+  rw [evalExpr, pyTypeBad_execute (k := k + 1) h]
+  simp only [Bind.bind, Except.bind, sourceTruthy, balanceProgram_lang]
+  rw [evalExpr, finite]
+  rfl
+
+theorem pyBody_execute {m f b k} (h : PyPhysical m f b)
+    (hb : b.natAbs ≤ 9007199254740991) :
+    execStmt (k + 10) (balanceProgram .python) m f pyClosure.body =
+      .ok ⟨resetSafeTupleMachine m, f, .returned (.number .pyFloat b)⟩ := by
+  have hv : localValue (resetSafeTupleMachine m) f "value" = .ok (integerValue .python b) := h.valueRead
+  have hf : localValue (resetSafeTupleMachine m) f "float" = .ok (.builtin .float) := h.floatRead
+  rw [pyBody_shape, execStmt, execStmt, pyGuard_execute (k := k + 1) h]
+  simp only [Bind.bind, Except.bind, sourceTruthy, balanceProgram_lang, Bool.false_eq_true, if_false]
+  rw [execStmt]
+  simp only [Bind.bind, Except.bind]
+  rw [execStmt, execStmt, resetPythonSafeFloat_execute (k := k + 4) hv hf hb]
+  rfl
+
+/-- One actual argument cell, with the stored captures and receiver retained. -/
+def callEntry (m : TargetMachine) (closure : TargetClosure) (value : TargetValue) :
+    TargetMachine × TargetFrame :=
+  ((allocCell m value true).1,
+    { closureFrame closure with locals := [("value", m.nextCell)] })
+
+theorem callEntry_value (m : TargetMachine) (closure : TargetClosure) (value : TargetValue) :
+    localValue (callEntry m closure value).1 (callEntry m closure value).2 "value" = .ok value := by
+  simp [callEntry, localValue, readCell, allocCell, List.lookup]
+
+theorem callEntry_binding {lang m closure value}
+    (hp : closure.params = [⟨"value", none⟩])
+    (hv : (lang == .ts && (some value == some TargetValue.undefined)) = false) :
+    DepthBindsProvided (balanceProgram lang) m (closureFrame closure)
+      closure.params closure.pythonDefaults [value]
+      (callEntry m closure value).1 (callEntry m closure value).2 1 := by
+  rw [hp]
+  apply DepthBindsProvided.cons (rank := 0)
+  · simpa only [balanceProgram_lang] using hv
+  · exact .empty
+
+/-- Execute the emitted TS helper through actual binding and return translation. -/
+theorem tsCall_execute {m f callee arg ref closure b k}
+    (hc : localValue m f callee = .ok (.closure ref))
+    (hv : localValue m f arg = .ok (.number .jsNumber b))
+    (hr : closureAt m ref = .ok closure)
+    (hp : closure.params = [⟨"value", none⟩])
+    (hs : closure.body = tsBody)
+    (h : let e := callEntry m closure (.number .jsNumber b)
+      TsPhysical e.1 e.2 b) :
+    evalExpr (k + 9) (balanceProgram .ts) m f
+      (.call (.local callee) (.sequence (.local arg) .empty)) =
+      .ok ⟨(callEntry m closure (.number .jsNumber b)).1, .ok (.number .jsNumber b)⟩ := by
+  have bindings := callEntry_binding (m := m) (lang := .ts) (value := .number .jsNumber b) hp rfl
+  rw [evalStoredCall_eq (.localRead hc) (.cons (.localRead hv) .empty) hr bindings
+    (fuel_lt k (by decide : 0 < 8)) (fuel_lt k (by decide : 1 < 8))
+    (fuel_lt k (by decide : 1 < 8)), hs, tsBody_execute h]
+  rfl
+
+/-- Python allocates both the argument cell and the type tuple, then returns pyFloat. -/
+theorem pyCall_execute {m f callee arg ref closure b k}
+    (hc : localValue m f callee = .ok (.closure ref))
+    (hv : localValue m f arg = .ok (.number .pyInt b))
+    (hr : closureAt m ref = .ok closure)
+    (hp : closure.params = [⟨"value", none⟩])
+    (hs : closure.body = pyClosure.body)
+    (h : let e := callEntry m closure (.number .pyInt b)
+      PyPhysical e.1 e.2 b)
+    (hb : b.natAbs ≤ 9007199254740991) :
+    evalExpr (k + 11) (balanceProgram .python) m f
+      (.call (.local callee) (.sequence (.local arg) .empty)) =
+      .ok ⟨resetSafeTupleMachine (callEntry m closure (.number .pyInt b)).1,
+        .ok (.number .pyFloat b)⟩ := by
+  have bindings := callEntry_binding (m := m) (lang := .python) (value := .number .pyInt b) hp rfl
+  rw [evalStoredCall_eq (.localRead hc) (.cons (.localRead hv) .empty) hr bindings
+    (fuel_lt k (by decide : 0 < 10)) (fuel_lt k (by decide : 1 < 10))
+    (fuel_lt k (by decide : 1 < 10)), hs, pyBody_execute h hb]
+  rfl
+
+/-- Constructive passage from the requested nonnegative interval to host conversion. -/
+theorem interval_natAbs {b : Int} (hb : 0 ≤ b ∧ b ≤ 9007199254740991) :
+    b.natAbs ≤ 9007199254740991 := by
+  apply Int.ofNat_le.mp
+  rw [Int.natAbs_of_nonneg hb.1]
+  exact hb.2
+
+structure PyFloatPhysical (m : TargetMachine) (f : TargetFrame) (b : Int) where
+  math : ObjRef
+  valueRead : localValue m f "value" = .ok (.number .pyFloat b)
+  typeRead : localValue m f "type" = .ok (.builtin .type)
+  intRead : localValue m f "int" = .ok (.builtin .int)
+  floatRead : localValue m f "float" = .ok (.builtin .float)
+  mathRead : localValue m f "math" = .ok (.object math)
+  finiteRead : readPropertyValue .python (resetSafeTupleMachine m) (.object math) "isfinite" =
+    .ok ⟨resetSafeTupleMachine m, .ok (.builtin .isFinite)⟩
+
+theorem pyFloatConvert_execute {m f b k}
+    (hv : localValue m f "value" = .ok (.number .pyFloat b))
+    (hf : localValue m f "float" = .ok (.builtin .float))
+    (hb : b.natAbs ≤ 9007199254740991) :
+    evalExpr (k + 3) (balanceProgram .python) m f resetPythonSafeFloat =
+      .ok ⟨m, .ok (.number .pyFloat b)⟩ := by
+  exact evalExpr_adequate (.callBuiltin (.localRead hf)
+    (.cons (.localRead hv) .empty) (by decide)
+    (by rw [balanceProgram_lang]; exact host_float_exact m b hb))
+    (fuel_lt k (by decide : 2 < 3))
+
+theorem pyFloatTypeBad_execute {m f b k} (h : PyFloatPhysical m f b) :
+    evalExpr (k + 5) (balanceProgram .python) m f pyTypeBad =
+      .ok ⟨resetSafeTupleMachine m, .ok (.bool false)⟩ := by
+  have typeCall : evalExpr (k + 4) (balanceProgram .python) m f
+      (.call (.local "type") (.sequence (.local "value") .empty)) =
+        .ok ⟨m, .ok (.builtin .float)⟩ := by
+    exact evalExpr_adequate (.callBuiltin (.localRead h.typeRead)
+      (.cons (.localRead h.valueRead) .empty) (by decide)
+      (by rw [balanceProgram_lang]; rfl)) (fuel_lt k (by decide : 2 < 4))
+  unfold pyTypeBad
+  rw [evalExpr, typeCall]
+  simp only [Bind.bind, Except.bind]
+  rw [resetSafeTuple_execute h.intRead h.floatRead, balanceProgram_lang]
+  have ho : objectAt (resetSafeTupleMachine m) m.nextObject =
+      .ok (resetSafeTupleObject [.builtin .int, .builtin .float]) := by
+    simp [resetSafeTupleMachine, resetSafeTupleStage, allocObject, objectAt, List.lookup]
+  simp [binaryValue, ho, resetSafeTupleObject, Bind.bind, Except.bind, Pure.pure, Except.pure]
+
+theorem pyFloatGuard_execute {m f b k} (h : PyFloatPhysical m f b) :
+    evalExpr (k + 7) (balanceProgram .python) m f pyGuard =
+      .ok ⟨resetSafeTupleMachine m, .ok (.bool false)⟩ := by
+  let n := resetSafeTupleMachine m
+  have hv : localValue n f "value" = .ok (.number .pyFloat b) := h.valueRead
+  have hm : localValue n f "math" = .ok (.object h.math) := h.mathRead
+  have finite : evalExpr (k + 5) (balanceProgram .python) n f resetPythonSafeFinite =
+      .ok ⟨n, .ok (.bool true)⟩ := by
+    exact evalExpr_adequate (.callBuiltin
+      (.property (.localRead hm) (by simpa only [balanceProgram_lang] using h.finiteRead))
+      (.cons (.localRead hv) .empty) (by decide)
+      (by rw [balanceProgram_lang]; rfl)) (fuel_lt k (by decide : 2 < 5))
+  unfold pyGuard
+  rw [evalExpr, pyFloatTypeBad_execute (k := k + 1) h]
+  simp only [Bind.bind, Except.bind, sourceTruthy, balanceProgram_lang]
+  rw [evalExpr, finite]
+  rfl
+
+theorem pyFloatBody_execute {m f b k} (h : PyFloatPhysical m f b)
+    (hb : b.natAbs ≤ 9007199254740991) :
+    execStmt (k + 10) (balanceProgram .python) m f pyClosure.body =
+      .ok ⟨resetSafeTupleMachine m, f, .returned (.number .pyFloat b)⟩ := by
+  have hv : localValue (resetSafeTupleMachine m) f "value" = .ok (.number .pyFloat b) := h.valueRead
+  have hf : localValue (resetSafeTupleMachine m) f "float" = .ok (.builtin .float) := h.floatRead
+  rw [pyBody_shape, execStmt, execStmt, pyFloatGuard_execute (k := k + 1) h]
+  simp only [Bind.bind, Except.bind, sourceTruthy, balanceProgram_lang, Bool.false_eq_true, if_false]
+  rw [execStmt]
+  simp only [Bind.bind, Except.bind]
+  rw [execStmt, execStmt, pyFloatConvert_execute (k := k + 4) hv hf hb]
+  rfl
+
+theorem pyFloatCall_execute {m f callee arg ref closure b k}
+    (hc : localValue m f callee = .ok (.closure ref))
+    (hv : localValue m f arg = .ok (.number .pyFloat b))
+    (hr : closureAt m ref = .ok closure)
+    (hp : closure.params = [⟨"value", none⟩])
+    (hs : closure.body = pyClosure.body)
+    (h : let e := callEntry m closure (.number .pyFloat b)
+      PyFloatPhysical e.1 e.2 b)
+    (hb : b.natAbs ≤ 9007199254740991) :
+    evalExpr (k + 11) (balanceProgram .python) m f
+      (.call (.local callee) (.sequence (.local arg) .empty)) =
+      .ok ⟨resetSafeTupleMachine (callEntry m closure (.number .pyFloat b)).1,
+        .ok (.number .pyFloat b)⟩ := by
+  have bindings := callEntry_binding (m := m) (lang := .python) (value := .number .pyFloat b) hp rfl
+  rw [evalStoredCall_eq (.localRead hc) (.cons (.localRead hv) .empty) hr bindings
+    (fuel_lt k (by decide : 0 < 10)) (fuel_lt k (by decide : 1 < 10))
+    (fuel_lt k (by decide : 1 < 10)), hs, pyFloatBody_execute h hb]
+  rfl
+
+/-- Real recursive closure allocation: self capture, undefined cell, closure write,
+    and TS sealing are represented in the interpreter's physical tables. -/
+def definedClosure (m : TargetMachine) (f : TargetFrame) (name : String) (body : TargetStmt) : TargetClosure :=
+  ⟨f.qualifiedName ++ "." ++ name, [⟨"value", none⟩], [none], body,
+    (name, m.nextCell) :: f.locals ++ f.captures, f.receiver⟩
+def definedMachine (lang : TargetLang) (m : TargetMachine) (f : TargetFrame)
+    (name : String) (body : TargetStmt) : TargetMachine :=
+  let n := (allocClosure (allocCell m .undefined true).1 (definedClosure m f name body)).1
+  { n with
+    cells := n.cells.map (fun e => (e.1, if e.1 == m.nextCell then .closure m.nextClosure else e.2))
+    writableCells := if lang == .ts then n.writableCells.map
+      (fun e => (e.1, if e.1 == m.nextCell then false else e.2)) else n.writableCells }
+def definedFrame (m : TargetMachine) (f : TargetFrame) (name : String) : TargetFrame :=
+  { f with locals := (name, m.nextCell) :: f.locals }
+
+theorem define_one_execute (lang : TargetLang) (m : TargetMachine) (f : TargetFrame)
+    (name : String) (body : TargetStmt) (k : Nat) :
+    execStmt (k + 3) (balanceProgram lang) m f
+      (.defineFunction name [⟨"value", none⟩] body) =
+      .ok ⟨definedMachine lang m f name body, definedFrame m f name, .normal⟩ := by
+  simp only [execStmt]
+  simp only [evalDefaults_single_noDefault, sealCell_eq_permissions, balanceProgram_lang]
+  cases lang <;>
+    simp [balanceProgram_lang,
+      definedMachine, definedFrame, definedClosure, allocCell, allocClosure,
+      writeCell, List.lookup, Bind.bind, Except.bind, Pure.pure, Except.pure]
+
+/-- Raw finite-table data suffices; this is not an assumed host/helper outcome. -/
+theorem finite_table {lang m ref obj key descriptor}
+    (hc : ref ≠ m.checkerRef)
+    (ho : objectAt m ref = .ok obj) (hk : obj.kind = .jsOrdinary)
+    (hn : key = "isFinite" ∨ key = "isfinite")
+    (hd : obj.own.lookup key = some descriptor)
+    (hv : descriptor.value = some (.builtin .isFinite)) :
+    readPropertyValue lang m (.object ref) key = .ok ⟨m, .ok (.builtin .isFinite)⟩ := by
+  rcases hn with rfl | rfl <;>
+    simp [readPropertyValue, beq_eq_false_iff_ne.mpr hc, ho, hk,
+      readOwn, hd, hv, Bind.bind, Except.bind, Pure.pure, Except.pure] <;> rfl
+
+theorem definedMachine_closure (lang : TargetLang) (m : TargetMachine) (f : TargetFrame)
+    (name : String) (body : TargetStmt) :
+    closureAt (definedMachine lang m f name body) m.nextClosure =
+      .ok (definedClosure m f name body) := by
+  simp [definedMachine, closureAt, allocClosure, allocCell, List.lookup]
+
+theorem definedMachine_local {lang m f name body}
+    (ht : name ≠ "this") (hs : name ≠ "self") :
+    localValue (definedMachine lang m f name body) (definedFrame m f name) name =
+      .ok (.closure m.nextClosure) := by
+  simp [localValue, ht, hs, definedMachine, definedFrame, readCell,
+    allocClosure, allocCell, List.lookup]
+
+theorem definedMachine_effects (lang : TargetLang) (m : TargetMachine) (f : TargetFrame)
+    (name : String) (body : TargetStmt) :
+    let n := definedMachine lang m f name body
+    n.nextCell = m.nextCell + 1 ∧ n.nextClosure = m.nextClosure + 1 ∧
+    n.nextObject = m.nextObject ∧ n.objects = m.objects ∧ n.checker = m.checker ∧
+    n.globals = m.globals := by
+  exact ⟨rfl, rfl, rfl, rfl, rfl, rfl⟩
+
+/-- Calling a physically allocated recursive closure requires no metadata assumptions. -/
+theorem tsCreatedCall_execute {m f caller arg b k}
+    (hv : localValue (definedMachine .ts m f "numeric" tsBody) caller arg =
+      .ok (.number .jsNumber b))
+    (hc : localValue (definedMachine .ts m f "numeric" tsBody) caller "numeric" =
+      .ok (.closure m.nextClosure))
+    (h : let e := callEntry (definedMachine .ts m f "numeric" tsBody) (definedClosure m f "numeric" tsBody) (.number .jsNumber b)
+      TsPhysical e.1 e.2 b) :
+    evalExpr (k + 9) (balanceProgram .ts) (definedMachine .ts m f "numeric" tsBody)
+      caller (.call (.local "numeric") (.sequence (.local arg) .empty)) =
+      .ok ⟨(callEntry (definedMachine .ts m f "numeric" tsBody)
+        (definedClosure m f "numeric" tsBody) (.number .jsNumber b)).1,
+        .ok (.number .jsNumber b)⟩ := by
+  exact tsCall_execute hc hv (definedMachine_closure _ _ _ _ _) rfl rfl h
+
+/-- Requested interval, retaining the exact argument-cell and tuple effects. -/
+theorem pyCall_interval {m f callee arg ref closure b k}
+    (hc : localValue m f callee = .ok (.closure ref))
+    (hv : localValue m f arg = .ok (.number .pyInt b))
+    (hr : closureAt m ref = .ok closure)
+    (hp : closure.params = [⟨"value", none⟩]) (hs : closure.body = pyClosure.body)
+    (h : let e := callEntry m closure (.number .pyInt b)
+      PyPhysical e.1 e.2 b)
+    (hb : 0 ≤ b ∧ b ≤ 9007199254740991) :
+    evalExpr (k + 11) (balanceProgram .python) m f
+      (.call (.local callee) (.sequence (.local arg) .empty)) =
+      .ok ⟨resetSafeTupleMachine (callEntry m closure (.number .pyInt b)).1,
+        .ok (.number .pyFloat b)⟩ :=
+  pyCall_execute hc hv hr hp hs h (interval_natAbs hb)
+
+/-- Literal parser zero has pyFloat input and is converted by the emitted helper. -/
+theorem pyFloatCall_zero {m f callee arg ref closure k}
+    (hc : localValue m f callee = .ok (.closure ref))
+    (hv : localValue m f arg = .ok (.number .pyFloat 0))
+    (hr : closureAt m ref = .ok closure)
+    (hp : closure.params = [⟨"value", none⟩]) (hs : closure.body = pyClosure.body)
+    (h : let e := callEntry m closure (.number .pyFloat 0)
+      PyFloatPhysical e.1 e.2 0) :
+    evalExpr (k + 11) (balanceProgram .python) m f
+      (.call (.local callee) (.sequence (.local arg) .empty)) =
+      .ok ⟨resetSafeTupleMachine (callEntry m closure (.number .pyFloat 0)).1,
+        .ok (.number .pyFloat 0)⟩ :=
+  pyFloatCall_execute hc hv hr hp hs h (by decide)
+
+theorem tsCreate_execute (m : TargetMachine) (f : TargetFrame) (k : Nat) :
+    execStmt (k + 3) (balanceProgram .ts) m f tsDefinition =
+      .ok ⟨definedMachine .ts m f "numeric" tsBody, definedFrame m f "numeric", .normal⟩ := by
+  rw [tsDefinition_shape]
+  exact define_one_execute _ _ _ _ _ _
+
+/-- The actual module heap stores the Python numeric helper at closure address 2. -/
+theorem pyStored_lookup :
+    localValue (balancePreparation .python).1 (balancePreparation .python).2 "_number" =
+      .ok (.closure 2) ∧
+    closureAt (balancePreparation .python).1 2 = .ok pyClosure := by
+  unfold pyClosure stored
+  simp only [balancePreparation_python_eq]
+  decide +kernel
+
+/-- The actual evaluator which contains numeric is installed at closure address 1. -/
+theorem tsEvaluator_lookup :
+    localValue (balancePreparation .ts).1 (balancePreparation .ts).2 "evaluateWorld" =
+      .ok (.closure 1) ∧
+    closureAt (balancePreparation .ts).1 1 = .ok (stored .ts "evaluateWorld") := by
+  unfold stored
+  simp only [balancePreparation_ts_eq]
+  decide +kernel
+
+/-- The invariant's two emitted Python calls, including both argument cells and
+    both type tuples. Every execution premise is replaced by physical reads. -/
+theorem pyGe_execute {m f ref closure b k}
+    (hc : localValue m f "_number" = .ok (.closure ref))
+    (hl : localValue m f "left" = .ok (.number .pyInt b))
+    (hr : closureAt m ref = .ok closure)
+    (hp : closure.params = [⟨"value", none⟩]) (hs : closure.body = pyClosure.body)
+    (h : let e := callEntry m closure (.number .pyInt b)
+      PyPhysical e.1 e.2 b)
+    (hc2 : let n := resetSafeTupleMachine (callEntry m closure (.number .pyInt b)).1
+      localValue n f "_number" = .ok (.closure ref))
+    (hz : let n := resetSafeTupleMachine (callEntry m closure (.number .pyInt b)).1
+      localValue n f "right" = .ok (.number .pyFloat 0))
+    (h2 : let n := resetSafeTupleMachine (callEntry m closure (.number .pyInt b)).1
+      let e := callEntry n closure (.number .pyFloat 0)
+      PyFloatPhysical e.1 e.2 0)
+    (hb : 0 ≤ b ∧ b ≤ 9007199254740991) :
+    let n := resetSafeTupleMachine (callEntry m closure (.number .pyInt b)).1
+    evalExpr (k + 12) (balanceProgram .python) m f
+      (.binary .ge
+        (.call (.local "_number") (.sequence (.local "left") .empty))
+        (.call (.local "_number") (.sequence (.local "right") .empty))) =
+      .ok ⟨resetSafeTupleMachine (callEntry n closure (.number .pyFloat 0)).1, .ok (.bool true)⟩ := by
+  let n := resetSafeTupleMachine (callEntry m closure (.number .pyInt b)).1
+  have hr2 : closureAt n ref = .ok closure := hr
+  exact resetInvariant_ge_execute
+    (pyCall_execute hc hl hr hp hs h (interval_natAbs hb))
+    (pyFloatCall_zero hc2 hz hr2 hp hs h2) hb.1
+
+/-- TS's comparison preserves both numeric values and allocates two argument cells. -/
+theorem tsGe_execute {m f ref closure b k}
+    (hc : localValue m f "numeric" = .ok (.closure ref))
+    (hl : localValue m f "left" = .ok (.number .jsNumber b))
+    (hr : closureAt m ref = .ok closure)
+    (hp : closure.params = [⟨"value", none⟩]) (hs : closure.body = tsBody)
+    (h : let e := callEntry m closure (.number .jsNumber b)
+      TsPhysical e.1 e.2 b)
+    (hc2 : let n := (callEntry m closure (.number .jsNumber b)).1
+      localValue n f "numeric" = .ok (.closure ref))
+    (hz : let n := (callEntry m closure (.number .jsNumber b)).1
+      localValue n f "right" = .ok (.number .jsNumber 0))
+    (h2 : let n := (callEntry m closure (.number .jsNumber b)).1
+      let e := callEntry n closure (.number .jsNumber 0)
+      TsPhysical e.1 e.2 0)
+    (hb : 0 ≤ b) :
+    let n := (callEntry m closure (.number .jsNumber b)).1
+    evalExpr (k + 10) (balanceProgram .ts) m f
+      (.binary .ge
+        (.call (.local "numeric") (.sequence (.local "left") .empty))
+        (.call (.local "numeric") (.sequence (.local "right") .empty))) =
+      .ok ⟨(callEntry n closure (.number .jsNumber 0)).1, .ok (.bool true)⟩ := by
+  let n := (callEntry m closure (.number .jsNumber b)).1
+  have hr2 : closureAt n ref = .ok closure := hr
+  exact resetInvariant_ge_execute
+    (tsCall_execute hc hl hr hp hs h)
+    (tsCall_execute hc2 hz hr2 hp hs h2) hb
+
+end T398Batch16Numeric
+
+set_option maxRecDepth 65536
+set_option maxHeartbeats 1000000
+
+
+/-- The exact machine after bounds-result binding. This includes every bounds
+helper allocation and the physical `invalid` cell, and retains the reset frame. -/
+def balanceResetPostBounds (lang : TargetLang) (b : Int) : TargetMachine × TargetFrame :=
+  snapshotBound lang (balanceBoundsFinal lang b)
+    (if lang == .ts then (balanceResetTsDescriptorEntry b).2
+     else (balanceResetPythonOverlayBound b).2)
+    "invalid" (resetValidationResult lang)
+
+/-- A generic selector certificate for one actual source sequence node. -/
+theorem statementSpineCheck_drop {n stmt} (h : statementSpineCheck n stmt = true)
+    {i : Nat} (hi : i < n) :
+    dropStmts i stmt = .sequence (firstStmt (dropStmts i stmt))
+      (dropStmts (i + 1) stmt) := by
+  induction i generalizing n stmt with
+  | zero =>
+      cases n with
+      | zero => exact False.elim (Nat.not_lt_zero _ hi)
+      | succ n => exact (statementSpineCheck_sequence h).1
+  | succ i ih =>
+      cases n with
+      | zero => exact False.elim (Nat.not_lt_zero _ hi)
+      | succ n =>
+          exact ih (statementSpineCheck_sequence h).2 (Nat.lt_of_succ_lt_succ hi)
+
+/-- The successful grouped lemma yields the original bounds-bind node at its
+actual sibling budget, without reassociating source ASTs. -/
+theorem balanceReset_ts_bounds_bind_only (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ 9007199254740991) (k : Nat) :
+    execStmt (k + 27) (balanceProgram .ts)
+      (balanceResetPostOverlay .ts b).1 (balanceResetPostOverlay .ts b).2
+      (balanceResetMiddleStmt .ts 4) =
+        .ok ⟨(balanceResetPostBounds .ts b).1,
+          (balanceResetPostBounds .ts b).2, .normal⟩ := by
+  have h := (balanceReset_ts_canonical_overlay_bounds_bind_complete b hb k).1
+  rw [execSequence_of_normal
+    (balanceReset_ts_canonical_overlay_safe b (balance_natAbs hb) k)] at h
+  exact h
+
+theorem balanceReset_python_bounds_bind_only (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ 9007199254740991) (k : Nat) :
+    execStmt (k + 25) (balanceProgram .python)
+      (balanceResetPostOverlay .python b).1 (balanceResetPostOverlay .python b).2
+      (balanceResetMiddleStmt .python 3) =
+        .ok ⟨(balanceResetPostBounds .python b).1,
+          (balanceResetPostBounds .python b).2, .normal⟩ := by
+  have h := (balanceReset_python_canonical_overlay_bounds_bind_complete b hb k).1
+  rw [execSequence_of_normal
+    (balanceReset_python_canonical_overlay_safe b (balance_natAbs hb) k).2] at h
+  exact h
+
+/-- Exact source-spine execution up to the invariant binding. The continuation
+is the actual subtree; no invariant-call result is presumed. -/
+theorem balanceReset_canonical_to_invariant (lang : TargetLang) (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ 9007199254740991) (k : Nat) :
+    execStmt (k + (if lang == .ts then 33 else 32)) (balanceProgram lang)
+      (balanceCanonicalResetStage lang b 3).1 (balanceCanonicalResetStage lang b 3).2
+      (balanceResetProtected lang).body =
+    execStmt (k + 27) (balanceProgram lang)
+      (balanceResetPostBounds lang b).1 (balanceResetPostBounds lang b).2
+      (dropStmts (resetValidationIndex lang + 2) (balanceResetProtected lang).body) := by
+  have shape (i : Nat) (hi : i < (if lang == .ts then 12 else 11)) :
+      dropStmts i (balanceResetProtected lang).body =
+        .sequence (balanceResetMiddleStmt lang i)
+          (dropStmts (i + 1) (balanceResetProtected lang).body) :=
+    statementSpineCheck_drop (balanceReset_body_spine lang).1 hi
+  cases lang with
+  | ts =>
+      simp only [TargetLang.ts, beq_self_eq_true, if_true]
+      have hp := balanceReset_canonical_body_prefix_execute .ts b (k + 25)
+      have h2 := balanceReset_ts_canonical_descriptor_copy_safe b (k + 4)
+      have h3 := balanceReset_ts_canonical_overlay_loop_safe b (balance_natAbs hb) (k + 17)
+      have h4 := balanceReset_ts_bounds_bind_only b hb (k + 1)
+      simp only [Nat.add_assoc, Nat.reduceAdd] at hp h2 h3 h4
+      simp only [balanceResetTsDescriptorEntry, balanceResetOverlayLoop,
+        beq_self_eq_true, if_true] at h3
+      simp only [balanceResetPostOverlay, balanceResetTsDescriptorEntry, beq_self_eq_true, if_true] at h4
+      rw [hp, shape 2 (by decide), execSequence_of_normal h2,
+        shape 3 (by decide), execSequence_of_normal h3,
+        shape 4 (by decide), execSequence_of_normal h4,
+        shape 5 (by decide)]
+      exact execSequence_of_normal
+        (balanceReset_ts_canonical_overlay_bounds_bind_complete b hb k).2
+  | python =>
+      simp only [show (.python == TargetLang.ts) = false from rfl,
+        Bool.false_eq_true, if_false]
+      have hp := balanceReset_canonical_body_prefix_execute .python b (k + 24)
+      have h2 := (balanceReset_python_canonical_overlay_safe b (balance_natAbs hb) (k + 4)).2
+      have h3 := balanceReset_python_bounds_bind_only b hb (k + 3)
+      have h4 := (balanceReset_python_canonical_overlay_bounds_bind_complete b hb (k + 2)).2
+      simp only [Nat.add_assoc, Nat.reduceAdd] at hp h2 h3 h4
+      simp only [balanceResetPostOverlay,
+        show (.python == TargetLang.ts) = false from rfl, Bool.false_eq_true, if_false] at h3
+      rw [hp, shape 2 (by decide), execSequence_of_normal h2,
+        shape 3 (by decide), execSequence_of_normal h3,
+        shape 4 (by decide)]
+      exact execSequence_of_normal h4
+
+/-- Only the remaining call and physical reads: this is an obligation record,
+not a claimed result of canonical execution. `final` is the call's actual full
+machine, with its allocation history retained. -/
+structure BalanceResetInvariantEvidence (lang : TargetLang) (b : Int)
+    (final : TargetMachine) (candidate : ObjRef) (fuel : Nat) : Prop where
+  call : evalExpr fuel (balanceProgram lang)
+    (balanceResetPostBounds lang b).1 (balanceResetPostBounds lang b).2
+    (resetInvariantCall lang) = .ok ⟨final, .ok (resetValidationResult lang)⟩
+  violatedFresh : lang = .python → snapshotAddress
+    (balanceResetPostBounds lang b).1 (balanceResetPostBounds lang b).2 "violated" = none
+  receiver : let bound := snapshotBound lang final (balanceResetPostBounds lang b).2 "violated" (resetValidationResult lang)
+    bound.2.receiver = some bound.1.checkerRef
+  candidateRead : let bound := snapshotBound lang final (balanceResetPostBounds lang b).2 "violated" (resetValidationResult lang)
+    localValue bound.1 bound.2 "candidate" = .ok (.object candidate)
+  initialRead : let bound := snapshotBound lang final (balanceResetPostBounds lang b).2 "violated" (resetValidationResult lang)
+    lang = .python → localValue bound.1 bound.2 "_INITIAL" = .ok (.string "Ready")
+
+def balanceResetAfterInvariant (lang : TargetLang) (b : Int) (final : TargetMachine) :
+    TargetMachine × TargetFrame :=
+  snapshotBound lang final (balanceResetPostBounds lang b).2
+    "violated" (resetValidationResult lang)
+
+def balanceResetCanonicalPublished (lang : TargetLang) (b : Int)
+    (final : TargetMachine) (candidate : ObjRef) : TargetMachine :=
+  resetPublished lang (balanceResetAfterInvariant lang b final).1 candidate
+
+def balanceResetCanonicalFinal (lang : TargetLang) (b : Int)
+    (final : TargetMachine) (candidate : ObjRef) : TargetMachine :=
+  balanceSetBusy (balanceResetCanonicalPublished lang b final candidate) false
+
+/-- Unwrap the actual suffix without folding cleanup into the body. This is
+needed because try/finally executes cleanup as a separate sibling. -/
+theorem balanceReset_invariant_publication_execute {lang m final f candidate k}
+    (he : evalExpr (k + 10) (balanceProgram lang) m f (resetInvariantCall lang) =
+      .ok ⟨final, .ok (resetValidationResult lang)⟩)
+    (hn : lang = .python → snapshotAddress m f "violated" = none)
+    (hr : let bound := snapshotBound lang final f "violated" (resetValidationResult lang)
+      bound.2.receiver = some bound.1.checkerRef)
+    (hc : let bound := snapshotBound lang final f "violated" (resetValidationResult lang)
+      localValue bound.1 bound.2 "candidate" = .ok (.object candidate))
+    (hi : let bound := snapshotBound lang final f "violated" (resetValidationResult lang)
+      lang = .python → localValue bound.1 bound.2 "_INITIAL" = .ok (.string "Ready")) :
+    let bound := snapshotBound lang final f "violated" (resetValidationResult lang)
+    execStmt (k + 12) (balanceProgram lang) m f
+      (dropStmts (resetValidationIndex lang + 2) (balanceResetProtected lang).body) =
+      .ok ⟨resetPublished lang bound.1 candidate, bound.2, .normal⟩ := by
+  let bound := snapshotBound lang final f "violated" (resetValidationResult lang)
+  have validation := balanceReset_validation_bind_skip (lang := lang) (k := k + 8) true he hn
+  dsimp only at validation ⊢
+  simp only [if_true, Nat.add_assoc, Nat.reduceAdd] at validation
+  have read : localValue bound.1 bound.2 "violated" = .ok (resetValidationResult lang) := by
+    cases lang <;> simp only [bound, snapshotBound, localValue, readCell, allocCell,
+      Prod.fst, Prod.snd, List.lookup_cons, String.reduceBEq, Bool.or_false,
+      Bool.false_eq_true, beq_self_eq_true, if_false, if_true]
+  have skipped : execStmt (k + 10) (balanceProgram lang) bound.1 bound.2
+      (balanceResetMiddleStmt lang (resetValidationIndex lang + 3)) =
+      .ok ⟨bound.1, bound.2, .normal⟩ := by
+    rw [(balanceReset_validation_shapes lang).2.2.2]
+    exact execStmt_adequate (.ifFalse (.localRead read)
+      (by cases lang <;> rfl) .empty)
+      (Nat.lt_of_lt_of_le (by decide : 1 < 10) (Nat.le_add_left 10 k))
+  rw [balanceReset_invariant_suffix_shape, execSequence_of_normal validation.1,
+    execSequence_of_normal skipped]
+  exact balanceReset_publication_execute (k := k + 2) hr hc hi
+
+/-- The actual body, conditional on precisely the unresolved invariant evidence. -/
+theorem balanceReset_canonical_body_execute {lang b final candidate k}
+    (hb : 0 ≤ b ∧ b ≤ 9007199254740991)
+    (h : BalanceResetInvariantEvidence lang b final candidate (k + 25)) :
+    execStmt (k + (if lang == .ts then 33 else 32)) (balanceProgram lang)
+      (balanceCanonicalResetStage lang b 3).1 (balanceCanonicalResetStage lang b 3).2
+      (balanceResetProtected lang).body =
+      .ok ⟨balanceResetCanonicalPublished lang b final candidate,
+        (balanceResetAfterInvariant lang b final).2, .normal⟩ := by
+  rw [balanceReset_canonical_to_invariant lang b hb k]
+  exact balanceReset_invariant_publication_execute (k := k + 15)
+    h.call h.violatedFresh h.receiver h.candidateRead h.initialRead
+
+/-- Expose the existing publication/cleanup composition on the same physical
+post-bounds entry, independently of the outer source-spine budgets. -/
+theorem balanceReset_canonical_suffix_cleanup_execute {lang b final candidate k}
+    (h : BalanceResetInvariantEvidence lang b final candidate (k + 25)) :
+    execStmt (k + 28) (balanceProgram lang)
+      (balanceResetPostBounds lang b).1 (balanceResetPostBounds lang b).2
+      (.sequence (dropStmts (resetValidationIndex lang + 2) (balanceResetProtected lang).body)
+        (balanceResetProtected lang).cleanup) =
+      .ok ⟨balanceResetCanonicalFinal lang b final candidate,
+        (balanceResetAfterInvariant lang b final).2, .normal⟩ := by
+  exact balanceReset_invariant_publication_cleanup (k := k + 15)
+    h.call h.violatedFresh h.receiver h.candidateRead h.initialRead
+
+/-- Successful source body -> actual protected finalizer. No handler is
+removed from the AST: its branch is excluded by proved normal control. -/
+theorem balanceReset_canonical_protected_execute {lang b final candidate k}
+    (hb : 0 ≤ b ∧ b ≤ 9007199254740991)
+    (h : BalanceResetInvariantEvidence lang b final candidate (k + 25)) :
+    execStmt (k + (if lang == .ts then 34 else 33)) (balanceProgram lang)
+      (balanceCanonicalResetStage lang b 3).1 (balanceCanonicalResetStage lang b 3).2
+      (balanceResetProtected lang).stmt =
+      .ok ⟨balanceResetCanonicalFinal lang b final candidate,
+        (balanceResetAfterInvariant lang b final).2, .normal⟩ := by
+  have body := balanceReset_canonical_body_execute hb h
+  have receiver : (balanceResetAfterInvariant lang b final).2.receiver =
+      some (balanceResetCanonicalPublished lang b final candidate).checkerRef := h.receiver
+  cases lang with
+  | ts =>
+      exact balanceReset_protected_normal (k := k + 29) body receiver
+  | python =>
+      exact balanceReset_protected_normal (k := k + 28) body receiver
+
+/-- Fixed constructor budgets, after the already-proved snapshot allocations. -/
+theorem balanceReset_canonical_protected_tail_execute {lang b final candidate}
+    (hb : 0 ≤ b ∧ b ≤ 9007199254740991)
+    (h : BalanceResetInvariantEvidence lang b final candidate (if lang == .ts then 80 else 74)) :
+    execStmt (if lang == .ts then 90 else 83) (balanceProgram lang)
+      (balanceCanonicalResetStage lang b 3).1 (balanceCanonicalResetStage lang b 3).2
+      (dropStmts 4 (balanceResetSnapshots lang)) =
+      .ok ⟨balanceResetCanonicalFinal lang b final candidate,
+        (balanceResetAfterInvariant lang b final).2, .normal⟩ := by
+  have shape : dropStmts 4 (balanceResetSnapshots lang) =
+      .sequence (balanceResetProtected lang).stmt .empty := balanceReset_protected_shape lang
+  rw [shape]
+  cases lang with
+  | ts =>
+      have hp := balanceReset_canonical_protected_execute (k := 55) hb h
+      simp only [beq_self_eq_true, if_true, Nat.reduceAdd] at hp ⊢
+      rw [execSequence_of_normal hp]
+      exact execStmt_adequate .empty (by decide)
+  | python =>
+      have hp := balanceReset_canonical_protected_execute (k := 49) hb h
+      simp only [show (.python == TargetLang.ts) = false from rfl,
+        Bool.false_eq_true, if_false, Nat.reduceAdd] at hp ⊢
+      rw [execSequence_of_normal hp]
+      exact execStmt_adequate .empty (by decide)
+
+/-- Return to the whole snapshots subtree at the constructor's actual fuel. -/
+theorem balanceReset_canonical_snapshots_execute_of_invariant {lang b final candidate}
+    (hb : 0 ≤ b ∧ b ≤ 9007199254740991)
+    (h : BalanceResetInvariantEvidence lang b final candidate (if lang == .ts then 80 else 74)) :
+    execStmt (if lang == .ts then 94 else 87) (balanceProgram lang)
+      (balanceCanonicalResetEntry lang b).1 (balanceCanonicalResetEntry lang b).2
+      (balanceResetSnapshots lang) =
+      .ok ⟨balanceResetCanonicalFinal lang b final candidate,
+        (balanceResetAfterInvariant lang b final).2, .normal⟩ := by
+  cases lang with
+  | ts =>
+      change execStmt 94 _ _ _ _ = _
+      rw [balanceReset_canonical_snapshot_execute .ts b 86]
+      exact balanceReset_canonical_protected_tail_execute hb h
+  | python =>
+      change execStmt 87 _ _ _ _ = _
+      rw [balanceReset_canonical_snapshot_execute .python b 79]
+      exact balanceReset_canonical_protected_tail_execute hb h
+
+/-- The constructor reaches this actual reset-method entry; TS and Python
+retain their distinct initialization prefixes. -/
+def balanceResetOriginalEntry (lang : TargetLang) (b : Int) : TargetMachine × TargetFrame :=
+  if lang == .ts then balanceResetBodyEntry .ts b else balancePythonResetBodyEntry b
+
+/-- Full source reset body, conditional on the unresolved invariant evidence. -/
+theorem balanceReset_canonical_execute_of_invariant {lang b final candidate}
+    (hb : 0 ≤ b ∧ b ≤ 9007199254740991)
+    (h : BalanceResetInvariantEvidence lang b final candidate (if lang == .ts then 80 else 74)) :
+    execStmt (if lang == .ts then 96 else 89) (balanceProgram lang)
+      (balanceResetOriginalEntry lang b).1 (balanceResetOriginalEntry lang b).2
+      (balanceStoredReset lang).2.body =
+      .ok ⟨balanceResetCanonicalFinal lang b final candidate,
+        (balanceResetAfterInvariant lang b final).2, .normal⟩ := by
+  have snapshots := balanceReset_canonical_snapshots_execute_of_invariant hb h
+  cases lang with
+  | ts =>
+      change execStmt 96 _ (balanceResetBodyEntry .ts b).1 (balanceResetBodyEntry .ts b).2 _ = _
+      rw [balanceResetBodyEntry_snapshots .ts b (k := 95) (by decide)]
+      exact snapshots
+  | python =>
+      change execStmt 89 _ (balancePythonResetBodyEntry b).1 (balancePythonResetBodyEntry b).2 _ = _
+      rw [balanceReset_idle_entry (lang := .python)
+        (balancePythonResetBodyEntry_receiver b) (balancePythonResetBodyEntry_idle b)
+        (k := 88) (by decide)]
+      exact snapshots
+
+/-- Physical preconditions of the constructor's final source copy. No
+constructor success or post-construction representation is an assumption. -/
+structure BalanceConstructorCopyEvidence (lang : TargetLang) (b : Int)
+    (m : TargetMachine) : Prop where
+  receiver : (balanceConstructorBodyEntry lang b).2.receiver = some m.checkerRef
+  context : objectAt m m.checker.context = .ok (balanceHeapObject lang m b)
+  tsContextFresh : lang = .ts → m.checker.context ≠ m.nextObject
+  tsHeapFresh : lang = .ts → ∀ e ∈ m.objects, e.1 ≠ m.nextObject
+  pythonDict : lang = .python → localValue m (balanceConstructorBodyEntry lang b).2
+    "dict" = .ok (.builtin .dict)
+
+def balanceConstructorCopied (lang : TargetLang) (m : TargetMachine) (b : Int) : TargetMachine :=
+  match lang with
+  | .ts => balanceTsSeedCopied m b
+  | .python => balancePythonSeedCopied m b
+
+/-- Restore the caller frame after a normal reset before specializing language
+or fixed fuel; this avoids reducing the concrete constructor AST in conversion. -/
+theorem balanceConstructorResetContinuation_normal (lang : TargetLang) (b : Int)
+    (m : TargetMachine) (ff : TargetFrame) :
+    balanceConstructorResetContinuation lang b ⟨m, ff, .normal⟩ =
+      execStmt (if lang == .ts then 98 else 91) (balanceProgram lang) m
+        (balanceConstructorBodyEntry lang b).2
+        (if lang == .ts then restStmt (balanceConstructorBodyTemplate .ts)
+         else restStmt balancePythonAfterInit) := by
+  rfl
+
+/-- Successful reset returns to the constructor frame, then executes the
+original spread/dict copy and field write, including its fresh allocation. -/
+theorem balanceConstructorResetContinuation_copy {lang b m ff}
+    (h : BalanceConstructorCopyEvidence lang b m) :
+    balanceConstructorResetContinuation lang b ⟨m, ff, .normal⟩ =
+      .ok ⟨balanceConstructorCopied lang m b, (balanceConstructorBodyEntry lang b).2, .normal⟩ := by
+  rw [balanceConstructorResetContinuation_normal]
+  cases lang with
+  | ts =>
+      simp only [beq_self_eq_true, if_true, balanceConstructorCopied]
+      exact balanceConstructor_ts_seed_copy (k := 92) h.receiver h.context
+        (h.tsContextFresh rfl) (h.tsHeapFresh rfl)
+  | python =>
+      simp only [show (.python == TargetLang.ts) = false from rfl,
+        Bool.false_eq_true, if_false, balanceConstructorCopied]
+      exact balanceConstructor_python_seed_copy h.receiver (h.pythonDict rfl) h.context (by decide)
+
+/-- Full constructor execution from the stored parsed body, retaining all
+reset, helper, history and final seed-copy allocations. Premises are explicit. -/
+theorem balanceConstructor_canonical_execute_of_invariant {lang b final candidate}
+    (hb : 0 ≤ b ∧ b ≤ 9007199254740991)
+    (h : BalanceResetInvariantEvidence lang b final candidate (if lang == .ts then 80 else 74))
+    (hc : BalanceConstructorCopyEvidence lang b (balanceResetCanonicalFinal lang b final candidate)) :
+    execStmt 99 (balanceProgram lang)
+      (balanceConstructorBodyEntry lang b).1 (balanceConstructorBodyEntry lang b).2
+      (balanceStoredConstructor lang).2.body =
+      .ok ⟨balanceConstructorCopied lang (balanceResetCanonicalFinal lang b final candidate) b,
+        (balanceConstructorBodyEntry lang b).2, .normal⟩ := by
+  rw [balanceConstructor_canonical_snapshots_eq,
+    balanceReset_canonical_protected_tail_execute hb h]
+  exact balanceConstructorResetContinuation_copy hc
+
+/-- Actual targetConstruct success, conditional on the unresolved invariant
+and physical copy evidence. This does not claim unconditional soundness. -/
+theorem targetConstruct_balance_of_invariant {lang b final candidate}
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S)
+    (h : BalanceResetInvariantEvidence lang b final candidate (if lang == .ts then 80 else 74))
+    (hc : BalanceConstructorCopyEvidence lang b (balanceResetCanonicalFinal lang b final candidate)) :
+    targetConstruct (balanceProgram lang) (canonicalBalanceSeed lang b) =
+      .ok (balanceConstructorCopied lang (balanceResetCanonicalFinal lang b final candidate) b) := by
+  rw [targetConstruct_balance_body lang hb,
+    balanceConstructor_canonical_execute_of_invariant hb h hc]
+  rfl
+
+/-- The source's final seed copy preserves every binding and method table.
+These facts can transport a canonical-globals predicate once its interface is
+fixed; this file does not invent or assume such a predicate. -/
+theorem balanceConstructorCopied_bindings (lang : TargetLang) (m : TargetMachine) (b : Int) :
+    (balanceConstructorCopied lang m b).globals = m.globals ∧
+    (balanceConstructorCopied lang m b).cells = m.cells ∧
+    (balanceConstructorCopied lang m b).classMethods = m.classMethods ∧
+    (balanceConstructorCopied lang m b).closures = m.closures ∧
+    (balanceConstructorCopied lang m b).objectPrototype = m.objectPrototype ∧
+    (balanceConstructorCopied lang m b).checkerRef = m.checkerRef := by
+  cases lang <;> exact ⟨rfl, rfl, rfl, rfl, rfl, rfl⟩
+
+theorem balanceResetCanonicalFinal_bindings (lang : TargetLang) (b : Int)
+    (final : TargetMachine) (candidate : ObjRef) :
+    (balanceResetCanonicalFinal lang b final candidate).globals = final.globals ∧
+    (balanceResetCanonicalFinal lang b final candidate).classMethods = final.classMethods ∧
+    (balanceResetCanonicalFinal lang b final candidate).closures = final.closures ∧
+    (balanceResetCanonicalFinal lang b final candidate).objectPrototype = final.objectPrototype ∧
+    (balanceResetCanonicalFinal lang b final candidate).checkerRef = final.checkerRef :=
+  ⟨rfl, rfl, rfl, rfl, rfl⟩
+
+/-- Generic representation transport across the actual fresh constructor copy.
+HeapWF of the actual returned heap remains explicit; this theorem discharges
+all physical representation fields rather than assuming BalanceRep. -/
+theorem balanceConstructorCopied_rep {lang b m}
+    (hw : HeapWF lang (balanceConstructorCopied lang m b))
+    (hr : m.checker.state = "Ready")
+    (hc : objectAt m m.checker.context = .ok (balanceHeapObject lang m b))
+    (hh : objectAt m m.checker.history = .ok (emptyBalanceHistory lang m))
+    (hu : m.checker.undo = none) (hi : m.checker.busy = false)
+    (hnc : m.checker.context ≠ m.nextObject)
+    (hnh : m.checker.history ≠ m.nextObject) :
+    BalanceRep lang b (balanceConstructorCopied lang m b) := by
+  have objects (ref : ObjRef) :
+      objectAt (balanceConstructorCopied lang m b) ref =
+        objectAt (allocObject m (balanceHeapObject lang m b)).1 ref := by
+    cases lang <;> rfl
+  have context : objectAt (balanceConstructorCopied lang m b) m.checker.context =
+      .ok (balanceHeapObject lang (balanceConstructorCopied lang m b) b) := by
+    rw [objects, objectAt_allocObject_other hnc]
+    simpa only [balanceHeapObject, (balanceConstructorCopied_bindings lang m b).2.2.2.2.1] using hc
+  have history : objectAt (balanceConstructorCopied lang m b) m.checker.history =
+      .ok (emptyBalanceHistory lang (balanceConstructorCopied lang m b)) := by
+    rw [objects, objectAt_allocObject_other hnh]
+    simpa only [emptyBalanceHistory, (balanceConstructorCopied_bindings lang m b).2.2.2.2.1] using hh
+  have seed : objectAt (balanceConstructorCopied lang m b) m.nextObject =
+      .ok (balanceHeapObject lang (balanceConstructorCopied lang m b) b) := by
+    rw [objects, objectAt_allocObject_fresh]
+    cases lang <;> rfl
+  cases lang <;>
+    exact ⟨hw, hr, context, history, hu, hi, m.nextObject, rfl, Ne.symm hnc, seed⟩
+
+/-- Reset publication and finally discharge all pre-copy representation fields
+from an invariant-final candidate object and its two allocation separations.
+The final returned heap's HeapWF is intentionally still an obligation. -/
+theorem balanceResetCanonicalFinal_rep_after_copy {lang b final candidate}
+    (hc : objectAt final candidate = .ok (balanceHeapObject lang final b))
+    (hn : candidate ≠ final.nextObject)
+    (hnext : candidate ≠ final.nextObject + 1)
+    (hw : HeapWF lang
+      (balanceConstructorCopied lang (balanceResetCanonicalFinal lang b final candidate) b)) :
+    BalanceRep lang b
+      (balanceConstructorCopied lang (balanceResetCanonicalFinal lang b final candidate) b) := by
+  let before := (balanceResetAfterInvariant lang b final).1
+  have candidateOld : objectAt before candidate = .ok (balanceHeapObject lang before b) := hc
+  have context : objectAt (balanceResetCanonicalFinal lang b final candidate) candidate =
+      .ok (balanceHeapObject lang (balanceResetCanonicalFinal lang b final candidate) b) := by
+    change objectAt (allocObject
+      { before with checker := { before.checker with state := "Ready", context := candidate } }
+      (emptyBalanceHistory lang before)).1 candidate = _
+    rw [objectAt_allocObject_other
+      (m := { before with checker := { before.checker with state := "Ready", context := candidate } })
+      (show candidate ≠ before.nextObject from hn)]
+    exact candidateOld
+  have history : objectAt (balanceResetCanonicalFinal lang b final candidate) final.nextObject =
+      .ok (emptyBalanceHistory lang (balanceResetCanonicalFinal lang b final candidate)) := by
+    change objectAt (allocObject
+      { before with checker := { before.checker with state := "Ready", context := candidate } }
+      (emptyBalanceHistory lang before)).1 before.nextObject = _
+    rw [objectAt_allocObject_fresh]
+    rfl
+  exact balanceConstructorCopied_rep hw rfl context history rfl rfl hnext
+    (Nat.ne_of_lt (Nat.lt_succ_self final.nextObject))
+
+/-- Conditional execution plus representation: neither the invariant-call
+result nor the actual final heap's well-formedness has been hidden. -/
+theorem targetConstruct_balance_rep_of_invariant {lang b final candidate}
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S)
+    (h : BalanceResetInvariantEvidence lang b final candidate (if lang == .ts then 80 else 74))
+    (hcopy : BalanceConstructorCopyEvidence lang b (balanceResetCanonicalFinal lang b final candidate))
+    (hc : objectAt final candidate = .ok (balanceHeapObject lang final b))
+    (hn : candidate ≠ final.nextObject)
+    (hnext : candidate ≠ final.nextObject + 1)
+    (hw : HeapWF lang
+      (balanceConstructorCopied lang (balanceResetCanonicalFinal lang b final candidate) b)) :
+    ∃ m, targetConstruct (balanceProgram lang) (canonicalBalanceSeed lang b) = .ok m ∧
+      BalanceRep lang b m := by
+  exact ⟨_, targetConstruct_balance_of_invariant hb h hcopy,
+    balanceResetCanonicalFinal_rep_after_copy hc hn hnext hw⟩
+
+/-! Canonical balance execution models retain the actual source AST bodies and
+all helper allocations. Unconditional execution is stated for bounded seeds. -/
+
+section CanonicalBalanceExecution
+set_option smartUnfolding false
+
+
+def balanceSourceCodeName (name : String) : String :=
+  if name.startsWith "module." then String.mk (name.toList.drop 7) else name
+
+def balanceSourceCodeJoin (stem name : String) : String :=
+  if stem.isEmpty then name else stem ++ "." ++ name
+
+def balanceSourceStmtBody (stem wanted : String) : TargetStmt → Option TargetStmt
+  | .sequence first rest => (balanceSourceStmtBody stem wanted first).orElse
+      (fun _ => balanceSourceStmtBody stem wanted rest)
+  | .defineFunction name _ body =>
+      let full := balanceSourceCodeJoin stem name
+      if full == wanted then some body else balanceSourceStmtBody full wanted body
+  | .defineGetter name body =>
+      let full := balanceSourceCodeJoin stem name
+      if full == wanted then some body else balanceSourceStmtBody full wanted body
+  | .defineClass name _ body => balanceSourceStmtBody (balanceSourceCodeJoin stem name) wanted body
+  | .ifThenElse _ yes no => (balanceSourceStmtBody stem wanted yes).orElse
+      (fun _ => balanceSourceStmtBody stem wanted no)
+  | .forDo _ _ body | .whileDo _ body => balanceSourceStmtBody stem wanted body
+  | .switchOn _ cases => balanceSourceStmtBody stem wanted cases
+  | .switchCase _ body next => (balanceSourceStmtBody stem wanted body).orElse
+      (fun _ => balanceSourceStmtBody stem wanted next)
+  | .tryCatchFinally body _ _ handler cleanup =>
+      (balanceSourceStmtBody stem wanted body).orElse (fun _ =>
+        (balanceSourceStmtBody stem wanted handler).orElse
+          (fun _ => balanceSourceStmtBody stem wanted cleanup))
+  | _ => none
+
+def balanceSourceFunctionBody (wanted : String) : List TargetFunction → Option TargetStmt
+  | [] => none
+  | f :: rest =>
+      let full := balanceSourceCodeName f.qualifiedName
+      (if full == wanted then some f.body else balanceSourceStmtBody full wanted f.body).orElse
+        (fun _ => balanceSourceFunctionBody wanted rest)
+
+def balanceSourceBody (program : TargetProgram) (qualified : String) : TargetStmt :=
+  let wanted := balanceSourceCodeName qualified
+  ((balanceSourceStmtBody "" wanted program.moduleInit).orElse
+    (fun _ => balanceSourceFunctionBody wanted program.functions)).getD .empty
+
+
+set_option smartUnfolding false
+set_option maxRecDepth 200000
+set_option maxHeartbeats 10000000
+
+def balanceInvariantTsInput (b : Int) : TargetMachine :=
+  { globals := [("structuredClone", 6), ("Error", 5), ("Set", 4), ("Number", 3), ("Array", 2), ("Object", 1), ("JSON", 0)]
+    frames := []
+    cells := [(37, TargetValue.undefined),
+      (36, (TargetValue.number (NumberTag.jsNumber) b)),
+      (35, TargetValue.object 11),
+      (34, TargetValue.string "balance"),
+      (33, TargetValue.object 23),
+      (32, (TargetValue.number (NumberTag.jsNumber) b)),
+      (31, TargetValue.string "balance"),
+      (30, TargetValue.object 25),
+      (29, TargetValue.string "balance"),
+      (28, TargetValue.object 24),
+      (27, TargetValue.object 0),
+      (26, TargetValue.object 26),
+      (25, TargetValue.object 23),
+      (24, TargetValue.closure 14),
+      (23, TargetValue.object 22),
+      (22, TargetValue.object 21),
+      (21, TargetValue.string "Ready"),
+      (20, TargetValue.object 20),
+      (19, TargetValue.object 20),
+      (18, TargetValue.object 20),
+      (17, TargetValue.closure 3),
+      (16, TargetValue.closure 2),
+      (15, TargetValue.closure 1),
+      (14, TargetValue.closure 0),
+      (13, TargetValue.object 16),
+      (12, TargetValue.object 13),
+      (11, TargetValue.object 9),
+      (10, TargetValue.object 10),
+      (9, TargetValue.object 17),
+      (8, TargetValue.object 7),
+      (7, TargetValue.object 6),
+      (6, TargetValue.builtin   (BuiltinId.structuredClone)),
+      (5, TargetValue.builtin (BuiltinId.newError)),
+      (4, TargetValue.builtin (BuiltinId.setNew)),
+      (3, TargetValue.object 5),
+      (2, TargetValue.object 4),
+      (1, TargetValue.object 3),
+      (0, TargetValue.object 2)]
+    writableCells := [(37, false),  (36, false),  (35, false),  (34, false),  (33, true),  (32, false),  (31, false),  (30, false),  (29, false),  (28, false),  (27, false),  (26, true),  (25, false),  (24, false),  (23, false),  (22, false),  (21, false),  (20, true),  (19, true),  (18, true),  (17, false),  (16, false),  (15, false),  (14, false),  (13, false),  (12, false),  (11, false),  (10, false),  (9, false),  (8, false),  (7, false),  (6, false),  (5, false),  (4, false),  (3, false),  (2, false),  (1, false),  (0, false)]
+    objects := [(33, ⟨ObjectKind.jsArray, some 0, [], [TargetValue.object 32], [], false, false⟩),
+      (32, ⟨ObjectKind.jsArray, some 0, [], [TargetValue.string "balance", TargetValue.object 11], [], false, false⟩),
+      (31, ⟨ObjectKind.jsArray, some 0, [], [TargetValue.object 30], [], false, false⟩),
+      (30, ⟨ObjectKind.jsArray, some 0, [], [TargetValue.string "balance", (TargetValue.number (NumberTag.jsNumber) b)], [], false, false⟩),
+      (29, ⟨ObjectKind.jsOrdinary, some 0, [("value", ⟨some ((TargetValue.number (NumberTag.jsNumber) b)), none, none, true, true, true⟩), ("enumerable", ⟨some (TargetValue.bool true), none, none, true, true, true⟩), ("writable", ⟨some (TargetValue.bool true), none, none, true, true, true⟩), ("configurable", ⟨some (TargetValue.bool true), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (28, ⟨ObjectKind.jsArray, some 0, [], [TargetValue.object 27], [], false, false⟩),
+      (27, ⟨ObjectKind.jsArray, some 0, [], [TargetValue.string "balance", TargetValue.object 25], [], false, false⟩),
+      (26, ⟨ObjectKind.jsOrdinary, some 0, [("balance", ⟨some ((TargetValue.number (NumberTag.jsNumber) b)), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (25, ⟨ObjectKind.jsOrdinary, some 0, [("value", ⟨some ((TargetValue.number (NumberTag.jsNumber) b)), none, none, true, true, true⟩), ("get", ⟨some (TargetValue.undefined), none, none, true, true, true⟩), ("set", ⟨some (TargetValue.undefined), none, none, true, true, true⟩), ("enumerable", ⟨some (TargetValue.bool true), none, none, true, true, true⟩), ("writable", ⟨some (TargetValue.bool true), none, none, true, true, true⟩), ("configurable", ⟨some (TargetValue.bool true), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (24, ⟨ObjectKind.jsOrdinary, some 0, [("balance", ⟨some (TargetValue.object 25), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (23, ⟨ObjectKind.jsOrdinary, some 0, [("balance", ⟨some ((TargetValue.number (NumberTag.jsNumber) b)), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (22, ⟨ObjectKind.jsArray, some 0, [], [], [], false, false⟩),
+      (21, ⟨ObjectKind.jsOrdinary, some 0, [("balance", ⟨some (TargetValue.number   (NumberTag.jsNumber)   100), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (20, ⟨ObjectKind.jsOrdinary, some 0, [("balance", ⟨some ((TargetValue.number (NumberTag.jsNumber) b)), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (19, ⟨ObjectKind.jsArray, some 0, [], [], [], false, false⟩),
+      (18, ⟨ObjectKind.jsOrdinary, some 0, [("balance", ⟨some (TargetValue.number   (NumberTag.jsNumber)   100), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (17, ⟨ObjectKind.jsOrdinary, some 0, [("balance", ⟨some (TargetValue.number   (NumberTag.jsNumber)   100), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (16, ⟨ObjectKind.jsArray, some 0, [], [TargetValue.object 14], [], false, false⟩),
+      (15, ⟨ObjectKind.jsArray, some 0, [], [TargetValue.string "balance = balance - event.amount"], [], false, false⟩),
+      (14, ⟨ObjectKind.jsOrdinary, some 0, [("id", ⟨some (TargetValue.string "DEBIT"), none, none, true, true, true⟩), ("from", ⟨some (TargetValue.string "Ready"), none, none, true, true, true⟩), ("to", ⟨some (TargetValue.string "Ready"), none, none, true, true, true⟩), ("guard", ⟨some (TargetValue.string "event.amount > 0"), none, none, true, true, true⟩), ("directive", ⟨some (TargetValue.null), none, none, true, true, true⟩), ("effects", ⟨some (TargetValue.object 15), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (13, ⟨ObjectKind.jsArray, some 0, [], [TargetValue.object 12], [], false, false⟩),
+      (12, ⟨ObjectKind.jsOrdinary, some 0, [("id", ⟨some (TargetValue.string "nonnegative"), none, none, true, true, true⟩), ("predicate", ⟨some (TargetValue.string "balance >= 0"), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (11, ⟨ObjectKind.jsOrdinary, some 0, [("type", ⟨some (TargetValue.string "integer"), none, none, true, true, true⟩), ("min", ⟨some (TargetValue.number (NumberTag.jsNumber) 0), none, none, true, true, true⟩), ("max", ⟨some (TargetValue.number   (NumberTag.jsNumber)   9007199254740991), none, none, true, true, true⟩), ("default", ⟨some (TargetValue.number   (NumberTag.jsNumber)   100), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (10, ⟨ObjectKind.jsOrdinary, some 0, [("balance", ⟨some (TargetValue.object 11), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (9, ⟨ObjectKind.jsArray, some 0, [], [TargetValue.object 8], [], false, false⟩),
+      (8, ⟨ObjectKind.jsOrdinary, some 0, [("id", ⟨some (TargetValue.string "Ready"), none, none, true, true, true⟩), ("initial", ⟨some (TargetValue.bool true), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (7, ⟨ObjectKind.jsOrdinary, some 0, [("version", ⟨some (TargetValue.string "kadmos.world.v0"), none, none, true, true, true⟩), ("name", ⟨some (TargetValue.string "BalanceWorld"), none, none, true, true, true⟩), ("states", ⟨some (TargetValue.object 9), none, none, true, true, true⟩), ("context", ⟨some (TargetValue.object 10), none, none, true, true, true⟩), ("invariants", ⟨some (TargetValue.object 13), none, none, true, true, true⟩), ("transitions", ⟨some (TargetValue.object 16), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (6, ⟨ObjectKind.jsOrdinary, some 0, [("isProxy", ⟨some (TargetValue.builtin   (BuiltinId.nodeIsProxy)), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (5, ⟨ObjectKind.jsOrdinary, some 0, [("isFinite", ⟨some (TargetValue.builtin (BuiltinId.isFinite)), none, none, true, true, true⟩), ("isSafeInteger", ⟨some (TargetValue.builtin   (BuiltinId.jsIsSafeInteger)), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (4, ⟨ObjectKind.jsOrdinary, some 0, [("isArray", ⟨some (TargetValue.builtin   (BuiltinId.arrayIsArray)), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (3, ⟨ObjectKind.jsOrdinary, some 0, [("prototype", ⟨some (TargetValue.object 0), none, none, true, true, true⟩), ("entries", ⟨some (TargetValue.builtin   (BuiltinId.objectEntries)), none, none, true, true, true⟩), ("hasOwn", ⟨some (TargetValue.builtin   (BuiltinId.objectHasOwn)), none, none, true, true, true⟩), ("create", ⟨some (TargetValue.builtin   (BuiltinId.objectCreate)), none, none, true, true, true⟩), ("getPrototypeOf", ⟨some (TargetValue.builtin   (BuiltinId.objectGetPrototypeOf)), none, none, true, true, true⟩), ("getOwnPropertyNames", ⟨some (TargetValue.builtin   (BuiltinId.objectGetOwnNames)), none, none, true, true, true⟩), ("getOwnPropertyDescriptor", ⟨some (TargetValue.builtin   (BuiltinId.objectOwnDescriptor)), none, none, true, true, true⟩), ("getOwnPropertyDescriptors", ⟨some (TargetValue.builtin   (BuiltinId.objectOwnDescriptors)), none, none, true, true, true⟩), ("defineProperty", ⟨some (TargetValue.builtin   (BuiltinId.objectDefineProperty)), none, none, true, true, true⟩), ("freeze", ⟨some (TargetValue.builtin (BuiltinId.freeze)), none, none, true, true, true⟩), ("isFrozen", ⟨some (TargetValue.builtin (BuiltinId.isFrozen)), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (2, ⟨ObjectKind.jsOrdinary, some 0, [("parse", ⟨some (TargetValue.builtin (BuiltinId.jsonParse)), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (0, ⟨ObjectKind.jsPrototype, none, [], [], [], true, false⟩),
+      (1, ⟨ObjectKind.pythonOrdinary, none, [], [], [], false, false⟩)]
+    closures := [(15, ⟨"WorldChecker.checkBounds", [{ name := "values", defaultValue := none }], [], balanceSourceBody (balanceProgram .ts) "WorldChecker.checkBounds", [("sanitizeWorldPayload", 17),  ("deepFreezeWorld", 16),  ("evaluateWorld", 15),  ("booleanWorld", 14),  ("transitionDefinitions", 13),  ("invariantDefinitions", 12),  ("stateDefinitions", 11),  ("contextDefinitions", 10),  ("contextDefaults", 9),  ("world", 8),  ("nodeTypes", 7)], some 1⟩),
+      (14, ⟨"WorldChecker.reset.rollback", [], [], balanceSourceBody (balanceProgram .ts) "WorldChecker.reset.rollback", [("rollback", 24),  ("snapshotHistory", 23),  ("snapshotContext", 22),  ("snapshotState", 21),  ("initialContext", 20),  ("sanitizeWorldPayload", 17),  ("deepFreezeWorld", 16),  ("evaluateWorld", 15),  ("booleanWorld", 14),  ("transitionDefinitions", 13),  ("invariantDefinitions", 12),  ("stateDefinitions", 11),  ("contextDefinitions", 10),  ("contextDefaults", 9),  ("world", 8),  ("nodeTypes", 7)], some 1⟩),
+      (13, ⟨"WorldChecker.reset", [{ name := "initialContext", defaultValue := some (TargetExpr.null) }], [], balanceSourceBody (balanceProgram .ts) "WorldChecker.reset", [("sanitizeWorldPayload", 17),  ("deepFreezeWorld", 16),  ("evaluateWorld", 15),  ("booleanWorld", 14),  ("transitionDefinitions", 13),  ("invariantDefinitions", 12),  ("stateDefinitions", 11),  ("contextDefinitions", 10),  ("contextDefaults", 9),  ("world", 8),  ("nodeTypes", 7)], some 1⟩),
+      (12, ⟨"WorldChecker.constructor", [{ name := "initialContext", defaultValue := some (TargetExpr.null) }], [], balanceSourceBody (balanceProgram .ts) "WorldChecker.constructor", [("sanitizeWorldPayload", 17),  ("deepFreezeWorld", 16),  ("evaluateWorld", 15),  ("booleanWorld", 14),  ("transitionDefinitions", 13),  ("invariantDefinitions", 12),  ("stateDefinitions", 11),  ("contextDefinitions", 10),  ("contextDefaults", 9),  ("world", 8),  ("nodeTypes", 7)], some 1⟩),
+      (11, ⟨"WorldChecker.step", [{ name := "request", defaultValue := none }], [], balanceSourceBody (balanceProgram .ts) "WorldChecker.step", [("sanitizeWorldPayload", 17),  ("deepFreezeWorld", 16),  ("evaluateWorld", 15),  ("booleanWorld", 14),  ("transitionDefinitions", 13),  ("invariantDefinitions", 12),  ("stateDefinitions", 11),  ("contextDefinitions", 10),  ("contextDefaults", 9),  ("world", 8),  ("nodeTypes", 7)], none⟩),
+      (10, ⟨"WorldChecker.reset", [{ name := "initialContext", defaultValue := some (TargetExpr.null) }], [], balanceSourceBody (balanceProgram .ts) "WorldChecker.reset", [("sanitizeWorldPayload", 17),  ("deepFreezeWorld", 16),  ("evaluateWorld", 15),  ("booleanWorld", 14),  ("transitionDefinitions", 13),  ("invariantDefinitions", 12),  ("stateDefinitions", 11),  ("contextDefinitions", 10),  ("contextDefaults", 9),  ("world", 8),  ("nodeTypes", 7)], none⟩),
+      (9, ⟨"WorldChecker.checkInvariants", [{ name := "atState", defaultValue := none },  { name := "values", defaultValue := none },  { name := "event", defaultValue := none }], [], balanceSourceBody (balanceProgram .ts) "WorldChecker.checkInvariants", [("sanitizeWorldPayload", 17),  ("deepFreezeWorld", 16),  ("evaluateWorld", 15),  ("booleanWorld", 14),  ("transitionDefinitions", 13),  ("invariantDefinitions", 12),  ("stateDefinitions", 11),  ("contextDefinitions", 10),  ("contextDefaults", 9),  ("world", 8),  ("nodeTypes", 7)], none⟩),
+      (8, ⟨"WorldChecker.checkBounds", [{ name := "values", defaultValue := none }], [], balanceSourceBody (balanceProgram .ts) "WorldChecker.checkBounds", [("sanitizeWorldPayload", 17),  ("deepFreezeWorld", 16),  ("evaluateWorld", 15),  ("booleanWorld", 14),  ("transitionDefinitions", 13),  ("invariantDefinitions", 12),  ("stateDefinitions", 11),  ("contextDefinitions", 10),  ("contextDefaults", 9),  ("world", 8),  ("nodeTypes", 7)], none⟩),
+      (7, ⟨"WorldChecker.rollbackLastStep", [], [], balanceSourceBody (balanceProgram .ts) "WorldChecker.rollbackLastStep", [("sanitizeWorldPayload", 17),  ("deepFreezeWorld", 16),  ("evaluateWorld", 15),  ("booleanWorld", 14),  ("transitionDefinitions", 13),  ("invariantDefinitions", 12),  ("stateDefinitions", 11),  ("contextDefinitions", 10),  ("contextDefaults", 9),  ("world", 8),  ("nodeTypes", 7)], none⟩),
+      (6, ⟨"WorldChecker.getContext", [], [], balanceSourceBody (balanceProgram .ts) "WorldChecker.getContext", [("sanitizeWorldPayload", 17),  ("deepFreezeWorld", 16),  ("evaluateWorld", 15),  ("booleanWorld", 14),  ("transitionDefinitions", 13),  ("invariantDefinitions", 12),  ("stateDefinitions", 11),  ("contextDefinitions", 10),  ("contextDefaults", 9),  ("world", 8),  ("nodeTypes", 7)], none⟩),
+      (5, ⟨"WorldChecker.getState", [], [], balanceSourceBody (balanceProgram .ts) "WorldChecker.getState", [("sanitizeWorldPayload", 17),  ("deepFreezeWorld", 16),  ("evaluateWorld", 15),  ("booleanWorld", 14),  ("transitionDefinitions", 13),  ("invariantDefinitions", 12),  ("stateDefinitions", 11),  ("contextDefinitions", 10),  ("contextDefaults", 9),  ("world", 8),  ("nodeTypes", 7)], none⟩),
+      (4, ⟨"WorldChecker.constructor", [{ name := "initialContext", defaultValue := some (TargetExpr.null) }], [], balanceSourceBody (balanceProgram .ts) "WorldChecker.constructor", [("sanitizeWorldPayload", 17),  ("deepFreezeWorld", 16),  ("evaluateWorld", 15),  ("booleanWorld", 14),  ("transitionDefinitions", 13),  ("invariantDefinitions", 12),  ("stateDefinitions", 11),  ("contextDefinitions", 10),  ("contextDefaults", 9),  ("world", 8),  ("nodeTypes", 7)], none⟩),
+      (3, ⟨"module.sanitizeWorldPayload", [{ name := "raw", defaultValue := none },  { name := "depth", defaultValue := some (TargetExpr.integer 0) },  { name := "seen",    defaultValue := some (TargetExpr.newExpr                      (TargetExpr.call                        (TargetExpr.local "Set")                        (TargetExpr.empty))) }], [none, none, none], balanceSourceBody (balanceProgram .ts) "module.sanitizeWorldPayload", [("sanitizeWorldPayload", 17),  ("deepFreezeWorld", 16),  ("evaluateWorld", 15),  ("booleanWorld", 14),  ("transitionDefinitions", 13),  ("invariantDefinitions", 12),  ("stateDefinitions", 11),  ("contextDefinitions", 10),  ("contextDefaults", 9),  ("world", 8),  ("nodeTypes", 7)], none⟩),
+      (2, ⟨"module.deepFreezeWorld", [{ name := "obj", defaultValue := none }], [none], balanceSourceBody (balanceProgram .ts) "module.deepFreezeWorld", [("deepFreezeWorld", 16),  ("evaluateWorld", 15),  ("booleanWorld", 14),  ("transitionDefinitions", 13),  ("invariantDefinitions", 12),  ("stateDefinitions", 11),  ("contextDefinitions", 10),  ("contextDefaults", 9),  ("world", 8),  ("nodeTypes", 7)], none⟩),
+      (1, ⟨"module.evaluateWorld", [{ name := "expression", defaultValue := none }, { name := "env", defaultValue := none }], [none, none], balanceSourceBody (balanceProgram .ts) "module.evaluateWorld", [("evaluateWorld", 15),  ("booleanWorld", 14),  ("transitionDefinitions", 13),  ("invariantDefinitions", 12),  ("stateDefinitions", 11),  ("contextDefinitions", 10),  ("contextDefaults", 9),  ("world", 8),  ("nodeTypes", 7)], none⟩),
+      (0, ⟨"module.booleanWorld", [{ name := "value", defaultValue := none }], [none], balanceSourceBody (balanceProgram .ts) "module.booleanWorld", [("booleanWorld", 14),  ("transitionDefinitions", 13),  ("invariantDefinitions", 12),  ("stateDefinitions", 11),  ("contextDefinitions", 10),  ("contextDefaults", 9),  ("world", 8),  ("nodeTypes", 7)], none⟩)]
+    generators := []
+    nextCell := 38
+    nextObject := 34
+    nextClosure := 16
+    objectPrototype := 0
+    checkerRef := 1
+    classMethods := [("constructor", 4),  ("getState", 5),  ("getContext", 6),  ("rollbackLastStep", 7),  ("checkBounds", 8),  ("checkInvariants", 9),  ("reset", 10),  ("step", 11)]
+    callableObjects := [(5, BuiltinId.number)]
+    checker := { state := "Ready",   context := 18,   history := 19,   undo := none,   constructorSeed := none,   busy := true,   instanceAttrs := [] }
+    fuel := 0 }
+
+def balanceInvariantTsInputFrame : TargetFrame := { qualifiedName := "WorldChecker.reset",   remaining := [],   locals := [("invalid", 37),              ("descriptors", 28),              ("proto", 27),              ("overrides", 26),              ("candidate", 25),              ("rollback", 24),              ("snapshotHistory", 23),              ("snapshotContext", 22),              ("snapshotState", 21),              ("initialContext", 20)],   captures := [("sanitizeWorldPayload", 17),                ("deepFreezeWorld", 16),                ("evaluateWorld", 15),                ("booleanWorld", 14),                ("transitionDefinitions", 13),                ("invariantDefinitions", 12),                ("stateDefinitions", 11),                ("contextDefinitions", 10),                ("contextDefaults", 9),                ("world", 8),                ("nodeTypes", 7)],   receiver := some 1,   control := ControlResult.normal }
+
+def balanceInvariantTsFinal (b : Int) : TargetMachine :=
+  { globals := [("structuredClone", 6), ("Error", 5), ("Set", 4), ("Number", 3), ("Array", 2), ("Object", 1), ("JSON", 0)]
+    frames := []
+    cells := [(67, TargetValue.bool true),
+      (66, TargetValue.bool true),
+      (65, TargetValue.undefined),
+      (64, TargetValue.undefined),
+      (63, TargetValue.number (NumberTag.jsNumber) 0),
+      (62, (TargetValue.number (NumberTag.jsNumber) b)),
+      (61, TargetValue.number (NumberTag.jsNumber) 0),
+      (60, TargetValue.undefined),
+      (59, TargetValue.undefined),
+      (58, TargetValue.number (NumberTag.jsNumber) 0),
+      (57, TargetValue.string "0"),
+      (56, TargetValue.number (NumberTag.jsNumber) 6),
+      (55, TargetValue.number (NumberTag.jsNumber) 5),
+      (54, TargetValue.string ">="),
+      (53, TargetValue.bool true),
+      (52, TargetValue.string "balance"),
+      (51, TargetValue.number (NumberTag.jsNumber) 0),
+      (50, TargetValue.closure 18),
+      (49, TargetValue.closure 17),
+      (48, TargetValue.number (NumberTag.jsNumber) 3),
+      (47, TargetValue.object 40),
+      (46, TargetValue.object 38),
+      (45, TargetValue.object 37),
+      (44, TargetValue.object 34),
+      (43, TargetValue.string "balance >= 0"),
+      (42, TargetValue.object 12),
+      (41, TargetValue.object 34),
+      (40, TargetValue.undefined),
+      (39, TargetValue.object 23),
+      (38, TargetValue.string "Ready"),
+      (37, TargetValue.undefined),
+      (36, (TargetValue.number (NumberTag.jsNumber) b)),
+      (35, TargetValue.object 11),
+      (34, TargetValue.string "balance"),
+      (33, TargetValue.object 23),
+      (32, (TargetValue.number (NumberTag.jsNumber) b)),
+      (31, TargetValue.string "balance"),
+      (30, TargetValue.object 25),
+      (29, TargetValue.string "balance"),
+      (28, TargetValue.object 24),
+      (27, TargetValue.object 0),
+      (26, TargetValue.object 26),
+      (25, TargetValue.object 23),
+      (24, TargetValue.closure 14),
+      (23, TargetValue.object 22),
+      (22, TargetValue.object 21),
+      (21, TargetValue.string "Ready"),
+      (20, TargetValue.object 20),
+      (19, TargetValue.object 20),
+      (18, TargetValue.object 20),
+      (17, TargetValue.closure 3),
+      (16, TargetValue.closure 2),
+      (15, TargetValue.closure 1),
+      (14, TargetValue.closure 0),
+      (13, TargetValue.object 16),
+      (12, TargetValue.object 13),
+      (11, TargetValue.object 9),
+      (10, TargetValue.object 10),
+      (9, TargetValue.object 17),
+      (8, TargetValue.object 7),
+      (7, TargetValue.object 6),
+      (6, TargetValue.builtin   (BuiltinId.structuredClone)),
+      (5, TargetValue.builtin (BuiltinId.newError)),
+      (4, TargetValue.builtin (BuiltinId.setNew)),
+      (3, TargetValue.object 5),
+      (2, TargetValue.object 4),
+      (1, TargetValue.object 3),
+      (0, TargetValue.object 2)]
+    writableCells := [(67, false),  (66, false),  (65, false),  (64, false),  (63, true),  (62, true),  (61, false),  (60, false),  (59, false),  (58, true),  (57, false),  (56, true),  (55, false),  (54, false),  (53, true),  (52, false),  (51, true),  (50, false),  (49, false),  (48, true),  (47, false),  (46, false),  (45, false),  (44, true),  (43, true),  (42, false),  (41, false),  (40, true),  (39, true),  (38, true),  (37, false),  (36, false),  (35, false),  (34, false),  (33, true),  (32, false),  (31, false),  (30, false),  (29, false),  (28, false),  (27, false),  (26, true),  (25, false),  (24, false),  (23, false),  (22, false),  (21, false),  (20, true),  (19, true),  (18, true),  (17, false),  (16, false),  (15, false),  (14, false),  (13, false),  (12, false),  (11, false),  (10, false),  (9, false),  (8, false),  (7, false),  (6, false),  (5, false),  (4, false),  (3, false),  (2, false),  (1, false),  (0, false)]
+    objects := [(43, ⟨ObjectKind.regexPattern, some 0, [("source", ⟨some (TargetValue.string "/^\\d/"), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (42, ⟨ObjectKind.regexPattern, some 0, [("source", ⟨some (TargetValue.string "/^[A-Za-z_]/"), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (41, ⟨ObjectKind.regexPattern, some 0, [("source", ⟨some (TargetValue.string "/^\\d/"), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (40, ⟨ObjectKind.jsOrdinary, some 0, [("=>", ⟨some (TargetValue.number (NumberTag.jsNumber) 1), none, none, true, true, true⟩), ("||", ⟨some (TargetValue.number (NumberTag.jsNumber) 2), none, none, true, true, true⟩), ("&&", ⟨some (TargetValue.number (NumberTag.jsNumber) 3), none, none, true, true, true⟩), ("==", ⟨some (TargetValue.number (NumberTag.jsNumber) 4), none, none, true, true, true⟩), ("!=", ⟨some (TargetValue.number (NumberTag.jsNumber) 4), none, none, true, true, true⟩), (">", ⟨some (TargetValue.number (NumberTag.jsNumber) 5), none, none, true, true, true⟩), (">=", ⟨some (TargetValue.number (NumberTag.jsNumber) 5), none, none, true, true, true⟩), ("<", ⟨some (TargetValue.number (NumberTag.jsNumber) 5), none, none, true, true, true⟩), ("<=", ⟨some (TargetValue.number (NumberTag.jsNumber) 5), none, none, true, true, true⟩), ("+", ⟨some (TargetValue.number (NumberTag.jsNumber) 6), none, none, true, true, true⟩), ("-", ⟨some (TargetValue.number (NumberTag.jsNumber) 6), none, none, true, true, true⟩), ("*", ⟨some (TargetValue.number (NumberTag.jsNumber) 7), none, none, true, true, true⟩), ("/", ⟨some (TargetValue.number (NumberTag.jsNumber) 7), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (39, ⟨ObjectKind.regexPattern, some 0, [("source", ⟨some (TargetValue.string "/\\s+/g"), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (38, ⟨ObjectKind.jsArray, some 0, [], [TargetValue.string "balance", TargetValue.string ">=", TargetValue.string "0"], [], false, false⟩),
+      (37, ⟨ObjectKind.regexPattern, some 0, [("source", ⟨some (TargetValue.string   "/=>|==|!=|>=|<=|&&|\\|\\||[()+\\-*/<>!.]|\\d+(?:\\.\\d+)?|[A-Za-z_][A-Za-z_0-9]*|'(?:[^'\\\\]|\\\\.)*'/g"), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (36, ⟨ObjectKind.jsOrdinary, some 0, [], [], [], false, false⟩),
+      (35, ⟨ObjectKind.jsOrdinary, some 0, [], [], [], false, false⟩),
+      (34, ⟨ObjectKind.jsOrdinary, some 0, [("balance", ⟨some ((TargetValue.number (NumberTag.jsNumber) b)), none, none, true, true, true⟩), ("state", ⟨some (TargetValue.string "Ready"), none, none, true, true, true⟩), ("event", ⟨some (TargetValue.object 35), none, none, true, true, true⟩), ("request", ⟨some (TargetValue.object 36), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (33, ⟨ObjectKind.jsArray, some 0, [], [TargetValue.object 32], [], false, false⟩),
+      (32, ⟨ObjectKind.jsArray, some 0, [], [TargetValue.string "balance", TargetValue.object 11], [], false, false⟩),
+      (31, ⟨ObjectKind.jsArray, some 0, [], [TargetValue.object 30], [], false, false⟩),
+      (30, ⟨ObjectKind.jsArray, some 0, [], [TargetValue.string "balance", (TargetValue.number (NumberTag.jsNumber) b)], [], false, false⟩),
+      (29, ⟨ObjectKind.jsOrdinary, some 0, [("value", ⟨some ((TargetValue.number (NumberTag.jsNumber) b)), none, none, true, true, true⟩), ("enumerable", ⟨some (TargetValue.bool true), none, none, true, true, true⟩), ("writable", ⟨some (TargetValue.bool true), none, none, true, true, true⟩), ("configurable", ⟨some (TargetValue.bool true), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (28, ⟨ObjectKind.jsArray, some 0, [], [TargetValue.object 27], [], false, false⟩),
+      (27, ⟨ObjectKind.jsArray, some 0, [], [TargetValue.string "balance", TargetValue.object 25], [], false, false⟩),
+      (26, ⟨ObjectKind.jsOrdinary, some 0, [("balance", ⟨some ((TargetValue.number (NumberTag.jsNumber) b)), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (25, ⟨ObjectKind.jsOrdinary, some 0, [("value", ⟨some ((TargetValue.number (NumberTag.jsNumber) b)), none, none, true, true, true⟩), ("get", ⟨some (TargetValue.undefined), none, none, true, true, true⟩), ("set", ⟨some (TargetValue.undefined), none, none, true, true, true⟩), ("enumerable", ⟨some (TargetValue.bool true), none, none, true, true, true⟩), ("writable", ⟨some (TargetValue.bool true), none, none, true, true, true⟩), ("configurable", ⟨some (TargetValue.bool true), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (24, ⟨ObjectKind.jsOrdinary, some 0, [("balance", ⟨some (TargetValue.object 25), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (23, ⟨ObjectKind.jsOrdinary, some 0, [("balance", ⟨some ((TargetValue.number (NumberTag.jsNumber) b)), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (22, ⟨ObjectKind.jsArray, some 0, [], [], [], false, false⟩),
+      (21, ⟨ObjectKind.jsOrdinary, some 0, [("balance", ⟨some (TargetValue.number   (NumberTag.jsNumber)   100), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (20, ⟨ObjectKind.jsOrdinary, some 0, [("balance", ⟨some ((TargetValue.number (NumberTag.jsNumber) b)), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (19, ⟨ObjectKind.jsArray, some 0, [], [], [], false, false⟩),
+      (18, ⟨ObjectKind.jsOrdinary, some 0, [("balance", ⟨some (TargetValue.number   (NumberTag.jsNumber)   100), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (17, ⟨ObjectKind.jsOrdinary, some 0, [("balance", ⟨some (TargetValue.number   (NumberTag.jsNumber)   100), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (16, ⟨ObjectKind.jsArray, some 0, [], [TargetValue.object 14], [], false, false⟩),
+      (15, ⟨ObjectKind.jsArray, some 0, [], [TargetValue.string "balance = balance - event.amount"], [], false, false⟩),
+      (14, ⟨ObjectKind.jsOrdinary, some 0, [("id", ⟨some (TargetValue.string "DEBIT"), none, none, true, true, true⟩), ("from", ⟨some (TargetValue.string "Ready"), none, none, true, true, true⟩), ("to", ⟨some (TargetValue.string "Ready"), none, none, true, true, true⟩), ("guard", ⟨some (TargetValue.string "event.amount > 0"), none, none, true, true, true⟩), ("directive", ⟨some (TargetValue.null), none, none, true, true, true⟩), ("effects", ⟨some (TargetValue.object 15), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (13, ⟨ObjectKind.jsArray, some 0, [], [TargetValue.object 12], [], false, false⟩),
+      (12, ⟨ObjectKind.jsOrdinary, some 0, [("id", ⟨some (TargetValue.string "nonnegative"), none, none, true, true, true⟩), ("predicate", ⟨some (TargetValue.string "balance >= 0"), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (11, ⟨ObjectKind.jsOrdinary, some 0, [("type", ⟨some (TargetValue.string "integer"), none, none, true, true, true⟩), ("min", ⟨some (TargetValue.number (NumberTag.jsNumber) 0), none, none, true, true, true⟩), ("max", ⟨some (TargetValue.number   (NumberTag.jsNumber)   9007199254740991), none, none, true, true, true⟩), ("default", ⟨some (TargetValue.number   (NumberTag.jsNumber)   100), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (10, ⟨ObjectKind.jsOrdinary, some 0, [("balance", ⟨some (TargetValue.object 11), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (9, ⟨ObjectKind.jsArray, some 0, [], [TargetValue.object 8], [], false, false⟩),
+      (8, ⟨ObjectKind.jsOrdinary, some 0, [("id", ⟨some (TargetValue.string "Ready"), none, none, true, true, true⟩), ("initial", ⟨some (TargetValue.bool true), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (7, ⟨ObjectKind.jsOrdinary, some 0, [("version", ⟨some (TargetValue.string "kadmos.world.v0"), none, none, true, true, true⟩), ("name", ⟨some (TargetValue.string "BalanceWorld"), none, none, true, true, true⟩), ("states", ⟨some (TargetValue.object 9), none, none, true, true, true⟩), ("context", ⟨some (TargetValue.object 10), none, none, true, true, true⟩), ("invariants", ⟨some (TargetValue.object 13), none, none, true, true, true⟩), ("transitions", ⟨some (TargetValue.object 16), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (6, ⟨ObjectKind.jsOrdinary, some 0, [("isProxy", ⟨some (TargetValue.builtin   (BuiltinId.nodeIsProxy)), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (5, ⟨ObjectKind.jsOrdinary, some 0, [("isFinite", ⟨some (TargetValue.builtin (BuiltinId.isFinite)), none, none, true, true, true⟩), ("isSafeInteger", ⟨some (TargetValue.builtin   (BuiltinId.jsIsSafeInteger)), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (4, ⟨ObjectKind.jsOrdinary, some 0, [("isArray", ⟨some (TargetValue.builtin   (BuiltinId.arrayIsArray)), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (3, ⟨ObjectKind.jsOrdinary, some 0, [("prototype", ⟨some (TargetValue.object 0), none, none, true, true, true⟩), ("entries", ⟨some (TargetValue.builtin   (BuiltinId.objectEntries)), none, none, true, true, true⟩), ("hasOwn", ⟨some (TargetValue.builtin   (BuiltinId.objectHasOwn)), none, none, true, true, true⟩), ("create", ⟨some (TargetValue.builtin   (BuiltinId.objectCreate)), none, none, true, true, true⟩), ("getPrototypeOf", ⟨some (TargetValue.builtin   (BuiltinId.objectGetPrototypeOf)), none, none, true, true, true⟩), ("getOwnPropertyNames", ⟨some (TargetValue.builtin   (BuiltinId.objectGetOwnNames)), none, none, true, true, true⟩), ("getOwnPropertyDescriptor", ⟨some (TargetValue.builtin   (BuiltinId.objectOwnDescriptor)), none, none, true, true, true⟩), ("getOwnPropertyDescriptors", ⟨some (TargetValue.builtin   (BuiltinId.objectOwnDescriptors)), none, none, true, true, true⟩), ("defineProperty", ⟨some (TargetValue.builtin   (BuiltinId.objectDefineProperty)), none, none, true, true, true⟩), ("freeze", ⟨some (TargetValue.builtin (BuiltinId.freeze)), none, none, true, true, true⟩), ("isFrozen", ⟨some (TargetValue.builtin (BuiltinId.isFrozen)), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (2, ⟨ObjectKind.jsOrdinary, some 0, [("parse", ⟨some (TargetValue.builtin (BuiltinId.jsonParse)), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (0, ⟨ObjectKind.jsPrototype, none, [], [], [], true, false⟩),
+      (1, ⟨ObjectKind.pythonOrdinary, none, [], [], [], false, false⟩)]
+    closures := [(18, ⟨"module.evaluateWorld.parse", [{ name := "minimum", defaultValue := some (TargetExpr.integer 0) }], [none], balanceSourceBody (balanceProgram .ts) "module.evaluateWorld.parse", [("parse", 50),  ("numeric", 49),  ("index", 48),  ("priority", 47),  ("tokens", 46),  ("pattern", 45),  ("env", 44),  ("expression", 43),  ("evaluateWorld", 15),  ("booleanWorld", 14),  ("transitionDefinitions", 13),  ("invariantDefinitions", 12),  ("stateDefinitions", 11),  ("contextDefinitions", 10),  ("contextDefaults", 9),  ("world", 8),  ("nodeTypes", 7)], none⟩),
+      (17, ⟨"module.evaluateWorld.numeric", [{ name := "value", defaultValue := none }], [none], balanceSourceBody (balanceProgram .ts) "module.evaluateWorld.numeric", [("numeric", 49),  ("index", 48),  ("priority", 47),  ("tokens", 46),  ("pattern", 45),  ("env", 44),  ("expression", 43),  ("evaluateWorld", 15),  ("booleanWorld", 14),  ("transitionDefinitions", 13),  ("invariantDefinitions", 12),  ("stateDefinitions", 11),  ("contextDefinitions", 10),  ("contextDefaults", 9),  ("world", 8),  ("nodeTypes", 7)], none⟩),
+      (16, ⟨"WorldChecker.checkInvariants", [{ name := "atState", defaultValue := none },  { name := "values", defaultValue := none },  { name := "event", defaultValue := none }], [], balanceSourceBody (balanceProgram .ts) "WorldChecker.checkInvariants", [("sanitizeWorldPayload", 17),  ("deepFreezeWorld", 16),  ("evaluateWorld", 15),  ("booleanWorld", 14),  ("transitionDefinitions", 13),  ("invariantDefinitions", 12),  ("stateDefinitions", 11),  ("contextDefinitions", 10),  ("contextDefaults", 9),  ("world", 8),  ("nodeTypes", 7)], some 1⟩),
+      (15, ⟨"WorldChecker.checkBounds", [{ name := "values", defaultValue := none }], [], balanceSourceBody (balanceProgram .ts) "WorldChecker.checkBounds", [("sanitizeWorldPayload", 17),  ("deepFreezeWorld", 16),  ("evaluateWorld", 15),  ("booleanWorld", 14),  ("transitionDefinitions", 13),  ("invariantDefinitions", 12),  ("stateDefinitions", 11),  ("contextDefinitions", 10),  ("contextDefaults", 9),  ("world", 8),  ("nodeTypes", 7)], some 1⟩),
+      (14, ⟨"WorldChecker.reset.rollback", [], [], balanceSourceBody (balanceProgram .ts) "WorldChecker.reset.rollback", [("rollback", 24),  ("snapshotHistory", 23),  ("snapshotContext", 22),  ("snapshotState", 21),  ("initialContext", 20),  ("sanitizeWorldPayload", 17),  ("deepFreezeWorld", 16),  ("evaluateWorld", 15),  ("booleanWorld", 14),  ("transitionDefinitions", 13),  ("invariantDefinitions", 12),  ("stateDefinitions", 11),  ("contextDefinitions", 10),  ("contextDefaults", 9),  ("world", 8),  ("nodeTypes", 7)], some 1⟩),
+      (13, ⟨"WorldChecker.reset", [{ name := "initialContext", defaultValue := some (TargetExpr.null) }], [], balanceSourceBody (balanceProgram .ts) "WorldChecker.reset", [("sanitizeWorldPayload", 17),  ("deepFreezeWorld", 16),  ("evaluateWorld", 15),  ("booleanWorld", 14),  ("transitionDefinitions", 13),  ("invariantDefinitions", 12),  ("stateDefinitions", 11),  ("contextDefinitions", 10),  ("contextDefaults", 9),  ("world", 8),  ("nodeTypes", 7)], some 1⟩),
+      (12, ⟨"WorldChecker.constructor", [{ name := "initialContext", defaultValue := some (TargetExpr.null) }], [], balanceSourceBody (balanceProgram .ts) "WorldChecker.constructor", [("sanitizeWorldPayload", 17),  ("deepFreezeWorld", 16),  ("evaluateWorld", 15),  ("booleanWorld", 14),  ("transitionDefinitions", 13),  ("invariantDefinitions", 12),  ("stateDefinitions", 11),  ("contextDefinitions", 10),  ("contextDefaults", 9),  ("world", 8),  ("nodeTypes", 7)], some 1⟩),
+      (11, ⟨"WorldChecker.step", [{ name := "request", defaultValue := none }], [], balanceSourceBody (balanceProgram .ts) "WorldChecker.step", [("sanitizeWorldPayload", 17),  ("deepFreezeWorld", 16),  ("evaluateWorld", 15),  ("booleanWorld", 14),  ("transitionDefinitions", 13),  ("invariantDefinitions", 12),  ("stateDefinitions", 11),  ("contextDefinitions", 10),  ("contextDefaults", 9),  ("world", 8),  ("nodeTypes", 7)], none⟩),
+      (10, ⟨"WorldChecker.reset", [{ name := "initialContext", defaultValue := some (TargetExpr.null) }], [], balanceSourceBody (balanceProgram .ts) "WorldChecker.reset", [("sanitizeWorldPayload", 17),  ("deepFreezeWorld", 16),  ("evaluateWorld", 15),  ("booleanWorld", 14),  ("transitionDefinitions", 13),  ("invariantDefinitions", 12),  ("stateDefinitions", 11),  ("contextDefinitions", 10),  ("contextDefaults", 9),  ("world", 8),  ("nodeTypes", 7)], none⟩),
+      (9, ⟨"WorldChecker.checkInvariants", [{ name := "atState", defaultValue := none },  { name := "values", defaultValue := none },  { name := "event", defaultValue := none }], [], balanceSourceBody (balanceProgram .ts) "WorldChecker.checkInvariants", [("sanitizeWorldPayload", 17),  ("deepFreezeWorld", 16),  ("evaluateWorld", 15),  ("booleanWorld", 14),  ("transitionDefinitions", 13),  ("invariantDefinitions", 12),  ("stateDefinitions", 11),  ("contextDefinitions", 10),  ("contextDefaults", 9),  ("world", 8),  ("nodeTypes", 7)], none⟩),
+      (8, ⟨"WorldChecker.checkBounds", [{ name := "values", defaultValue := none }], [], balanceSourceBody (balanceProgram .ts) "WorldChecker.checkBounds", [("sanitizeWorldPayload", 17),  ("deepFreezeWorld", 16),  ("evaluateWorld", 15),  ("booleanWorld", 14),  ("transitionDefinitions", 13),  ("invariantDefinitions", 12),  ("stateDefinitions", 11),  ("contextDefinitions", 10),  ("contextDefaults", 9),  ("world", 8),  ("nodeTypes", 7)], none⟩),
+      (7, ⟨"WorldChecker.rollbackLastStep", [], [], balanceSourceBody (balanceProgram .ts) "WorldChecker.rollbackLastStep", [("sanitizeWorldPayload", 17),  ("deepFreezeWorld", 16),  ("evaluateWorld", 15),  ("booleanWorld", 14),  ("transitionDefinitions", 13),  ("invariantDefinitions", 12),  ("stateDefinitions", 11),  ("contextDefinitions", 10),  ("contextDefaults", 9),  ("world", 8),  ("nodeTypes", 7)], none⟩),
+      (6, ⟨"WorldChecker.getContext", [], [], balanceSourceBody (balanceProgram .ts) "WorldChecker.getContext", [("sanitizeWorldPayload", 17),  ("deepFreezeWorld", 16),  ("evaluateWorld", 15),  ("booleanWorld", 14),  ("transitionDefinitions", 13),  ("invariantDefinitions", 12),  ("stateDefinitions", 11),  ("contextDefinitions", 10),  ("contextDefaults", 9),  ("world", 8),  ("nodeTypes", 7)], none⟩),
+      (5, ⟨"WorldChecker.getState", [], [], balanceSourceBody (balanceProgram .ts) "WorldChecker.getState", [("sanitizeWorldPayload", 17),  ("deepFreezeWorld", 16),  ("evaluateWorld", 15),  ("booleanWorld", 14),  ("transitionDefinitions", 13),  ("invariantDefinitions", 12),  ("stateDefinitions", 11),  ("contextDefinitions", 10),  ("contextDefaults", 9),  ("world", 8),  ("nodeTypes", 7)], none⟩),
+      (4, ⟨"WorldChecker.constructor", [{ name := "initialContext", defaultValue := some (TargetExpr.null) }], [], balanceSourceBody (balanceProgram .ts) "WorldChecker.constructor", [("sanitizeWorldPayload", 17),  ("deepFreezeWorld", 16),  ("evaluateWorld", 15),  ("booleanWorld", 14),  ("transitionDefinitions", 13),  ("invariantDefinitions", 12),  ("stateDefinitions", 11),  ("contextDefinitions", 10),  ("contextDefaults", 9),  ("world", 8),  ("nodeTypes", 7)], none⟩),
+      (3, ⟨"module.sanitizeWorldPayload", [{ name := "raw", defaultValue := none },  { name := "depth", defaultValue := some (TargetExpr.integer 0) },  { name := "seen",    defaultValue := some (TargetExpr.newExpr                      (TargetExpr.call                        (TargetExpr.local "Set")                        (TargetExpr.empty))) }], [none, none, none], balanceSourceBody (balanceProgram .ts) "module.sanitizeWorldPayload", [("sanitizeWorldPayload", 17),  ("deepFreezeWorld", 16),  ("evaluateWorld", 15),  ("booleanWorld", 14),  ("transitionDefinitions", 13),  ("invariantDefinitions", 12),  ("stateDefinitions", 11),  ("contextDefinitions", 10),  ("contextDefaults", 9),  ("world", 8),  ("nodeTypes", 7)], none⟩),
+      (2, ⟨"module.deepFreezeWorld", [{ name := "obj", defaultValue := none }], [none], balanceSourceBody (balanceProgram .ts) "module.deepFreezeWorld", [("deepFreezeWorld", 16),  ("evaluateWorld", 15),  ("booleanWorld", 14),  ("transitionDefinitions", 13),  ("invariantDefinitions", 12),  ("stateDefinitions", 11),  ("contextDefinitions", 10),  ("contextDefaults", 9),  ("world", 8),  ("nodeTypes", 7)], none⟩),
+      (1, ⟨"module.evaluateWorld", [{ name := "expression", defaultValue := none }, { name := "env", defaultValue := none }], [none, none], balanceSourceBody (balanceProgram .ts) "module.evaluateWorld", [("evaluateWorld", 15),  ("booleanWorld", 14),  ("transitionDefinitions", 13),  ("invariantDefinitions", 12),  ("stateDefinitions", 11),  ("contextDefinitions", 10),  ("contextDefaults", 9),  ("world", 8),  ("nodeTypes", 7)], none⟩),
+      (0, ⟨"module.booleanWorld", [{ name := "value", defaultValue := none }], [none], balanceSourceBody (balanceProgram .ts) "module.booleanWorld", [("booleanWorld", 14),  ("transitionDefinitions", 13),  ("invariantDefinitions", 12),  ("stateDefinitions", 11),  ("contextDefinitions", 10),  ("contextDefaults", 9),  ("world", 8),  ("nodeTypes", 7)], none⟩)]
+    generators := []
+    nextCell := 68
+    nextObject := 44
+    nextClosure := 19
+    objectPrototype := 0
+    checkerRef := 1
+    classMethods := [("constructor", 4),  ("getState", 5),  ("getContext", 6),  ("rollbackLastStep", 7),  ("checkBounds", 8),  ("checkInvariants", 9),  ("reset", 10),  ("step", 11)]
+    callableObjects := [(5, BuiltinId.number)]
+    checker := { state := "Ready",   context := 18,   history := 19,   undo := none,   constructorSeed := none,   busy := true,   instanceAttrs := [] }
+    fuel := 0 }
+
+def balanceInvariantTsBound (b : Int) := snapshotBound .ts (balanceInvariantTsFinal b)
+  balanceInvariantTsInputFrame "violated" (resetValidationResult .ts)
+def balanceInvariantTsReset (b : Int) := balanceSetBusy
+  (resetPublished .ts (balanceInvariantTsBound b).1 23) false
+def balanceInvariantTsCopied (b : Int) := balanceConstructorCopied .ts (balanceInvariantTsReset b) b
+
+
+set_option smartUnfolding false
+set_option maxRecDepth 200000
+set_option maxHeartbeats 10000000
+
+def balanceInvariantPyInput (b : Int) : TargetMachine :=
+  { globals := [("OverflowError", 18),  ("RuntimeError", 17),  ("ValueError", 16),  ("any", 15),  ("abs", 14),  ("object", 13),  ("id", 12),  ("isinstance", 11),  ("next", 10),  ("len", 9),  ("bool", 8),  ("str", 7),  ("int", 6),  ("float", 5),  ("set", 4),  ("tuple", 3),  ("list", 2),  ("dict", 1),  ("type", 0)]
+    frames := []
+    cells := [(118, TargetValue.null),
+      (117, (TargetValue.number (NumberTag.pyInt) b)),
+      (116, (TargetValue.number (NumberTag.pyInt) b)),
+      (115, TargetValue.object 41),
+      (114, TargetValue.string "balance"),
+      (113, TargetValue.object 79),
+      (112, (TargetValue.number (NumberTag.pyInt) b)),
+      (111, (TargetValue.number (NumberTag.pyInt) b)),
+      (110, TargetValue.string "balance"),
+      (109, TargetValue.object 74),
+      (108, TargetValue.object 79),
+      (107, TargetValue.closure 22),
+      (106, TargetValue.object 78),
+      (105, TargetValue.object 77),
+      (104, TargetValue.string "Ready"),
+      (103, TargetValue.object 74),
+      (102, TargetValue.object 74),
+      (101, TargetValue.object 74),
+      (100, TargetValue.classConstructor "WorldChecker"),
+      (99, TargetValue.closure 19),
+      (98, TargetValue.closure 18),
+      (97, TargetValue.closure 17),
+      (96, TargetValue.closure 16),
+      (95, TargetValue.closure 15),
+      (94, TargetValue.closure 14),
+      (93, TargetValue.closure 13),
+      (92, TargetValue.closure 12),
+      (91, TargetValue.closure 11),
+      (90, TargetValue.closure 10),
+      (89, TargetValue.closure 9),
+      (88, TargetValue.closure 8),
+      (87, TargetValue.closure 7),
+      (86, TargetValue.closure 6),
+      (85, TargetValue.closure 5),
+      (84, TargetValue.closure 4),
+      (83, TargetValue.closure 3),
+      (82, TargetValue.closure 2),
+      (81, TargetValue.closure 1),
+      (80, TargetValue.object 73),
+      (79, TargetValue.number   (NumberTag.pyInt)   9007199254740991),
+      (78, TargetValue.object 72),
+      (77, TargetValue.object 71),
+      (76, TargetValue.object 70),
+      (75, TargetValue.object 69),
+      (74, TargetValue.object 68),
+      (73, TargetValue.object 41),
+      (72, TargetValue.string "balance"),
+      (71, TargetValue.string "Ready"),
+      (70, TargetValue.object 30),
+      (69, TargetValue.object 63),
+      (68, TargetValue.string "balance = balance - event.amount"),
+      (67, TargetValue.string "balance = balance - event.amount"),
+      (66, TargetValue.object 15),
+      (65, TargetValue.null),
+      (64, TargetValue.string "event.amount > 0"),
+      (63, TargetValue.string "Ready"),
+      (62, TargetValue.string "Ready"),
+      (61, TargetValue.string "DEBIT"),
+      (60, TargetValue.object 15),
+      (59, TargetValue.string "effects"),
+      (58, TargetValue.object 14),
+      (57, TargetValue.object 14),
+      (56, TargetValue.object 16),
+      (55, TargetValue.string "balance >= 0"),
+      (54, TargetValue.string "nonnegative"),
+      (53, TargetValue.string "balance >= 0"),
+      (52, TargetValue.string "predicate"),
+      (51, TargetValue.object 12),
+      (50, TargetValue.object 12),
+      (49, TargetValue.object 13),
+      (48, TargetValue.number (NumberTag.pyInt) 100),
+      (47, TargetValue.number   (NumberTag.pyInt)   9007199254740991),
+      (46, TargetValue.number (NumberTag.pyInt) 0),
+      (45, TargetValue.string "integer"),
+      (44, TargetValue.number (NumberTag.pyInt) 100),
+      (43, TargetValue.string "default"),
+      (42, TargetValue.object 11),
+      (41, TargetValue.object 11),
+      (40, TargetValue.string "balance"),
+      (39, TargetValue.object 10),
+      (38, TargetValue.bool true),
+      (37, TargetValue.string "Ready"),
+      (36, TargetValue.bool true),
+      (35, TargetValue.string "initial"),
+      (34, TargetValue.object 8),
+      (33, TargetValue.object 8),
+      (32, TargetValue.object 9),
+      (31, TargetValue.string "BalanceWorld"),
+      (30, TargetValue.string "kadmos.world.v0"),
+      (29, TargetValue.object 16),
+      (28, TargetValue.string "transitions"),
+      (27, TargetValue.object 7),
+      (26, TargetValue.closure 0),
+      (25, TargetValue.classConstructor "IWorldChecker"),
+      (24, TargetValue.builtin (BuiltinId.pyObject)),
+      (23, TargetValue.object 6),
+      (22, TargetValue.object 5),
+      (21, TargetValue.object 4),
+      (20, TargetValue.object 3),
+      (19, TargetValue.object 2),
+      (18, TargetValue.builtin   (BuiltinId.newOverflowError)),
+      (17, TargetValue.builtin   (BuiltinId.newRuntimeError)),
+      (16, TargetValue.builtin   (BuiltinId.newValueError)),
+      (15, TargetValue.builtin (BuiltinId.any)),
+      (14, TargetValue.builtin (BuiltinId.abs)),
+      (13, TargetValue.builtin (BuiltinId.pyObject)),
+      (12, TargetValue.builtin   (BuiltinId.objectIdentity)),
+      (11, TargetValue.builtin (BuiltinId.isinstance)),
+      (10, TargetValue.builtin (BuiltinId.next)),
+      (9, TargetValue.builtin (BuiltinId.length)),
+      (8, TargetValue.builtin (BuiltinId.boolType)),
+      (7, TargetValue.builtin (BuiltinId.strType)),
+      (6, TargetValue.builtin (BuiltinId.int)),
+      (5, TargetValue.builtin (BuiltinId.float)),
+      (4, TargetValue.builtin (BuiltinId.set)),
+      (3, TargetValue.builtin (BuiltinId.tuple)),
+      (2, TargetValue.builtin (BuiltinId.list)),
+      (1, TargetValue.builtin (BuiltinId.dict)),
+      (0, TargetValue.builtin (BuiltinId.type))]
+    writableCells := [(118, true),  (117, true),  (116, true),  (115, true),  (114, true),  (113, true),  (112, true),  (111, true),  (110, true),  (109, true),  (108, true),  (107, true),  (106, true),  (105, true),  (104, true),  (103, true),  (102, true),  (101, true),  (100, true),  (99, true),  (98, true),  (97, true),  (96, true),  (95, true),  (94, true),  (93, true),  (92, true),  (91, true),  (90, true),  (89, true),  (88, true),  (87, true),  (86, true),  (85, true),  (84, true),  (83, true),  (82, true),  (81, true),  (80, true),  (79, true),  (78, true),  (77, true),  (76, true),  (75, true),  (74, true),  (73, true),  (72, true),  (71, true),  (70, true),  (69, true),  (68, true),  (67, true),  (66, true),  (65, true),  (64, true),  (63, true),  (62, true),  (61, true),  (60, true),  (59, true),  (58, true),  (57, true),  (56, true),  (55, true),  (54, true),  (53, true),  (52, true),  (51, true),  (50, true),  (49, true),  (48, true),  (47, true),  (46, true),  (45, true),  (44, true),  (43, true),  (42, true),  (41, true),  (40, true),  (39, true),  (38, true),  (37, true),  (36, true),  (35, true),  (34, true),  (33, true),  (32, true),  (31, true),  (30, true),  (29, true),  (28, true),  (27, true),  (26, true),  (25, true),  (24, true),  (23, true),  (22, true),  (21, true),  (20, true),  (19, true),  (18, false),  (17, false),  (16, false),  (15, false),  (14, false),  (13, false),  (12, false),  (11, false),  (10, false),  (9, false),  (8, false),  (7, false),  (6, false),  (5, false),  (4, false),  (3, false),  (2, false),  (1, false),  (0, false)]
+    objects := [(87, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.builtin (BuiltinId.int), TargetValue.builtin (BuiltinId.float)], [], false, false⟩),
+      (86, ⟨ObjectKind.pythonList, none, [], [TargetValue.object 85], [], false, false⟩),
+      (85, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "balance", TargetValue.object 41], [], false, false⟩),
+      (84, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.builtin (BuiltinId.int), TargetValue.builtin (BuiltinId.float)], [], false, false⟩),
+      (83, ⟨ObjectKind.pythonDict, none, [], [], [], false, false⟩),
+      (82, ⟨ObjectKind.pythonList, none, [], [TargetValue.object 80], [], false, false⟩),
+      (81, ⟨ObjectKind.pythonList, none, [], [TargetValue.object 80], [], false, false⟩),
+      (80, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "balance", (TargetValue.number (NumberTag.pyInt) b)], [], false, false⟩),
+      (79, ⟨ObjectKind.pythonDict, none, [("balance", ⟨some ((TargetValue.number (NumberTag.pyInt) b)), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (78, ⟨ObjectKind.pythonList, none, [], [], [], false, false⟩),
+      (77, ⟨ObjectKind.pythonDict, none, [], [], [], false, false⟩),
+      (76, ⟨ObjectKind.pythonList, none, [], [], [], false, false⟩),
+      (75, ⟨ObjectKind.pythonDict, none, [], [], [], false, false⟩),
+      (74, ⟨ObjectKind.pythonDict, none, [("balance", ⟨some ((TargetValue.number (NumberTag.pyInt) b)), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (73, ⟨ObjectKind.pythonOrdinary, none, [], [], [], false, false⟩),
+      (72, ⟨ObjectKind.regexPattern, none, [("source", ⟨some (TargetValue.string "([A-Za-z_][A-Za-z_0-9]*)\\s*=\\s*(.+)\\Z"), none, none, true, true, true⟩), ("flags", ⟨some (TargetValue.number (NumberTag.pyInt) 1), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (71, ⟨ObjectKind.regexPattern, none, [("source", ⟨some (TargetValue.string "[A-Za-z_][A-Za-z_0-9]*\\Z"), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (70, ⟨ObjectKind.regexPattern, none, [("source", ⟨some (TargetValue.string   "\\s+|=>|==|!=|>=|<=|&&|\\|\\||[()+\\-*/<>!.]|\\d+(?:\\.\\d+)?|[A-Za-z_][A-Za-z_0-9]*|'(?:[^'\\\\]|\\\\.)*'"), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (69, ⟨ObjectKind.pythonDict, none, [("=>", ⟨some (TargetValue.number (NumberTag.pyInt) 1), none, none, true, true, true⟩), ("||", ⟨some (TargetValue.number (NumberTag.pyInt) 2), none, none, true, true, true⟩), ("&&", ⟨some (TargetValue.number (NumberTag.pyInt) 3), none, none, true, true, true⟩), ("==", ⟨some (TargetValue.number (NumberTag.pyInt) 4), none, none, true, true, true⟩), ("!=", ⟨some (TargetValue.number (NumberTag.pyInt) 4), none, none, true, true, true⟩), (">", ⟨some (TargetValue.number (NumberTag.pyInt) 5), none, none, true, true, true⟩), (">=", ⟨some (TargetValue.number (NumberTag.pyInt) 5), none, none, true, true, true⟩), ("<", ⟨some (TargetValue.number (NumberTag.pyInt) 5), none, none, true, true, true⟩), ("<=", ⟨some (TargetValue.number (NumberTag.pyInt) 5), none, none, true, true, true⟩), ("+", ⟨some (TargetValue.number (NumberTag.pyInt) 6), none, none, true, true, true⟩), ("-", ⟨some (TargetValue.number (NumberTag.pyInt) 6), none, none, true, true, true⟩), ("*", ⟨some (TargetValue.number (NumberTag.pyInt) 7), none, none, true, true, true⟩), ("/", ⟨some (TargetValue.number (NumberTag.pyInt) 7), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (68, ⟨ObjectKind.mappingProxy, some 67, [("balance", ⟨some (TargetValue.number (NumberTag.pyInt) 100), none, none, true, true, true⟩)], [], [], true, false⟩),
+      (67, ⟨ObjectKind.pythonDict, none, [("balance", ⟨some (TargetValue.number (NumberTag.pyInt) 100), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (66, ⟨ObjectKind.pythonList, none, [], [TargetValue.object 65], [], false, false⟩),
+      (65, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "balance", TargetValue.object 41], [], false, false⟩),
+      (64, ⟨ObjectKind.pythonGenerator, none, [], [], [], false, false⟩),
+      (63, ⟨ObjectKind.mappingProxy, some 24, [("version", ⟨some (TargetValue.string "kadmos.world.v0"), none, none, true, true, true⟩), ("name", ⟨some (TargetValue.string "BalanceWorld"), none, none, true, true, true⟩), ("states", ⟨some (TargetValue.object 31), none, none, true, true, true⟩), ("context", ⟨some (TargetValue.object 42), none, none, true, true, true⟩), ("invariants", ⟨some (TargetValue.object 49), none, none, true, true, true⟩), ("transitions", ⟨some (TargetValue.object 62), none, none, true, true, true⟩)], [], [], true, false⟩),
+      (62, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.object 61], [], false, false⟩),
+      (61, ⟨ObjectKind.mappingProxy, some 58, [("id", ⟨some (TargetValue.string "DEBIT"), none, none, true, true, true⟩), ("from", ⟨some (TargetValue.string "Ready"), none, none, true, true, true⟩), ("to", ⟨some (TargetValue.string "Ready"), none, none, true, true, true⟩), ("guard", ⟨some (TargetValue.string "event.amount > 0"), none, none, true, true, true⟩), ("directive", ⟨some (TargetValue.null), none, none, true, true, true⟩), ("effects", ⟨some (TargetValue.object 60), none, none, true, true, true⟩)], [], [], true, false⟩),
+      (60, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "balance = balance - event.amount"], [], false, false⟩),
+      (59, ⟨ObjectKind.pythonGenerator, none, [], [], [], false, false⟩),
+      (58, ⟨ObjectKind.pythonDict, none, [("id", ⟨some (TargetValue.string "DEBIT"), none, none, true, true, true⟩), ("from", ⟨some (TargetValue.string "Ready"), none, none, true, true, true⟩), ("to", ⟨some (TargetValue.string "Ready"), none, none, true, true, true⟩), ("guard", ⟨some (TargetValue.string "event.amount > 0"), none, none, true, true, true⟩), ("directive", ⟨some (TargetValue.null), none, none, true, true, true⟩), ("effects", ⟨some (TargetValue.object 60), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (57, ⟨ObjectKind.pythonList, none, [], [TargetValue.object 51, TargetValue.object 52, TargetValue.object 53, TargetValue.object 54, TargetValue.object 55, TargetValue.object 56], [], false, false⟩),
+      (56, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "effects", TargetValue.object 15], [], false, false⟩),
+      (55, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "directive", TargetValue.null], [], false, false⟩),
+      (54, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "guard", TargetValue.string "event.amount > 0"], [], false, false⟩),
+      (53, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "to", TargetValue.string "Ready"], [], false, false⟩),
+      (52, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "from", TargetValue.string "Ready"], [], false, false⟩),
+      (51, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "id", TargetValue.string "DEBIT"], [], false, false⟩),
+      (50, ⟨ObjectKind.pythonGenerator, none, [], [], [], false, false⟩),
+      (49, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.object 48], [], false, false⟩),
+      (48, ⟨ObjectKind.mappingProxy, some 47, [("id", ⟨some (TargetValue.string "nonnegative"), none, none, true, true, true⟩), ("predicate", ⟨some (TargetValue.string "balance >= 0"), none, none, true, true, true⟩)], [], [], true, false⟩),
+      (47, ⟨ObjectKind.pythonDict, none, [("id", ⟨some (TargetValue.string "nonnegative"), none, none, true, true, true⟩), ("predicate", ⟨some (TargetValue.string "balance >= 0"), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (46, ⟨ObjectKind.pythonList, none, [], [TargetValue.object 44, TargetValue.object 45], [], false, false⟩),
+      (45, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "predicate", TargetValue.string "balance >= 0"], [], false, false⟩),
+      (44, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "id", TargetValue.string "nonnegative"], [], false, false⟩),
+      (43, ⟨ObjectKind.pythonGenerator, none, [], [], [], false, false⟩),
+      (42, ⟨ObjectKind.mappingProxy, some 34, [("balance", ⟨some (TargetValue.object 41), none, none, true, true, true⟩)], [], [], true, false⟩),
+      (41, ⟨ObjectKind.mappingProxy, some 40, [("type", ⟨some (TargetValue.string "integer"), none, none, true, true, true⟩), ("min", ⟨some (TargetValue.number (NumberTag.pyInt) 0), none, none, true, true, true⟩), ("max", ⟨some (TargetValue.number   (NumberTag.pyInt)   9007199254740991), none, none, true, true, true⟩), ("default", ⟨some (TargetValue.number (NumberTag.pyInt) 100), none, none, true, true, true⟩)], [], [], true, false⟩),
+      (40, ⟨ObjectKind.pythonDict, none, [("type", ⟨some (TargetValue.string "integer"), none, none, true, true, true⟩), ("min", ⟨some (TargetValue.number (NumberTag.pyInt) 0), none, none, true, true, true⟩), ("max", ⟨some (TargetValue.number   (NumberTag.pyInt)   9007199254740991), none, none, true, true, true⟩), ("default", ⟨some (TargetValue.number (NumberTag.pyInt) 100), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (39, ⟨ObjectKind.pythonList, none, [], [TargetValue.object 35, TargetValue.object 36, TargetValue.object 37, TargetValue.object 38], [], false, false⟩),
+      (38, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "default", TargetValue.number (NumberTag.pyInt) 100], [], false, false⟩),
+      (37, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "max", TargetValue.number   (NumberTag.pyInt)   9007199254740991], [], false, false⟩),
+      (36, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "min", TargetValue.number (NumberTag.pyInt) 0], [], false, false⟩),
+      (35, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "type", TargetValue.string "integer"], [], false, false⟩),
+      (34, ⟨ObjectKind.pythonDict, none, [("balance", ⟨some (TargetValue.object 41), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (33, ⟨ObjectKind.pythonList, none, [], [TargetValue.object 32], [], false, false⟩),
+      (32, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "balance", TargetValue.object 11], [], false, false⟩),
+      (31, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.object 30], [], false, false⟩),
+      (30, ⟨ObjectKind.mappingProxy, some 29, [("id", ⟨some (TargetValue.string "Ready"), none, none, true, true, true⟩), ("initial", ⟨some (TargetValue.bool true), none, none, true, true, true⟩)], [], [], true, false⟩),
+      (29, ⟨ObjectKind.pythonDict, none, [("id", ⟨some (TargetValue.string "Ready"), none, none, true, true, true⟩), ("initial", ⟨some (TargetValue.bool true), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (28, ⟨ObjectKind.pythonList, none, [], [TargetValue.object 26, TargetValue.object 27], [], false, false⟩),
+      (27, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "initial", TargetValue.bool true], [], false, false⟩),
+      (26, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "id", TargetValue.string "Ready"], [], false, false⟩),
+      (25, ⟨ObjectKind.pythonGenerator, none, [], [], [], false, false⟩),
+      (24, ⟨ObjectKind.pythonDict, none, [("version", ⟨some (TargetValue.string "kadmos.world.v0"), none, none, true, true, true⟩), ("name", ⟨some (TargetValue.string "BalanceWorld"), none, none, true, true, true⟩), ("states", ⟨some (TargetValue.object 31), none, none, true, true, true⟩), ("context", ⟨some (TargetValue.object 42), none, none, true, true, true⟩), ("invariants", ⟨some (TargetValue.object 49), none, none, true, true, true⟩), ("transitions", ⟨some (TargetValue.object 62), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (23, ⟨ObjectKind.pythonList, none, [], [TargetValue.object 17, TargetValue.object 18, TargetValue.object 19, TargetValue.object 20, TargetValue.object 21, TargetValue.object 22], [], false, false⟩),
+      (22, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "transitions", TargetValue.object 16], [], false, false⟩),
+      (21, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "invariants", TargetValue.object 13], [], false, false⟩),
+      (20, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "context", TargetValue.object 10], [], false, false⟩),
+      (19, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "states", TargetValue.object 9], [], false, false⟩),
+      (18, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "name", TargetValue.string "BalanceWorld"], [], false, false⟩),
+      (17, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "version", TargetValue.string "kadmos.world.v0"], [], false, false⟩),
+      (16, ⟨ObjectKind.pythonList, none, [], [TargetValue.object 14], [], false, false⟩),
+      (15, ⟨ObjectKind.pythonList, none, [], [TargetValue.string "balance = balance - event.amount"], [], false, false⟩),
+      (14, ⟨ObjectKind.pythonDict, none, [("id", ⟨some (TargetValue.string "DEBIT"), none, none, true, true, true⟩), ("from", ⟨some (TargetValue.string "Ready"), none, none, true, true, true⟩), ("to", ⟨some (TargetValue.string "Ready"), none, none, true, true, true⟩), ("guard", ⟨some (TargetValue.string "event.amount > 0"), none, none, true, true, true⟩), ("directive", ⟨some (TargetValue.null), none, none, true, true, true⟩), ("effects", ⟨some (TargetValue.object 15), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (13, ⟨ObjectKind.pythonList, none, [], [TargetValue.object 12], [], false, false⟩),
+      (12, ⟨ObjectKind.pythonDict, none, [("id", ⟨some (TargetValue.string "nonnegative"), none, none, true, true, true⟩), ("predicate", ⟨some (TargetValue.string "balance >= 0"), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (11, ⟨ObjectKind.pythonDict, none, [("type", ⟨some (TargetValue.string "integer"), none, none, true, true, true⟩), ("min", ⟨some (TargetValue.number (NumberTag.pyInt) 0), none, none, true, true, true⟩), ("max", ⟨some (TargetValue.number   (NumberTag.pyInt)   9007199254740991), none, none, true, true, true⟩), ("default", ⟨some (TargetValue.number (NumberTag.pyInt) 100), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (10, ⟨ObjectKind.pythonDict, none, [("balance", ⟨some (TargetValue.object 11), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (9, ⟨ObjectKind.pythonList, none, [], [TargetValue.object 8], [], false, false⟩),
+      (8, ⟨ObjectKind.pythonDict, none, [("id", ⟨some (TargetValue.string "Ready"), none, none, true, true, true⟩), ("initial", ⟨some (TargetValue.bool true), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (7, ⟨ObjectKind.pythonDict, none, [("version", ⟨some (TargetValue.string "kadmos.world.v0"), none, none, true, true, true⟩), ("name", ⟨some (TargetValue.string "BalanceWorld"), none, none, true, true, true⟩), ("states", ⟨some (TargetValue.object 9), none, none, true, true, true⟩), ("context", ⟨some (TargetValue.object 10), none, none, true, true, true⟩), ("invariants", ⟨some (TargetValue.object 13), none, none, true, true, true⟩), ("transitions", ⟨some (TargetValue.object 16), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (6, ⟨ObjectKind.jsOrdinary, some 0, [("MappingProxyType", ⟨some (TargetValue.builtin   (BuiltinId.mappingProxy)), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (5, ⟨ObjectKind.jsOrdinary, some 0, [("compile", ⟨some (TargetValue.builtin   (BuiltinId.regexCompile)), none, none, true, true, true⟩), ("S", ⟨some (TargetValue.number (NumberTag.pyInt) 1), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (4, ⟨ObjectKind.jsOrdinary, some 0, [("isfinite", ⟨some (TargetValue.builtin (BuiltinId.isFinite)), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (3, ⟨ObjectKind.jsOrdinary, some 0, [("loads", ⟨some (TargetValue.builtin (BuiltinId.jsonLoads)), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (2, ⟨ObjectKind.jsOrdinary, some 0, [("deepcopy", ⟨some (TargetValue.builtin (BuiltinId.deepCopy)), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (0, ⟨ObjectKind.jsPrototype, none, [], [], [], true, false⟩),
+      (1, ⟨ObjectKind.pythonOrdinary, none, [], [], [], false, false⟩)]
+    closures := [(23, ⟨"WorldChecker._bounds", [{ name := "values", defaultValue := none }], [none], balanceSourceBody (balanceProgram .python) "WorldChecker._bounds", [("_bounds", 96),  ("getContext", 95),  ("get_context", 94),  ("getState", 93),  ("get_state", 92),  ("rollback_last_step", 91),  ("history", 90),  ("context", 89),  ("state", 88),  ("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], some 1⟩),
+      (22, ⟨"WorldChecker.reset.rollback", [], [], balanceSourceBody (balanceProgram .python) "WorldChecker.reset.rollback", [("rollback", 107),  ("snapshot_history", 106),  ("snapshot_context", 105),  ("snapshot_state", 104),  ("initial_context", 103),  ("reset", 98),  ("_invariant", 97),  ("_bounds", 96),  ("getContext", 95),  ("get_context", 94),  ("getState", 93),  ("get_state", 92),  ("rollback_last_step", 91),  ("history", 90),  ("context", 89),  ("state", 88),  ("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], some 1⟩),
+      (21, ⟨"WorldChecker.reset", [{ name := "initial_context", defaultValue := some (TargetExpr.null) }], [some (TargetValue.null)], balanceSourceBody (balanceProgram .python) "WorldChecker.reset", [("reset", 98),  ("_invariant", 97),  ("_bounds", 96),  ("getContext", 95),  ("get_context", 94),  ("getState", 93),  ("get_state", 92),  ("rollback_last_step", 91),  ("history", 90),  ("context", 89),  ("state", 88),  ("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], some 1⟩),
+      (20, ⟨"WorldChecker.__init__", [{ name := "initial_context", defaultValue := some (TargetExpr.null) }], [some (TargetValue.null)], balanceSourceBody (balanceProgram .python) "WorldChecker.__init__", [("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], some 1⟩),
+      (19, ⟨"WorldChecker.step", [{ name := "request", defaultValue := none }], [none], balanceSourceBody (balanceProgram .python) "WorldChecker.step", [("step", 99),  ("reset", 98),  ("_invariant", 97),  ("_bounds", 96),  ("getContext", 95),  ("get_context", 94),  ("getState", 93),  ("get_state", 92),  ("rollback_last_step", 91),  ("history", 90),  ("context", 89),  ("state", 88),  ("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (18, ⟨"WorldChecker.reset", [{ name := "initial_context", defaultValue := some (TargetExpr.null) }], [some (TargetValue.null)], balanceSourceBody (balanceProgram .python) "WorldChecker.reset", [("reset", 98),  ("_invariant", 97),  ("_bounds", 96),  ("getContext", 95),  ("get_context", 94),  ("getState", 93),  ("get_state", 92),  ("rollback_last_step", 91),  ("history", 90),  ("context", 89),  ("state", 88),  ("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (17, ⟨"WorldChecker._invariant", [{ name := "state", defaultValue := none },  { name := "values", defaultValue := none },  { name := "event", defaultValue := some (TargetExpr.null) }], [none, none, some (TargetValue.null)], balanceSourceBody (balanceProgram .python) "WorldChecker._invariant", [("_invariant", 97),  ("_bounds", 96),  ("getContext", 95),  ("get_context", 94),  ("getState", 93),  ("get_state", 92),  ("rollback_last_step", 91),  ("history", 90),  ("context", 89),  ("state", 88),  ("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (16, ⟨"WorldChecker._bounds", [{ name := "values", defaultValue := none }], [none], balanceSourceBody (balanceProgram .python) "WorldChecker._bounds", [("_bounds", 96),  ("getContext", 95),  ("get_context", 94),  ("getState", 93),  ("get_state", 92),  ("rollback_last_step", 91),  ("history", 90),  ("context", 89),  ("state", 88),  ("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (15, ⟨"WorldChecker.getContext", [], [], balanceSourceBody (balanceProgram .python) "WorldChecker.getContext", [("getContext", 95),  ("get_context", 94),  ("getState", 93),  ("get_state", 92),  ("rollback_last_step", 91),  ("history", 90),  ("context", 89),  ("state", 88),  ("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (14, ⟨"WorldChecker.get_context", [], [], balanceSourceBody (balanceProgram .python) "WorldChecker.get_context", [("get_context", 94),  ("getState", 93),  ("get_state", 92),  ("rollback_last_step", 91),  ("history", 90),  ("context", 89),  ("state", 88),  ("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (13, ⟨"WorldChecker.getState", [], [], balanceSourceBody (balanceProgram .python) "WorldChecker.getState", [("getState", 93),  ("get_state", 92),  ("rollback_last_step", 91),  ("history", 90),  ("context", 89),  ("state", 88),  ("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (12, ⟨"WorldChecker.get_state", [], [], balanceSourceBody (balanceProgram .python) "WorldChecker.get_state", [("get_state", 92),  ("rollback_last_step", 91),  ("history", 90),  ("context", 89),  ("state", 88),  ("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (11, ⟨"WorldChecker.rollback_last_step", [], [], balanceSourceBody (balanceProgram .python) "WorldChecker.rollback_last_step", [("rollback_last_step", 91),  ("history", 90),  ("context", 89),  ("state", 88),  ("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (10, ⟨"WorldChecker.history", [], [], balanceSourceBody (balanceProgram .python) "WorldChecker.history", [("history", 90),  ("context", 89),  ("state", 88),  ("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (9, ⟨"WorldChecker.context", [], [], balanceSourceBody (balanceProgram .python) "WorldChecker.context", [("context", 89),  ("state", 88),  ("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (8, ⟨"WorldChecker.state", [], [], balanceSourceBody (balanceProgram .python) "WorldChecker.state", [("state", 88),  ("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (7, ⟨"WorldChecker.__init__", [{ name := "initial_context", defaultValue := some (TargetExpr.null) }], [some (TargetValue.null)], balanceSourceBody (balanceProgram .python) "WorldChecker.__init__", [("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (6, ⟨"module.sanitize_world_payload", [{ name := "raw", defaultValue := none }], [none], balanceSourceBody (balanceProgram .python) "module.sanitize_world_payload", [("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (5, ⟨"module.evaluate_world", [{ name := "expression", defaultValue := none }, { name := "environment", defaultValue := none }], [none, none], balanceSourceBody (balanceProgram .python) "module.evaluate_world", [("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (4, ⟨"module._safe_integer", [{ name := "value", defaultValue := none }], [none], balanceSourceBody (balanceProgram .python) "module._safe_integer", [("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (3, ⟨"module._div", [{ name := "left", defaultValue := none }, { name := "right", defaultValue := none }], [none, none], balanceSourceBody (balanceProgram .python) "module._div", [("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (2, ⟨"module._number", [{ name := "value", defaultValue := none }], [none], balanceSourceBody (balanceProgram .python) "module._number", [("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (1, ⟨"module._boolean", [{ name := "value", defaultValue := none }], [none], balanceSourceBody (balanceProgram .python) "module._boolean", [("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (0, ⟨"module._freeze", [{ name := "value", defaultValue := none }], [none], balanceSourceBody (balanceProgram .python) "module._freeze", [("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩)]
+    generators := [(64,   { valueExpr := TargetExpr.index                    (TargetExpr.local "state")                    (TargetExpr.string "id"),     binders := ["state"],     filterExpr := TargetExpr.call                     (TargetExpr.property                       (TargetExpr.local "state")                       "get")                     (TargetExpr.sequence                       (TargetExpr.string "initial")                       (TargetExpr.empty)),     remaining := [],     frame := { qualifiedName := "module.generator",                remaining := [],                locals := [("state", 70)],                captures := [("_WORLD", 69),                             ("_freeze", 26),                             ("IWorldChecker", 25),                             ("Any", 24),                             ("types", 23),                             ("re", 22),                             ("math", 21),                             ("json", 20),                             ("copy", 19)],                receiver := none,                control := ControlResult.normal } }),  (59,   { valueExpr := TargetExpr.call                    (TargetExpr.local "_freeze")                    (TargetExpr.sequence                      (TargetExpr.local "v")                      (TargetExpr.empty)),     binders := ["v"],     filterExpr := TargetExpr.empty,     remaining := [],     frame := { qualifiedName := "module._freeze.generator",                remaining := [],                locals := [("v", 67)],                captures := [("value", 66),                             ("_freeze", 26),                             ("IWorldChecker", 25),                             ("Any", 24),                             ("types", 23),                             ("re", 22),                             ("math", 21),                             ("json", 20),                             ("copy", 19)],                receiver := none,                control := ControlResult.normal } }),  (50,   { valueExpr := TargetExpr.call                    (TargetExpr.local "_freeze")                    (TargetExpr.sequence                      (TargetExpr.local "v")                      (TargetExpr.empty)),     binders := ["v"],     filterExpr := TargetExpr.empty,     remaining := [],     frame := { qualifiedName := "module._freeze.generator",                remaining := [],                locals := [("v", 57)],                captures := [("value", 56),                             ("_freeze", 26),                             ("IWorldChecker", 25),                             ("Any", 24),                             ("types", 23),                             ("re", 22),                             ("math", 21),                             ("json", 20),                             ("copy", 19)],                receiver := none,                control := ControlResult.normal } }),  (43,   { valueExpr := TargetExpr.call                    (TargetExpr.local "_freeze")                    (TargetExpr.sequence                      (TargetExpr.local "v")                      (TargetExpr.empty)),     binders := ["v"],     filterExpr := TargetExpr.empty,     remaining := [],     frame := { qualifiedName := "module._freeze.generator",                remaining := [],                locals := [("v", 50)],                captures := [("value", 49),                             ("_freeze", 26),                             ("IWorldChecker", 25),                             ("Any", 24),                             ("types", 23),                             ("re", 22),                             ("math", 21),                             ("json", 20),                             ("copy", 19)],                receiver := none,                control := ControlResult.normal } }),  (25,   { valueExpr := TargetExpr.call                    (TargetExpr.local "_freeze")                    (TargetExpr.sequence                      (TargetExpr.local "v")                      (TargetExpr.empty)),     binders := ["v"],     filterExpr := TargetExpr.empty,     remaining := [],     frame := { qualifiedName := "module._freeze.generator",                remaining := [],                locals := [("v", 33)],                captures := [("value", 32),                             ("_freeze", 26),                             ("IWorldChecker", 25),                             ("Any", 24),                             ("types", 23),                             ("re", 22),                             ("math", 21),                             ("json", 20),                             ("copy", 19)],                receiver := none,                control := ControlResult.normal } })]
+    nextCell := 119
+    nextObject := 88
+    nextClosure := 24
+    objectPrototype := 0
+    checkerRef := 1
+    classMethods := [("__init__", 7),  ("state", 8),  ("context", 9),  ("history", 10),  ("rollback_last_step", 11),  ("get_state", 12),  ("getState", 13),  ("get_context", 14),  ("getContext", 15),  ("_bounds", 16),  ("_invariant", 17),  ("reset", 18),  ("step", 19)]
+    callableObjects := []
+    checker := { state := "Ready",   context := 75,   history := 76,   undo := none,   constructorSeed := none,   busy := true,   instanceAttrs := [] }
+    fuel := 0 }
+
+def balanceInvariantPyInputFrame : TargetFrame := { qualifiedName := "WorldChecker.reset",   remaining := [],   locals := [("invalid", 118),              ("value", 111),              ("name", 110),              ("ctx", 109),              ("candidate", 108),              ("rollback", 107),              ("snapshot_history", 106),              ("snapshot_context", 105),              ("snapshot_state", 104),              ("initial_context", 103)],   captures := [("reset", 98),                ("_invariant", 97),                ("_bounds", 96),                ("getContext", 95),                ("get_context", 94),                ("getState", 93),                ("get_state", 92),                ("rollback_last_step", 91),                ("history", 90),                ("context", 89),                ("state", 88),                ("__init__", 87),                ("sanitize_world_payload", 86),                ("evaluate_world", 85),                ("_safe_integer", 84),                ("_div", 83),                ("_number", 82),                ("_boolean", 81),                ("_UNDEFINED", 80),                ("_MAX_INTEGER", 79),                ("_EFFECT", 78),                ("_NAME", 77),                ("_TOKEN", 76),                ("_PRECEDENCE", 75),                ("_DEFAULTS", 74),                ("_INITIAL", 71),                ("_WORLD", 69),                ("_freeze", 26),                ("IWorldChecker", 25),                ("Any", 24),                ("types", 23),                ("re", 22),                ("math", 21),                ("json", 20),                ("copy", 19)],   receiver := some 1,   control := ControlResult.normal }
+
+def balanceInvariantPyFinal (b : Int) : TargetMachine :=
+  { globals := [("OverflowError", 18),  ("RuntimeError", 17),  ("ValueError", 16),  ("any", 15),  ("abs", 14),  ("object", 13),  ("id", 12),  ("isinstance", 11),  ("next", 10),  ("len", 9),  ("bool", 8),  ("str", 7),  ("int", 6),  ("float", 5),  ("set", 4),  ("tuple", 3),  ("list", 2),  ("dict", 1),  ("type", 0)]
+    frames := []
+    cells := [(142, TargetValue.bool true),
+      (141, TargetValue.number (NumberTag.pyFloat) 0),
+      (140, (TargetValue.number (NumberTag.pyInt) b)),
+      (139, TargetValue.number (NumberTag.pyFloat) 0),
+      (138, TargetValue.number (NumberTag.pyFloat) 0),
+      (137, TargetValue.string "0"),
+      (136, TargetValue.number (NumberTag.pyInt) 6),
+      (135, TargetValue.number (NumberTag.pyInt) 5),
+      (134, TargetValue.string ">="),
+      (133, TargetValue.bool true),
+      (132, TargetValue.string "balance"),
+      (131, TargetValue.number (NumberTag.pyInt) 0),
+      (130, TargetValue.closure 25),
+      (129, TargetValue.number (NumberTag.pyInt) 3),
+      (128, TargetValue.regexMatch { full := "0", start := 11, stop := 12, groups := [] }),
+      (127, TargetValue.number (NumberTag.pyInt) 12),
+      (126, TargetValue.object 91),
+      (125, TargetValue.object 88),
+      (124, TargetValue.string "balance >= 0"),
+      (123, TargetValue.object 48),
+      (122, TargetValue.object 88),
+      (121, TargetValue.null),
+      (120, TargetValue.object 79),
+      (119, TargetValue.string "Ready"),
+      (118, TargetValue.null),
+      (117, (TargetValue.number (NumberTag.pyInt) b)),
+      (116, (TargetValue.number (NumberTag.pyInt) b)),
+      (115, TargetValue.object 41),
+      (114, TargetValue.string "balance"),
+      (113, TargetValue.object 79),
+      (112, (TargetValue.number (NumberTag.pyInt) b)),
+      (111, (TargetValue.number (NumberTag.pyInt) b)),
+      (110, TargetValue.string "balance"),
+      (109, TargetValue.object 74),
+      (108, TargetValue.object 79),
+      (107, TargetValue.closure 22),
+      (106, TargetValue.object 78),
+      (105, TargetValue.object 77),
+      (104, TargetValue.string "Ready"),
+      (103, TargetValue.object 74),
+      (102, TargetValue.object 74),
+      (101, TargetValue.object 74),
+      (100, TargetValue.classConstructor "WorldChecker"),
+      (99, TargetValue.closure 19),
+      (98, TargetValue.closure 18),
+      (97, TargetValue.closure 17),
+      (96, TargetValue.closure 16),
+      (95, TargetValue.closure 15),
+      (94, TargetValue.closure 14),
+      (93, TargetValue.closure 13),
+      (92, TargetValue.closure 12),
+      (91, TargetValue.closure 11),
+      (90, TargetValue.closure 10),
+      (89, TargetValue.closure 9),
+      (88, TargetValue.closure 8),
+      (87, TargetValue.closure 7),
+      (86, TargetValue.closure 6),
+      (85, TargetValue.closure 5),
+      (84, TargetValue.closure 4),
+      (83, TargetValue.closure 3),
+      (82, TargetValue.closure 2),
+      (81, TargetValue.closure 1),
+      (80, TargetValue.object 73),
+      (79, TargetValue.number   (NumberTag.pyInt)   9007199254740991),
+      (78, TargetValue.object 72),
+      (77, TargetValue.object 71),
+      (76, TargetValue.object 70),
+      (75, TargetValue.object 69),
+      (74, TargetValue.object 68),
+      (73, TargetValue.object 41),
+      (72, TargetValue.string "balance"),
+      (71, TargetValue.string "Ready"),
+      (70, TargetValue.object 30),
+      (69, TargetValue.object 63),
+      (68, TargetValue.string "balance = balance - event.amount"),
+      (67, TargetValue.string "balance = balance - event.amount"),
+      (66, TargetValue.object 15),
+      (65, TargetValue.null),
+      (64, TargetValue.string "event.amount > 0"),
+      (63, TargetValue.string "Ready"),
+      (62, TargetValue.string "Ready"),
+      (61, TargetValue.string "DEBIT"),
+      (60, TargetValue.object 15),
+      (59, TargetValue.string "effects"),
+      (58, TargetValue.object 14),
+      (57, TargetValue.object 14),
+      (56, TargetValue.object 16),
+      (55, TargetValue.string "balance >= 0"),
+      (54, TargetValue.string "nonnegative"),
+      (53, TargetValue.string "balance >= 0"),
+      (52, TargetValue.string "predicate"),
+      (51, TargetValue.object 12),
+      (50, TargetValue.object 12),
+      (49, TargetValue.object 13),
+      (48, TargetValue.number (NumberTag.pyInt) 100),
+      (47, TargetValue.number   (NumberTag.pyInt)   9007199254740991),
+      (46, TargetValue.number (NumberTag.pyInt) 0),
+      (45, TargetValue.string "integer"),
+      (44, TargetValue.number (NumberTag.pyInt) 100),
+      (43, TargetValue.string "default"),
+      (42, TargetValue.object 11),
+      (41, TargetValue.object 11),
+      (40, TargetValue.string "balance"),
+      (39, TargetValue.object 10),
+      (38, TargetValue.bool true),
+      (37, TargetValue.string "Ready"),
+      (36, TargetValue.bool true),
+      (35, TargetValue.string "initial"),
+      (34, TargetValue.object 8),
+      (33, TargetValue.object 8),
+      (32, TargetValue.object 9),
+      (31, TargetValue.string "BalanceWorld"),
+      (30, TargetValue.string "kadmos.world.v0"),
+      (29, TargetValue.object 16),
+      (28, TargetValue.string "transitions"),
+      (27, TargetValue.object 7),
+      (26, TargetValue.closure 0),
+      (25, TargetValue.classConstructor "IWorldChecker"),
+      (24, TargetValue.builtin (BuiltinId.pyObject)),
+      (23, TargetValue.object 6),
+      (22, TargetValue.object 5),
+      (21, TargetValue.object 4),
+      (20, TargetValue.object 3),
+      (19, TargetValue.object 2),
+      (18, TargetValue.builtin   (BuiltinId.newOverflowError)),
+      (17, TargetValue.builtin   (BuiltinId.newRuntimeError)),
+      (16, TargetValue.builtin   (BuiltinId.newValueError)),
+      (15, TargetValue.builtin (BuiltinId.any)),
+      (14, TargetValue.builtin (BuiltinId.abs)),
+      (13, TargetValue.builtin (BuiltinId.pyObject)),
+      (12, TargetValue.builtin   (BuiltinId.objectIdentity)),
+      (11, TargetValue.builtin (BuiltinId.isinstance)),
+      (10, TargetValue.builtin (BuiltinId.next)),
+      (9, TargetValue.builtin (BuiltinId.length)),
+      (8, TargetValue.builtin (BuiltinId.boolType)),
+      (7, TargetValue.builtin (BuiltinId.strType)),
+      (6, TargetValue.builtin (BuiltinId.int)),
+      (5, TargetValue.builtin (BuiltinId.float)),
+      (4, TargetValue.builtin (BuiltinId.set)),
+      (3, TargetValue.builtin (BuiltinId.tuple)),
+      (2, TargetValue.builtin (BuiltinId.list)),
+      (1, TargetValue.builtin (BuiltinId.dict)),
+      (0, TargetValue.builtin (BuiltinId.type))]
+    writableCells := [(142, true),  (141, true),  (140, true),  (139, true),  (138, true),  (137, true),  (136, true),  (135, true),  (134, true),  (133, true),  (132, true),  (131, true),  (130, true),  (129, true),  (128, true),  (127, true),  (126, true),  (125, true),  (124, true),  (123, true),  (122, true),  (121, true),  (120, true),  (119, true),  (118, true),  (117, true),  (116, true),  (115, true),  (114, true),  (113, true),  (112, true),  (111, true),  (110, true),  (109, true),  (108, true),  (107, true),  (106, true),  (105, true),  (104, true),  (103, true),  (102, true),  (101, true),  (100, true),  (99, true),  (98, true),  (97, true),  (96, true),  (95, true),  (94, true),  (93, true),  (92, true),  (91, true),  (90, true),  (89, true),  (88, true),  (87, true),  (86, true),  (85, true),  (84, true),  (83, true),  (82, true),  (81, true),  (80, true),  (79, true),  (78, true),  (77, true),  (76, true),  (75, true),  (74, true),  (73, true),  (72, true),  (71, true),  (70, true),  (69, true),  (68, true),  (67, true),  (66, true),  (65, true),  (64, true),  (63, true),  (62, true),  (61, true),  (60, true),  (59, true),  (58, true),  (57, true),  (56, true),  (55, true),  (54, true),  (53, true),  (52, true),  (51, true),  (50, true),  (49, true),  (48, true),  (47, true),  (46, true),  (45, true),  (44, true),  (43, true),  (42, true),  (41, true),  (40, true),  (39, true),  (38, true),  (37, true),  (36, true),  (35, true),  (34, true),  (33, true),  (32, true),  (31, true),  (30, true),  (29, true),  (28, true),  (27, true),  (26, true),  (25, true),  (24, true),  (23, true),  (22, true),  (21, true),  (20, true),  (19, true),  (18, false),  (17, false),  (16, false),  (15, false),  (14, false),  (13, false),  (12, false),  (11, false),  (10, false),  (9, false),  (8, false),  (7, false),  (6, false),  (5, false),  (4, false),  (3, false),  (2, false),  (1, false),  (0, false)]
+    objects := [(99, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.builtin (BuiltinId.int), TargetValue.builtin (BuiltinId.float)], [], false, false⟩),
+      (98, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.builtin (BuiltinId.int), TargetValue.builtin (BuiltinId.float)], [], false, false⟩),
+      (97, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "==", TargetValue.string "!="], [], false, false⟩),
+      (96, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "=>", TargetValue.string "||", TargetValue.string "&&"], [], false, false⟩),
+      (95, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "true", TargetValue.string "false"], [], false, false⟩),
+      (94, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "!", TargetValue.string "-"], [], false, false⟩),
+      (93, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "true", TargetValue.string "false"], [], false, false⟩),
+      (92, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "!", TargetValue.string "-"], [], false, false⟩),
+      (91, ⟨ObjectKind.pythonList, none, [], [TargetValue.string "balance", TargetValue.string ">=", TargetValue.string "0"], [], false, false⟩),
+      (90, ⟨ObjectKind.pythonDict, none, [], [], [], false, false⟩),
+      (89, ⟨ObjectKind.pythonDict, none, [], [], [], false, false⟩),
+      (88, ⟨ObjectKind.pythonDict, none, [("balance", ⟨some ((TargetValue.number (NumberTag.pyInt) b)), none, none, true, true, true⟩), ("state", ⟨some (TargetValue.string "Ready"), none, none, true, true, true⟩), ("event", ⟨some (TargetValue.object 89), none, none, true, true, true⟩), ("request", ⟨some (TargetValue.object 90), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (87, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.builtin (BuiltinId.int), TargetValue.builtin (BuiltinId.float)], [], false, false⟩),
+      (86, ⟨ObjectKind.pythonList, none, [], [TargetValue.object 85], [], false, false⟩),
+      (85, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "balance", TargetValue.object 41], [], false, false⟩),
+      (84, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.builtin (BuiltinId.int), TargetValue.builtin (BuiltinId.float)], [], false, false⟩),
+      (83, ⟨ObjectKind.pythonDict, none, [], [], [], false, false⟩),
+      (82, ⟨ObjectKind.pythonList, none, [], [TargetValue.object 80], [], false, false⟩),
+      (81, ⟨ObjectKind.pythonList, none, [], [TargetValue.object 80], [], false, false⟩),
+      (80, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "balance", (TargetValue.number (NumberTag.pyInt) b)], [], false, false⟩),
+      (79, ⟨ObjectKind.pythonDict, none, [("balance", ⟨some ((TargetValue.number (NumberTag.pyInt) b)), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (78, ⟨ObjectKind.pythonList, none, [], [], [], false, false⟩),
+      (77, ⟨ObjectKind.pythonDict, none, [], [], [], false, false⟩),
+      (76, ⟨ObjectKind.pythonList, none, [], [], [], false, false⟩),
+      (75, ⟨ObjectKind.pythonDict, none, [], [], [], false, false⟩),
+      (74, ⟨ObjectKind.pythonDict, none, [("balance", ⟨some ((TargetValue.number (NumberTag.pyInt) b)), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (73, ⟨ObjectKind.pythonOrdinary, none, [], [], [], false, false⟩),
+      (72, ⟨ObjectKind.regexPattern, none, [("source", ⟨some (TargetValue.string "([A-Za-z_][A-Za-z_0-9]*)\\s*=\\s*(.+)\\Z"), none, none, true, true, true⟩), ("flags", ⟨some (TargetValue.number (NumberTag.pyInt) 1), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (71, ⟨ObjectKind.regexPattern, none, [("source", ⟨some (TargetValue.string "[A-Za-z_][A-Za-z_0-9]*\\Z"), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (70, ⟨ObjectKind.regexPattern, none, [("source", ⟨some (TargetValue.string   "\\s+|=>|==|!=|>=|<=|&&|\\|\\||[()+\\-*/<>!.]|\\d+(?:\\.\\d+)?|[A-Za-z_][A-Za-z_0-9]*|'(?:[^'\\\\]|\\\\.)*'"), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (69, ⟨ObjectKind.pythonDict, none, [("=>", ⟨some (TargetValue.number (NumberTag.pyInt) 1), none, none, true, true, true⟩), ("||", ⟨some (TargetValue.number (NumberTag.pyInt) 2), none, none, true, true, true⟩), ("&&", ⟨some (TargetValue.number (NumberTag.pyInt) 3), none, none, true, true, true⟩), ("==", ⟨some (TargetValue.number (NumberTag.pyInt) 4), none, none, true, true, true⟩), ("!=", ⟨some (TargetValue.number (NumberTag.pyInt) 4), none, none, true, true, true⟩), (">", ⟨some (TargetValue.number (NumberTag.pyInt) 5), none, none, true, true, true⟩), (">=", ⟨some (TargetValue.number (NumberTag.pyInt) 5), none, none, true, true, true⟩), ("<", ⟨some (TargetValue.number (NumberTag.pyInt) 5), none, none, true, true, true⟩), ("<=", ⟨some (TargetValue.number (NumberTag.pyInt) 5), none, none, true, true, true⟩), ("+", ⟨some (TargetValue.number (NumberTag.pyInt) 6), none, none, true, true, true⟩), ("-", ⟨some (TargetValue.number (NumberTag.pyInt) 6), none, none, true, true, true⟩), ("*", ⟨some (TargetValue.number (NumberTag.pyInt) 7), none, none, true, true, true⟩), ("/", ⟨some (TargetValue.number (NumberTag.pyInt) 7), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (68, ⟨ObjectKind.mappingProxy, some 67, [("balance", ⟨some (TargetValue.number (NumberTag.pyInt) 100), none, none, true, true, true⟩)], [], [], true, false⟩),
+      (67, ⟨ObjectKind.pythonDict, none, [("balance", ⟨some (TargetValue.number (NumberTag.pyInt) 100), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (66, ⟨ObjectKind.pythonList, none, [], [TargetValue.object 65], [], false, false⟩),
+      (65, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "balance", TargetValue.object 41], [], false, false⟩),
+      (64, ⟨ObjectKind.pythonGenerator, none, [], [], [], false, false⟩),
+      (63, ⟨ObjectKind.mappingProxy, some 24, [("version", ⟨some (TargetValue.string "kadmos.world.v0"), none, none, true, true, true⟩), ("name", ⟨some (TargetValue.string "BalanceWorld"), none, none, true, true, true⟩), ("states", ⟨some (TargetValue.object 31), none, none, true, true, true⟩), ("context", ⟨some (TargetValue.object 42), none, none, true, true, true⟩), ("invariants", ⟨some (TargetValue.object 49), none, none, true, true, true⟩), ("transitions", ⟨some (TargetValue.object 62), none, none, true, true, true⟩)], [], [], true, false⟩),
+      (62, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.object 61], [], false, false⟩),
+      (61, ⟨ObjectKind.mappingProxy, some 58, [("id", ⟨some (TargetValue.string "DEBIT"), none, none, true, true, true⟩), ("from", ⟨some (TargetValue.string "Ready"), none, none, true, true, true⟩), ("to", ⟨some (TargetValue.string "Ready"), none, none, true, true, true⟩), ("guard", ⟨some (TargetValue.string "event.amount > 0"), none, none, true, true, true⟩), ("directive", ⟨some (TargetValue.null), none, none, true, true, true⟩), ("effects", ⟨some (TargetValue.object 60), none, none, true, true, true⟩)], [], [], true, false⟩),
+      (60, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "balance = balance - event.amount"], [], false, false⟩),
+      (59, ⟨ObjectKind.pythonGenerator, none, [], [], [], false, false⟩),
+      (58, ⟨ObjectKind.pythonDict, none, [("id", ⟨some (TargetValue.string "DEBIT"), none, none, true, true, true⟩), ("from", ⟨some (TargetValue.string "Ready"), none, none, true, true, true⟩), ("to", ⟨some (TargetValue.string "Ready"), none, none, true, true, true⟩), ("guard", ⟨some (TargetValue.string "event.amount > 0"), none, none, true, true, true⟩), ("directive", ⟨some (TargetValue.null), none, none, true, true, true⟩), ("effects", ⟨some (TargetValue.object 60), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (57, ⟨ObjectKind.pythonList, none, [], [TargetValue.object 51, TargetValue.object 52, TargetValue.object 53, TargetValue.object 54, TargetValue.object 55, TargetValue.object 56], [], false, false⟩),
+      (56, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "effects", TargetValue.object 15], [], false, false⟩),
+      (55, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "directive", TargetValue.null], [], false, false⟩),
+      (54, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "guard", TargetValue.string "event.amount > 0"], [], false, false⟩),
+      (53, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "to", TargetValue.string "Ready"], [], false, false⟩),
+      (52, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "from", TargetValue.string "Ready"], [], false, false⟩),
+      (51, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "id", TargetValue.string "DEBIT"], [], false, false⟩),
+      (50, ⟨ObjectKind.pythonGenerator, none, [], [], [], false, false⟩),
+      (49, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.object 48], [], false, false⟩),
+      (48, ⟨ObjectKind.mappingProxy, some 47, [("id", ⟨some (TargetValue.string "nonnegative"), none, none, true, true, true⟩), ("predicate", ⟨some (TargetValue.string "balance >= 0"), none, none, true, true, true⟩)], [], [], true, false⟩),
+      (47, ⟨ObjectKind.pythonDict, none, [("id", ⟨some (TargetValue.string "nonnegative"), none, none, true, true, true⟩), ("predicate", ⟨some (TargetValue.string "balance >= 0"), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (46, ⟨ObjectKind.pythonList, none, [], [TargetValue.object 44, TargetValue.object 45], [], false, false⟩),
+      (45, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "predicate", TargetValue.string "balance >= 0"], [], false, false⟩),
+      (44, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "id", TargetValue.string "nonnegative"], [], false, false⟩),
+      (43, ⟨ObjectKind.pythonGenerator, none, [], [], [], false, false⟩),
+      (42, ⟨ObjectKind.mappingProxy, some 34, [("balance", ⟨some (TargetValue.object 41), none, none, true, true, true⟩)], [], [], true, false⟩),
+      (41, ⟨ObjectKind.mappingProxy, some 40, [("type", ⟨some (TargetValue.string "integer"), none, none, true, true, true⟩), ("min", ⟨some (TargetValue.number (NumberTag.pyInt) 0), none, none, true, true, true⟩), ("max", ⟨some (TargetValue.number   (NumberTag.pyInt)   9007199254740991), none, none, true, true, true⟩), ("default", ⟨some (TargetValue.number (NumberTag.pyInt) 100), none, none, true, true, true⟩)], [], [], true, false⟩),
+      (40, ⟨ObjectKind.pythonDict, none, [("type", ⟨some (TargetValue.string "integer"), none, none, true, true, true⟩), ("min", ⟨some (TargetValue.number (NumberTag.pyInt) 0), none, none, true, true, true⟩), ("max", ⟨some (TargetValue.number   (NumberTag.pyInt)   9007199254740991), none, none, true, true, true⟩), ("default", ⟨some (TargetValue.number (NumberTag.pyInt) 100), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (39, ⟨ObjectKind.pythonList, none, [], [TargetValue.object 35, TargetValue.object 36, TargetValue.object 37, TargetValue.object 38], [], false, false⟩),
+      (38, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "default", TargetValue.number (NumberTag.pyInt) 100], [], false, false⟩),
+      (37, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "max", TargetValue.number   (NumberTag.pyInt)   9007199254740991], [], false, false⟩),
+      (36, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "min", TargetValue.number (NumberTag.pyInt) 0], [], false, false⟩),
+      (35, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "type", TargetValue.string "integer"], [], false, false⟩),
+      (34, ⟨ObjectKind.pythonDict, none, [("balance", ⟨some (TargetValue.object 41), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (33, ⟨ObjectKind.pythonList, none, [], [TargetValue.object 32], [], false, false⟩),
+      (32, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "balance", TargetValue.object 11], [], false, false⟩),
+      (31, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.object 30], [], false, false⟩),
+      (30, ⟨ObjectKind.mappingProxy, some 29, [("id", ⟨some (TargetValue.string "Ready"), none, none, true, true, true⟩), ("initial", ⟨some (TargetValue.bool true), none, none, true, true, true⟩)], [], [], true, false⟩),
+      (29, ⟨ObjectKind.pythonDict, none, [("id", ⟨some (TargetValue.string "Ready"), none, none, true, true, true⟩), ("initial", ⟨some (TargetValue.bool true), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (28, ⟨ObjectKind.pythonList, none, [], [TargetValue.object 26, TargetValue.object 27], [], false, false⟩),
+      (27, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "initial", TargetValue.bool true], [], false, false⟩),
+      (26, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "id", TargetValue.string "Ready"], [], false, false⟩),
+      (25, ⟨ObjectKind.pythonGenerator, none, [], [], [], false, false⟩),
+      (24, ⟨ObjectKind.pythonDict, none, [("version", ⟨some (TargetValue.string "kadmos.world.v0"), none, none, true, true, true⟩), ("name", ⟨some (TargetValue.string "BalanceWorld"), none, none, true, true, true⟩), ("states", ⟨some (TargetValue.object 31), none, none, true, true, true⟩), ("context", ⟨some (TargetValue.object 42), none, none, true, true, true⟩), ("invariants", ⟨some (TargetValue.object 49), none, none, true, true, true⟩), ("transitions", ⟨some (TargetValue.object 62), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (23, ⟨ObjectKind.pythonList, none, [], [TargetValue.object 17, TargetValue.object 18, TargetValue.object 19, TargetValue.object 20, TargetValue.object 21, TargetValue.object 22], [], false, false⟩),
+      (22, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "transitions", TargetValue.object 16], [], false, false⟩),
+      (21, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "invariants", TargetValue.object 13], [], false, false⟩),
+      (20, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "context", TargetValue.object 10], [], false, false⟩),
+      (19, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "states", TargetValue.object 9], [], false, false⟩),
+      (18, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "name", TargetValue.string "BalanceWorld"], [], false, false⟩),
+      (17, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "version", TargetValue.string "kadmos.world.v0"], [], false, false⟩),
+      (16, ⟨ObjectKind.pythonList, none, [], [TargetValue.object 14], [], false, false⟩),
+      (15, ⟨ObjectKind.pythonList, none, [], [TargetValue.string "balance = balance - event.amount"], [], false, false⟩),
+      (14, ⟨ObjectKind.pythonDict, none, [("id", ⟨some (TargetValue.string "DEBIT"), none, none, true, true, true⟩), ("from", ⟨some (TargetValue.string "Ready"), none, none, true, true, true⟩), ("to", ⟨some (TargetValue.string "Ready"), none, none, true, true, true⟩), ("guard", ⟨some (TargetValue.string "event.amount > 0"), none, none, true, true, true⟩), ("directive", ⟨some (TargetValue.null), none, none, true, true, true⟩), ("effects", ⟨some (TargetValue.object 15), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (13, ⟨ObjectKind.pythonList, none, [], [TargetValue.object 12], [], false, false⟩),
+      (12, ⟨ObjectKind.pythonDict, none, [("id", ⟨some (TargetValue.string "nonnegative"), none, none, true, true, true⟩), ("predicate", ⟨some (TargetValue.string "balance >= 0"), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (11, ⟨ObjectKind.pythonDict, none, [("type", ⟨some (TargetValue.string "integer"), none, none, true, true, true⟩), ("min", ⟨some (TargetValue.number (NumberTag.pyInt) 0), none, none, true, true, true⟩), ("max", ⟨some (TargetValue.number   (NumberTag.pyInt)   9007199254740991), none, none, true, true, true⟩), ("default", ⟨some (TargetValue.number (NumberTag.pyInt) 100), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (10, ⟨ObjectKind.pythonDict, none, [("balance", ⟨some (TargetValue.object 11), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (9, ⟨ObjectKind.pythonList, none, [], [TargetValue.object 8], [], false, false⟩),
+      (8, ⟨ObjectKind.pythonDict, none, [("id", ⟨some (TargetValue.string "Ready"), none, none, true, true, true⟩), ("initial", ⟨some (TargetValue.bool true), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (7, ⟨ObjectKind.pythonDict, none, [("version", ⟨some (TargetValue.string "kadmos.world.v0"), none, none, true, true, true⟩), ("name", ⟨some (TargetValue.string "BalanceWorld"), none, none, true, true, true⟩), ("states", ⟨some (TargetValue.object 9), none, none, true, true, true⟩), ("context", ⟨some (TargetValue.object 10), none, none, true, true, true⟩), ("invariants", ⟨some (TargetValue.object 13), none, none, true, true, true⟩), ("transitions", ⟨some (TargetValue.object 16), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (6, ⟨ObjectKind.jsOrdinary, some 0, [("MappingProxyType", ⟨some (TargetValue.builtin   (BuiltinId.mappingProxy)), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (5, ⟨ObjectKind.jsOrdinary, some 0, [("compile", ⟨some (TargetValue.builtin   (BuiltinId.regexCompile)), none, none, true, true, true⟩), ("S", ⟨some (TargetValue.number (NumberTag.pyInt) 1), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (4, ⟨ObjectKind.jsOrdinary, some 0, [("isfinite", ⟨some (TargetValue.builtin (BuiltinId.isFinite)), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (3, ⟨ObjectKind.jsOrdinary, some 0, [("loads", ⟨some (TargetValue.builtin (BuiltinId.jsonLoads)), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (2, ⟨ObjectKind.jsOrdinary, some 0, [("deepcopy", ⟨some (TargetValue.builtin (BuiltinId.deepCopy)), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (0, ⟨ObjectKind.jsPrototype, none, [], [], [], true, false⟩),
+      (1, ⟨ObjectKind.pythonOrdinary, none, [], [], [], false, false⟩)]
+    closures := [(25, ⟨"module.evaluate_world.parse", [{ name := "minimum", defaultValue := some (TargetExpr.integer 0) }], [some (TargetValue.number    (NumberTag.pyInt)    0)], balanceSourceBody (balanceProgram .python) "module.evaluate_world.parse", [("parse", 130),  ("position", 129),  ("match", 128),  ("offset", 127),  ("tokens", 126),  ("environment", 125),  ("expression", 124),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (24, ⟨"WorldChecker._invariant", [{ name := "state", defaultValue := none },  { name := "values", defaultValue := none },  { name := "event", defaultValue := some (TargetExpr.null) }], [none, none, some (TargetValue.null)], balanceSourceBody (balanceProgram .python) "WorldChecker._invariant", [("_invariant", 97),  ("_bounds", 96),  ("getContext", 95),  ("get_context", 94),  ("getState", 93),  ("get_state", 92),  ("rollback_last_step", 91),  ("history", 90),  ("context", 89),  ("state", 88),  ("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], some 1⟩),
+      (23, ⟨"WorldChecker._bounds", [{ name := "values", defaultValue := none }], [none], balanceSourceBody (balanceProgram .python) "WorldChecker._bounds", [("_bounds", 96),  ("getContext", 95),  ("get_context", 94),  ("getState", 93),  ("get_state", 92),  ("rollback_last_step", 91),  ("history", 90),  ("context", 89),  ("state", 88),  ("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], some 1⟩),
+      (22, ⟨"WorldChecker.reset.rollback", [], [], balanceSourceBody (balanceProgram .python) "WorldChecker.reset.rollback", [("rollback", 107),  ("snapshot_history", 106),  ("snapshot_context", 105),  ("snapshot_state", 104),  ("initial_context", 103),  ("reset", 98),  ("_invariant", 97),  ("_bounds", 96),  ("getContext", 95),  ("get_context", 94),  ("getState", 93),  ("get_state", 92),  ("rollback_last_step", 91),  ("history", 90),  ("context", 89),  ("state", 88),  ("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], some 1⟩),
+      (21, ⟨"WorldChecker.reset", [{ name := "initial_context", defaultValue := some (TargetExpr.null) }], [some (TargetValue.null)], balanceSourceBody (balanceProgram .python) "WorldChecker.reset", [("reset", 98),  ("_invariant", 97),  ("_bounds", 96),  ("getContext", 95),  ("get_context", 94),  ("getState", 93),  ("get_state", 92),  ("rollback_last_step", 91),  ("history", 90),  ("context", 89),  ("state", 88),  ("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], some 1⟩),
+      (20, ⟨"WorldChecker.__init__", [{ name := "initial_context", defaultValue := some (TargetExpr.null) }], [some (TargetValue.null)], balanceSourceBody (balanceProgram .python) "WorldChecker.__init__", [("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], some 1⟩),
+      (19, ⟨"WorldChecker.step", [{ name := "request", defaultValue := none }], [none], balanceSourceBody (balanceProgram .python) "WorldChecker.step", [("step", 99),  ("reset", 98),  ("_invariant", 97),  ("_bounds", 96),  ("getContext", 95),  ("get_context", 94),  ("getState", 93),  ("get_state", 92),  ("rollback_last_step", 91),  ("history", 90),  ("context", 89),  ("state", 88),  ("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (18, ⟨"WorldChecker.reset", [{ name := "initial_context", defaultValue := some (TargetExpr.null) }], [some (TargetValue.null)], balanceSourceBody (balanceProgram .python) "WorldChecker.reset", [("reset", 98),  ("_invariant", 97),  ("_bounds", 96),  ("getContext", 95),  ("get_context", 94),  ("getState", 93),  ("get_state", 92),  ("rollback_last_step", 91),  ("history", 90),  ("context", 89),  ("state", 88),  ("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (17, ⟨"WorldChecker._invariant", [{ name := "state", defaultValue := none },  { name := "values", defaultValue := none },  { name := "event", defaultValue := some (TargetExpr.null) }], [none, none, some (TargetValue.null)], balanceSourceBody (balanceProgram .python) "WorldChecker._invariant", [("_invariant", 97),  ("_bounds", 96),  ("getContext", 95),  ("get_context", 94),  ("getState", 93),  ("get_state", 92),  ("rollback_last_step", 91),  ("history", 90),  ("context", 89),  ("state", 88),  ("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (16, ⟨"WorldChecker._bounds", [{ name := "values", defaultValue := none }], [none], balanceSourceBody (balanceProgram .python) "WorldChecker._bounds", [("_bounds", 96),  ("getContext", 95),  ("get_context", 94),  ("getState", 93),  ("get_state", 92),  ("rollback_last_step", 91),  ("history", 90),  ("context", 89),  ("state", 88),  ("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (15, ⟨"WorldChecker.getContext", [], [], balanceSourceBody (balanceProgram .python) "WorldChecker.getContext", [("getContext", 95),  ("get_context", 94),  ("getState", 93),  ("get_state", 92),  ("rollback_last_step", 91),  ("history", 90),  ("context", 89),  ("state", 88),  ("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (14, ⟨"WorldChecker.get_context", [], [], balanceSourceBody (balanceProgram .python) "WorldChecker.get_context", [("get_context", 94),  ("getState", 93),  ("get_state", 92),  ("rollback_last_step", 91),  ("history", 90),  ("context", 89),  ("state", 88),  ("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (13, ⟨"WorldChecker.getState", [], [], balanceSourceBody (balanceProgram .python) "WorldChecker.getState", [("getState", 93),  ("get_state", 92),  ("rollback_last_step", 91),  ("history", 90),  ("context", 89),  ("state", 88),  ("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (12, ⟨"WorldChecker.get_state", [], [], balanceSourceBody (balanceProgram .python) "WorldChecker.get_state", [("get_state", 92),  ("rollback_last_step", 91),  ("history", 90),  ("context", 89),  ("state", 88),  ("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (11, ⟨"WorldChecker.rollback_last_step", [], [], balanceSourceBody (balanceProgram .python) "WorldChecker.rollback_last_step", [("rollback_last_step", 91),  ("history", 90),  ("context", 89),  ("state", 88),  ("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (10, ⟨"WorldChecker.history", [], [], balanceSourceBody (balanceProgram .python) "WorldChecker.history", [("history", 90),  ("context", 89),  ("state", 88),  ("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (9, ⟨"WorldChecker.context", [], [], balanceSourceBody (balanceProgram .python) "WorldChecker.context", [("context", 89),  ("state", 88),  ("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (8, ⟨"WorldChecker.state", [], [], balanceSourceBody (balanceProgram .python) "WorldChecker.state", [("state", 88),  ("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (7, ⟨"WorldChecker.__init__", [{ name := "initial_context", defaultValue := some (TargetExpr.null) }], [some (TargetValue.null)], balanceSourceBody (balanceProgram .python) "WorldChecker.__init__", [("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (6, ⟨"module.sanitize_world_payload", [{ name := "raw", defaultValue := none }], [none], balanceSourceBody (balanceProgram .python) "module.sanitize_world_payload", [("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (5, ⟨"module.evaluate_world", [{ name := "expression", defaultValue := none }, { name := "environment", defaultValue := none }], [none, none], balanceSourceBody (balanceProgram .python) "module.evaluate_world", [("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (4, ⟨"module._safe_integer", [{ name := "value", defaultValue := none }], [none], balanceSourceBody (balanceProgram .python) "module._safe_integer", [("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (3, ⟨"module._div", [{ name := "left", defaultValue := none }, { name := "right", defaultValue := none }], [none, none], balanceSourceBody (balanceProgram .python) "module._div", [("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (2, ⟨"module._number", [{ name := "value", defaultValue := none }], [none], balanceSourceBody (balanceProgram .python) "module._number", [("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (1, ⟨"module._boolean", [{ name := "value", defaultValue := none }], [none], balanceSourceBody (balanceProgram .python) "module._boolean", [("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (0, ⟨"module._freeze", [{ name := "value", defaultValue := none }], [none], balanceSourceBody (balanceProgram .python) "module._freeze", [("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩)]
+    generators := [(64,   { valueExpr := TargetExpr.index                    (TargetExpr.local "state")                    (TargetExpr.string "id"),     binders := ["state"],     filterExpr := TargetExpr.call                     (TargetExpr.property                       (TargetExpr.local "state")                       "get")                     (TargetExpr.sequence                       (TargetExpr.string "initial")                       (TargetExpr.empty)),     remaining := [],     frame := { qualifiedName := "module.generator",                remaining := [],                locals := [("state", 70)],                captures := [("_WORLD", 69),                             ("_freeze", 26),                             ("IWorldChecker", 25),                             ("Any", 24),                             ("types", 23),                             ("re", 22),                             ("math", 21),                             ("json", 20),                             ("copy", 19)],                receiver := none,                control := ControlResult.normal } }),  (59,   { valueExpr := TargetExpr.call                    (TargetExpr.local "_freeze")                    (TargetExpr.sequence                      (TargetExpr.local "v")                      (TargetExpr.empty)),     binders := ["v"],     filterExpr := TargetExpr.empty,     remaining := [],     frame := { qualifiedName := "module._freeze.generator",                remaining := [],                locals := [("v", 67)],                captures := [("value", 66),                             ("_freeze", 26),                             ("IWorldChecker", 25),                             ("Any", 24),                             ("types", 23),                             ("re", 22),                             ("math", 21),                             ("json", 20),                             ("copy", 19)],                receiver := none,                control := ControlResult.normal } }),  (50,   { valueExpr := TargetExpr.call                    (TargetExpr.local "_freeze")                    (TargetExpr.sequence                      (TargetExpr.local "v")                      (TargetExpr.empty)),     binders := ["v"],     filterExpr := TargetExpr.empty,     remaining := [],     frame := { qualifiedName := "module._freeze.generator",                remaining := [],                locals := [("v", 57)],                captures := [("value", 56),                             ("_freeze", 26),                             ("IWorldChecker", 25),                             ("Any", 24),                             ("types", 23),                             ("re", 22),                             ("math", 21),                             ("json", 20),                             ("copy", 19)],                receiver := none,                control := ControlResult.normal } }),  (43,   { valueExpr := TargetExpr.call                    (TargetExpr.local "_freeze")                    (TargetExpr.sequence                      (TargetExpr.local "v")                      (TargetExpr.empty)),     binders := ["v"],     filterExpr := TargetExpr.empty,     remaining := [],     frame := { qualifiedName := "module._freeze.generator",                remaining := [],                locals := [("v", 50)],                captures := [("value", 49),                             ("_freeze", 26),                             ("IWorldChecker", 25),                             ("Any", 24),                             ("types", 23),                             ("re", 22),                             ("math", 21),                             ("json", 20),                             ("copy", 19)],                receiver := none,                control := ControlResult.normal } }),  (25,   { valueExpr := TargetExpr.call                    (TargetExpr.local "_freeze")                    (TargetExpr.sequence                      (TargetExpr.local "v")                      (TargetExpr.empty)),     binders := ["v"],     filterExpr := TargetExpr.empty,     remaining := [],     frame := { qualifiedName := "module._freeze.generator",                remaining := [],                locals := [("v", 33)],                captures := [("value", 32),                             ("_freeze", 26),                             ("IWorldChecker", 25),                             ("Any", 24),                             ("types", 23),                             ("re", 22),                             ("math", 21),                             ("json", 20),                             ("copy", 19)],                receiver := none,                control := ControlResult.normal } })]
+    nextCell := 143
+    nextObject := 100
+    nextClosure := 26
+    objectPrototype := 0
+    checkerRef := 1
+    classMethods := [("__init__", 7),  ("state", 8),  ("context", 9),  ("history", 10),  ("rollback_last_step", 11),  ("get_state", 12),  ("getState", 13),  ("get_context", 14),  ("getContext", 15),  ("_bounds", 16),  ("_invariant", 17),  ("reset", 18),  ("step", 19)]
+    callableObjects := []
+    checker := { state := "Ready",   context := 75,   history := 76,   undo := none,   constructorSeed := none,   busy := true,   instanceAttrs := [] }
+    fuel := 0 }
+
+def balanceInvariantPyBound (b : Int) := snapshotBound .python (balanceInvariantPyFinal b)
+  balanceInvariantPyInputFrame "violated" (resetValidationResult .python)
+def balanceInvariantPyReset (b : Int) := balanceSetBusy
+  (resetPublished .python (balanceInvariantPyBound b).1 79) false
+def balanceInvariantPyCopied (b : Int) := balanceConstructorCopied .python (balanceInvariantPyReset b) b
+
+
+set_option maxRecDepth 200000
+set_option maxHeartbeats 5000000
+ theorem balanceInvariant_ts_heapWF_zero : HeapWF .ts (balanceInvariantTsCopied 0) := by
+  decide +kernel
+
+
+set_option smartUnfolding false
+set_option maxRecDepth 200000
+set_option maxHeartbeats 5000000
+ theorem balanceInvariant_ts_heapWF_footprint (b : Int) :
+    heapWFCheck .ts (balanceInvariantTsCopied b) = heapWFCheck .ts (balanceInvariantTsCopied 0) := by
+  with_unfolding_all rfl
+
+
+set_option maxRecDepth 200000
+set_option maxHeartbeats 5000000
+ theorem balanceInvariant_py_heapWF_zero : HeapWF .python (balanceInvariantPyCopied 0) := by
+  decide +kernel
+
+
+set_option smartUnfolding false
+set_option maxRecDepth 200000
+set_option maxHeartbeats 5000000
+ theorem balanceInvariant_py_heapWF_footprint (b : Int) :
+    heapWFCheck .python (balanceInvariantPyCopied b) = heapWFCheck .python (balanceInvariantPyCopied 0) := by
+  with_unfolding_all rfl
+
+
+set_option smartUnfolding false
+set_option maxRecDepth 200000
+set_option maxHeartbeats 10000000
+
+theorem balanceInvariant_ts_input_eq (b : Int) :
+    balanceResetPostBounds .ts b = (balanceInvariantTsInput b, balanceInvariantTsInputFrame) := by
+  simp only [balanceResetPostBounds, balanceInvariantTsInput, balanceInvariantTsInputFrame, balanceBoundsFinal, balanceBoundsEntry,
+    balanceBoundsCandidate, balanceBoundsDefinition, balanceResetPostOverlay,
+    balanceBoundsStored_eq_generic, storedBounds, balancePythonSafeIntegerClosure,
+    balanceResetTsOverlayBound, balanceResetTsDescriptorEntry,
+    balanceResetMiddleEntry, balanceResetCandidateEntry,
+    balanceCanonicalResetStage, balanceCanonicalResetEntry,
+    balanceResetBodyEntry, balanceConstructorBodyEntry, balanceConstructorBoundEntry,
+    balanceConstructorArgumentEntry, balanceStoredReset, balanceResetLookup,
+    balanceStoredConstructor, balanceConstructorLookup, balanceConstructorName,
+    balancePreparation_ts_eq]
+  simp only [balanceProgram_of_parse BalancePrograms.balanceTsProgram_source]
+  with_unfolding_all
+    dsimp
+    rfl
+
+
+set_option smartUnfolding false
+set_option maxRecDepth 200000
+set_option maxHeartbeats 10000000
+
+theorem balanceInvariant_ts_call_nat (n : Nat) :
+    evalExpr 80 (balanceProgram .ts) (balanceInvariantTsInput (Int.ofNat n))
+      balanceInvariantTsInputFrame (resetInvariantCall .ts) =
+      .ok ⟨balanceInvariantTsFinal (Int.ofNat n), .ok .undefined⟩ := by
+  simp only [balanceInvariantTsInput, balanceInvariantTsInputFrame, balanceInvariantTsFinal]
+  rw [balanceProgram_of_parse BalancePrograms.balanceTsProgram_source]
+  with_unfolding_all
+    dsimp
+    rfl
+
+
+namespace BalanceCanonicalTS
+set_option smartUnfolding false
+set_option maxRecDepth 200000
+set_option maxHeartbeats 1000000
+
+
+theorem canonical_call (b : Int) (hb : 0 ≤ b) :
+    evalExpr 80 (balanceProgram .ts)
+      (balanceResetPostBounds .ts b).1 (balanceResetPostBounds .ts b).2
+      (resetInvariantCall .ts) = .ok ⟨balanceInvariantTsFinal b, .ok .undefined⟩ := by
+  rw [congrArg Prod.fst (balanceInvariant_ts_input_eq b),
+    congrArg Prod.snd (balanceInvariant_ts_input_eq b)]
+  have h := balanceInvariant_ts_call_nat b.toNat
+  have hc : Int.ofNat b.toNat = b := Int.toNat_of_nonneg hb
+  rw [hc] at h
+  exact h
+
+
+theorem invariant_evidence (b : Int) (hb : 0 ≤ b) :
+    BalanceResetInvariantEvidence .ts b (balanceInvariantTsFinal b) 23 80 := by
+  constructor
+  · exact canonical_call b hb
+  · intro h; cases h
+  · rw [congrArg Prod.snd (balanceInvariant_ts_input_eq b)]
+    rfl
+  · rw [congrArg Prod.snd (balanceInvariant_ts_input_eq b)]
+    rfl
+  · dsimp only
+    intro h; cases h
+
+
+theorem after_invariant_eq (b : Int) :
+    balanceResetAfterInvariant .ts b (balanceInvariantTsFinal b) = balanceInvariantTsBound b := by
+  unfold balanceResetAfterInvariant
+  rw [congrArg Prod.snd (balanceInvariant_ts_input_eq b)]
+  rfl
+
+
+theorem reset_final_eq (b : Int) :
+    balanceResetCanonicalFinal .ts b (balanceInvariantTsFinal b) 23 = balanceInvariantTsReset b := by
+  unfold balanceResetCanonicalFinal balanceResetCanonicalPublished
+  rw [after_invariant_eq]
+  rfl
+
+
+theorem copied_heapWF (b : Int) : HeapWF .ts (balanceInvariantTsCopied b) := by
+  unfold HeapWF
+  rw [balanceInvariant_ts_heapWF_footprint]
+  exact balanceInvariant_ts_heapWF_zero
+
+
+theorem reset_object_fresh (b : Int) :
+    ∀ e ∈ (balanceInvariantTsReset b).objects, e.1 ≠ (balanceInvariantTsReset b).nextObject := by
+  have check : (balanceInvariantTsReset b).objects.all
+      (fun e => decide (e.1 ≠ (balanceInvariantTsReset b).nextObject)) = true := by
+    with_unfolding_all rfl
+  intro e he
+  exact of_decide_eq_true (List.all_eq_true.mp check e he)
+
+theorem snapshots_ref (lang : TargetLang) (m : TargetMachine) (f : TargetFrame) :
+    (resetSnapshotsInstalled lang m f).1.checkerRef = m.checkerRef := by
+  cases lang <;> rfl
+
+theorem constructor_ref (lang : TargetLang) (b : Int) :
+    (balanceConstructorBodyEntry lang b).1.checkerRef =
+      (balancePreparation lang).1.checkerRef := by
+  unfold balanceConstructorBodyEntry balanceConstructorBoundEntry
+    balanceConstructorArgumentEntry
+  rfl
+
+theorem busy_ref (m : TargetMachine) (busy : Bool) :
+    (balanceSetBusy m busy).checkerRef = m.checkerRef := rfl
+
+theorem reset_entry_ref (lang : TargetLang) (b : Int) :
+    (balanceResetBodyEntry lang b).1.checkerRef =
+      (balanceConstructorBodyEntry lang b).1.checkerRef := by
+  unfold balanceResetBodyEntry
+  rfl
+
+theorem preparation_ref : (balancePreparation .ts).1.checkerRef = 1 := by
+  have fixed := resetTsCanonicalPlainFixedCheck_true.1
+  have same : (balanceCanonicalResetStage .ts 0 3).1.checkerRef =
+      (balancePreparation .ts).1.checkerRef := by
+    unfold balanceCanonicalResetStage
+    simp only [show (3 == (0 : Nat)) = false from rfl,
+      show (3 == (1 : Nat)) = false from rfl,
+      show (3 == (2 : Nat)) = false from rfl, Bool.false_eq_true, if_false]
+    unfold balanceCanonicalResetEntry
+    simp only [beq_self_eq_true, if_true, Prod.fst, Prod.snd]
+    rw [snapshots_ref, busy_ref, reset_entry_ref, constructor_ref]
+  exact same.symm.trans fixed
+
+
+theorem copy_evidence (b : Int) :
+    BalanceConstructorCopyEvidence .ts b
+      (balanceResetCanonicalFinal .ts b (balanceInvariantTsFinal b) 23) := by
+  rw [reset_final_eq]
+  constructor
+  · exact (balanceConstructorBodyEntry_receiver .ts b).trans
+      (congrArg some ((constructor_ref .ts b).trans preparation_ref))
+  · rfl
+  · intro _
+    change (23 : ObjRef) ≠ 45
+    decide
+  · intro _
+    exact reset_object_fresh b
+  · intro h; cases h
+
+end BalanceCanonicalTS
+
+
+namespace BalanceCanonicalTS
+set_option smartUnfolding false
+set_option maxRecDepth 200000
+set_option maxHeartbeats 1000000
+
+/-- Unconditional execution of the actual stored reset body on canonical seeds.
+The full call, publication, cleanup and frame are retained in the conclusion. -/
+theorem canonical_reset (b : Int) (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S) :
+    execStmt 96 (balanceProgram .ts)
+      (balanceResetOriginalEntry .ts b).1 (balanceResetOriginalEntry .ts b).2
+      (balanceStoredReset .ts).2.body =
+      .ok ⟨balanceResetCanonicalFinal .ts b (balanceInvariantTsFinal b) 23,
+        (balanceResetAfterInvariant .ts b (balanceInvariantTsFinal b)).2, .normal⟩ :=
+  balanceReset_canonical_execute_of_invariant
+    (lang := .ts) (b := b) (final := balanceInvariantTsFinal b) (candidate := 23)
+    hb (invariant_evidence b hb.1)
+
+/-- The original parsed constructor body restores its caller frame and performs
+its final seed copy after the actual reset. No execution/evidence premise. -/
+theorem canonical_constructor (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S) :
+    execStmt 99 (balanceProgram .ts)
+      (balanceConstructorBodyEntry .ts b).1 (balanceConstructorBodyEntry .ts b).2
+      (balanceStoredConstructor .ts).2.body =
+      .ok ⟨balanceConstructorCopied .ts
+          (balanceResetCanonicalFinal .ts b (balanceInvariantTsFinal b) 23) b,
+        (balanceConstructorBodyEntry .ts b).2, .normal⟩ :=
+  balanceConstructor_canonical_execute_of_invariant
+    (lang := .ts) (b := b) (final := balanceInvariantTsFinal b) (candidate := 23)
+    hb (invariant_evidence b hb.1) (copy_evidence b)
+
+theorem targetConstruct_sound (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S) :
+    targetConstruct (balanceProgram .ts) (canonicalBalanceSeed .ts b) =
+      .ok (balanceConstructorCopied .ts
+        (balanceResetCanonicalFinal .ts b (balanceInvariantTsFinal b) 23) b) :=
+  targetConstruct_balance_of_invariant
+    (lang := .ts) (b := b) (final := balanceInvariantTsFinal b) (candidate := 23)
+    hb (invariant_evidence b hb.1) (copy_evidence b)
+
+theorem copied_eq (b : Int) :
+    balanceConstructorCopied .ts
+      (balanceResetCanonicalFinal .ts b (balanceInvariantTsFinal b) 23) b =
+      balanceInvariantTsCopied b :=
+  congrArg (fun m => balanceConstructorCopied .ts m b) (reset_final_eq b)
+
+theorem canonical_copied_heapWF (b : Int) :
+    HeapWF .ts (balanceConstructorCopied .ts
+      (balanceResetCanonicalFinal .ts b (balanceInvariantTsFinal b) 23) b) :=
+  Eq.mpr (congrArg (HeapWF .ts) (copied_eq b)) (copied_heapWF b)
+
+theorem canonical_balance_rep (b : Int) :
+    BalanceRep .ts b (balanceConstructorCopied .ts
+      (balanceResetCanonicalFinal .ts b (balanceInvariantTsFinal b) 23) b) := by
+  have candidate : objectAt (balanceInvariantTsFinal b) 23 =
+      .ok (balanceHeapObject .ts (balanceInvariantTsFinal b) b) := by rfl
+  exact balanceResetCanonicalFinal_rep_after_copy
+    (lang := .ts) (b := b) (final := balanceInvariantTsFinal b) (candidate := 23)
+    candidate
+    (by change (23 : ObjRef) ≠ 44; decide)
+    (by change (23 : ObjRef) ≠ 45; decide)
+    (canonical_copied_heapWF b)
+
+/-- The literal allocation model is the actual targetConstruct result. -/
+theorem targetConstruct_literal (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S) :
+    targetConstruct (balanceProgram .ts) (canonicalBalanceSeed .ts b) =
+      .ok (balanceInvariantTsCopied b) :=
+  (targetConstruct_sound b hb).trans
+    (congrArg (fun m => (Except.ok m : Except TargetError TargetMachine)) (copied_eq b))
+
+theorem literal_balance_rep (b : Int) : BalanceRep .ts b (balanceInvariantTsCopied b) :=
+  Eq.mp (congrArg (BalanceRep .ts b) (copied_eq b)) (canonical_balance_rep b)
+
+theorem targetConstruct_balance_rep (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S) :
+    ∃ m, targetConstruct (balanceProgram .ts) (canonicalBalanceSeed .ts b) = .ok m ∧
+      BalanceRep .ts b m :=
+  ⟨balanceInvariantTsCopied b, targetConstruct_literal b hb, literal_balance_rep b⟩
+
+end BalanceCanonicalTS
+
+
+namespace BalanceCanonicalTS
+
+/-- The literal call, publication and constructor copy retain their separate
+allocations. This is additional kernel evidence about the actual final model. -/
+theorem canonical_allocations (b : Int) :
+    (balanceInvariantTsFinal b).nextObject = 44 ∧
+    (balanceInvariantTsReset b).nextObject = 45 ∧
+    (balanceInvariantTsCopied b).nextObject = 46 ∧
+    (balanceInvariantTsCopied b).checker.context = 23 ∧
+    (balanceInvariantTsCopied b).checker.history = 44 ∧
+    (balanceInvariantTsCopied b).checker.constructorSeed = some 45 ∧
+    (balanceInvariantTsCopied b).nextCell = 69 ∧
+    (balanceInvariantTsCopied b).nextClosure = 19 := by
+  exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+
+theorem canonical_bindings (b : Int) :
+    (balanceInvariantTsCopied b).frames = (balanceInvariantTsInput b).frames ∧
+    (balanceInvariantTsCopied b).globals = (balanceInvariantTsFinal b).globals ∧
+    (balanceInvariantTsCopied b).cells = (balanceInvariantTsBound b).1.cells ∧
+    (balanceInvariantTsCopied b).closures = (balanceInvariantTsFinal b).closures ∧
+    (balanceInvariantTsCopied b).classMethods = (balanceInvariantTsFinal b).classMethods :=
+  ⟨rfl, rfl, rfl, rfl, rfl⟩
+
+end BalanceCanonicalTS
+
+
+def balanceInvariantPyPreparedModel (_b : Int) : TargetMachine :=
+  { globals := [("OverflowError", 18),  ("RuntimeError", 17),  ("ValueError", 16),  ("any", 15),  ("abs", 14),  ("object", 13),  ("id", 12),  ("isinstance", 11),  ("next", 10),  ("len", 9),  ("bool", 8),  ("str", 7),  ("int", 6),  ("float", 5),  ("set", 4),  ("tuple", 3),  ("list", 2),  ("dict", 1),  ("type", 0)]
+    frames := []
+    cells := [(100, TargetValue.classConstructor "WorldChecker"),
+      (99, TargetValue.closure 19),
+      (98, TargetValue.closure 18),
+      (97, TargetValue.closure 17),
+      (96, TargetValue.closure 16),
+      (95, TargetValue.closure 15),
+      (94, TargetValue.closure 14),
+      (93, TargetValue.closure 13),
+      (92, TargetValue.closure 12),
+      (91, TargetValue.closure 11),
+      (90, TargetValue.closure 10),
+      (89, TargetValue.closure 9),
+      (88, TargetValue.closure 8),
+      (87, TargetValue.closure 7),
+      (86, TargetValue.closure 6),
+      (85, TargetValue.closure 5),
+      (84, TargetValue.closure 4),
+      (83, TargetValue.closure 3),
+      (82, TargetValue.closure 2),
+      (81, TargetValue.closure 1),
+      (80, TargetValue.object 73),
+      (79, TargetValue.number   (NumberTag.pyInt)   9007199254740991),
+      (78, TargetValue.object 72),
+      (77, TargetValue.object 71),
+      (76, TargetValue.object 70),
+      (75, TargetValue.object 69),
+      (74, TargetValue.object 68),
+      (73, TargetValue.object 41),
+      (72, TargetValue.string "balance"),
+      (71, TargetValue.string "Ready"),
+      (70, TargetValue.object 30),
+      (69, TargetValue.object 63),
+      (68, TargetValue.string "balance = balance - event.amount"),
+      (67, TargetValue.string "balance = balance - event.amount"),
+      (66, TargetValue.object 15),
+      (65, TargetValue.null),
+      (64, TargetValue.string "event.amount > 0"),
+      (63, TargetValue.string "Ready"),
+      (62, TargetValue.string "Ready"),
+      (61, TargetValue.string "DEBIT"),
+      (60, TargetValue.object 15),
+      (59, TargetValue.string "effects"),
+      (58, TargetValue.object 14),
+      (57, TargetValue.object 14),
+      (56, TargetValue.object 16),
+      (55, TargetValue.string "balance >= 0"),
+      (54, TargetValue.string "nonnegative"),
+      (53, TargetValue.string "balance >= 0"),
+      (52, TargetValue.string "predicate"),
+      (51, TargetValue.object 12),
+      (50, TargetValue.object 12),
+      (49, TargetValue.object 13),
+      (48, TargetValue.number (NumberTag.pyInt) 100),
+      (47, TargetValue.number   (NumberTag.pyInt)   9007199254740991),
+      (46, TargetValue.number (NumberTag.pyInt) 0),
+      (45, TargetValue.string "integer"),
+      (44, TargetValue.number (NumberTag.pyInt) 100),
+      (43, TargetValue.string "default"),
+      (42, TargetValue.object 11),
+      (41, TargetValue.object 11),
+      (40, TargetValue.string "balance"),
+      (39, TargetValue.object 10),
+      (38, TargetValue.bool true),
+      (37, TargetValue.string "Ready"),
+      (36, TargetValue.bool true),
+      (35, TargetValue.string "initial"),
+      (34, TargetValue.object 8),
+      (33, TargetValue.object 8),
+      (32, TargetValue.object 9),
+      (31, TargetValue.string "BalanceWorld"),
+      (30, TargetValue.string "kadmos.world.v0"),
+      (29, TargetValue.object 16),
+      (28, TargetValue.string "transitions"),
+      (27, TargetValue.object 7),
+      (26, TargetValue.closure 0),
+      (25, TargetValue.classConstructor "IWorldChecker"),
+      (24, TargetValue.builtin (BuiltinId.pyObject)),
+      (23, TargetValue.object 6),
+      (22, TargetValue.object 5),
+      (21, TargetValue.object 4),
+      (20, TargetValue.object 3),
+      (19, TargetValue.object 2),
+      (18, TargetValue.builtin   (BuiltinId.newOverflowError)),
+      (17, TargetValue.builtin   (BuiltinId.newRuntimeError)),
+      (16, TargetValue.builtin   (BuiltinId.newValueError)),
+      (15, TargetValue.builtin (BuiltinId.any)),
+      (14, TargetValue.builtin (BuiltinId.abs)),
+      (13, TargetValue.builtin (BuiltinId.pyObject)),
+      (12, TargetValue.builtin   (BuiltinId.objectIdentity)),
+      (11, TargetValue.builtin (BuiltinId.isinstance)),
+      (10, TargetValue.builtin (BuiltinId.next)),
+      (9, TargetValue.builtin (BuiltinId.length)),
+      (8, TargetValue.builtin (BuiltinId.boolType)),
+      (7, TargetValue.builtin (BuiltinId.strType)),
+      (6, TargetValue.builtin (BuiltinId.int)),
+      (5, TargetValue.builtin (BuiltinId.float)),
+      (4, TargetValue.builtin (BuiltinId.set)),
+      (3, TargetValue.builtin (BuiltinId.tuple)),
+      (2, TargetValue.builtin (BuiltinId.list)),
+      (1, TargetValue.builtin (BuiltinId.dict)),
+      (0, TargetValue.builtin (BuiltinId.type))]
+    writableCells := [(100, true),  (99, true),  (98, true),  (97, true),  (96, true),  (95, true),  (94, true),  (93, true),  (92, true),  (91, true),  (90, true),  (89, true),  (88, true),  (87, true),  (86, true),  (85, true),  (84, true),  (83, true),  (82, true),  (81, true),  (80, true),  (79, true),  (78, true),  (77, true),  (76, true),  (75, true),  (74, true),  (73, true),  (72, true),  (71, true),  (70, true),  (69, true),  (68, true),  (67, true),  (66, true),  (65, true),  (64, true),  (63, true),  (62, true),  (61, true),  (60, true),  (59, true),  (58, true),  (57, true),  (56, true),  (55, true),  (54, true),  (53, true),  (52, true),  (51, true),  (50, true),  (49, true),  (48, true),  (47, true),  (46, true),  (45, true),  (44, true),  (43, true),  (42, true),  (41, true),  (40, true),  (39, true),  (38, true),  (37, true),  (36, true),  (35, true),  (34, true),  (33, true),  (32, true),  (31, true),  (30, true),  (29, true),  (28, true),  (27, true),  (26, true),  (25, true),  (24, true),  (23, true),  (22, true),  (21, true),  (20, true),  (19, true),  (18, false),  (17, false),  (16, false),  (15, false),  (14, false),  (13, false),  (12, false),  (11, false),  (10, false),  (9, false),  (8, false),  (7, false),  (6, false),  (5, false),  (4, false),  (3, false),  (2, false),  (1, false),  (0, false)]
+    objects := [(73, ⟨ObjectKind.pythonOrdinary, none, [], [], [], false, false⟩),
+      (72, ⟨ObjectKind.regexPattern, none, [("source", ⟨some (TargetValue.string "([A-Za-z_][A-Za-z_0-9]*)\\s*=\\s*(.+)\\Z"), none, none, true, true, true⟩), ("flags", ⟨some (TargetValue.number (NumberTag.pyInt) 1), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (71, ⟨ObjectKind.regexPattern, none, [("source", ⟨some (TargetValue.string "[A-Za-z_][A-Za-z_0-9]*\\Z"), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (70, ⟨ObjectKind.regexPattern, none, [("source", ⟨some (TargetValue.string   "\\s+|=>|==|!=|>=|<=|&&|\\|\\||[()+\\-*/<>!.]|\\d+(?:\\.\\d+)?|[A-Za-z_][A-Za-z_0-9]*|'(?:[^'\\\\]|\\\\.)*'"), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (69, ⟨ObjectKind.pythonDict, none, [("=>", ⟨some (TargetValue.number (NumberTag.pyInt) 1), none, none, true, true, true⟩), ("||", ⟨some (TargetValue.number (NumberTag.pyInt) 2), none, none, true, true, true⟩), ("&&", ⟨some (TargetValue.number (NumberTag.pyInt) 3), none, none, true, true, true⟩), ("==", ⟨some (TargetValue.number (NumberTag.pyInt) 4), none, none, true, true, true⟩), ("!=", ⟨some (TargetValue.number (NumberTag.pyInt) 4), none, none, true, true, true⟩), (">", ⟨some (TargetValue.number (NumberTag.pyInt) 5), none, none, true, true, true⟩), (">=", ⟨some (TargetValue.number (NumberTag.pyInt) 5), none, none, true, true, true⟩), ("<", ⟨some (TargetValue.number (NumberTag.pyInt) 5), none, none, true, true, true⟩), ("<=", ⟨some (TargetValue.number (NumberTag.pyInt) 5), none, none, true, true, true⟩), ("+", ⟨some (TargetValue.number (NumberTag.pyInt) 6), none, none, true, true, true⟩), ("-", ⟨some (TargetValue.number (NumberTag.pyInt) 6), none, none, true, true, true⟩), ("*", ⟨some (TargetValue.number (NumberTag.pyInt) 7), none, none, true, true, true⟩), ("/", ⟨some (TargetValue.number (NumberTag.pyInt) 7), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (68, ⟨ObjectKind.mappingProxy, some 67, [("balance", ⟨some (TargetValue.number (NumberTag.pyInt) 100), none, none, true, true, true⟩)], [], [], true, false⟩),
+      (67, ⟨ObjectKind.pythonDict, none, [("balance", ⟨some (TargetValue.number (NumberTag.pyInt) 100), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (66, ⟨ObjectKind.pythonList, none, [], [TargetValue.object 65], [], false, false⟩),
+      (65, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "balance", TargetValue.object 41], [], false, false⟩),
+      (64, ⟨ObjectKind.pythonGenerator, none, [], [], [], false, false⟩),
+      (63, ⟨ObjectKind.mappingProxy, some 24, [("version", ⟨some (TargetValue.string "kadmos.world.v0"), none, none, true, true, true⟩), ("name", ⟨some (TargetValue.string "BalanceWorld"), none, none, true, true, true⟩), ("states", ⟨some (TargetValue.object 31), none, none, true, true, true⟩), ("context", ⟨some (TargetValue.object 42), none, none, true, true, true⟩), ("invariants", ⟨some (TargetValue.object 49), none, none, true, true, true⟩), ("transitions", ⟨some (TargetValue.object 62), none, none, true, true, true⟩)], [], [], true, false⟩),
+      (62, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.object 61], [], false, false⟩),
+      (61, ⟨ObjectKind.mappingProxy, some 58, [("id", ⟨some (TargetValue.string "DEBIT"), none, none, true, true, true⟩), ("from", ⟨some (TargetValue.string "Ready"), none, none, true, true, true⟩), ("to", ⟨some (TargetValue.string "Ready"), none, none, true, true, true⟩), ("guard", ⟨some (TargetValue.string "event.amount > 0"), none, none, true, true, true⟩), ("directive", ⟨some (TargetValue.null), none, none, true, true, true⟩), ("effects", ⟨some (TargetValue.object 60), none, none, true, true, true⟩)], [], [], true, false⟩),
+      (60, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "balance = balance - event.amount"], [], false, false⟩),
+      (59, ⟨ObjectKind.pythonGenerator, none, [], [], [], false, false⟩),
+      (58, ⟨ObjectKind.pythonDict, none, [("id", ⟨some (TargetValue.string "DEBIT"), none, none, true, true, true⟩), ("from", ⟨some (TargetValue.string "Ready"), none, none, true, true, true⟩), ("to", ⟨some (TargetValue.string "Ready"), none, none, true, true, true⟩), ("guard", ⟨some (TargetValue.string "event.amount > 0"), none, none, true, true, true⟩), ("directive", ⟨some (TargetValue.null), none, none, true, true, true⟩), ("effects", ⟨some (TargetValue.object 60), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (57, ⟨ObjectKind.pythonList, none, [], [TargetValue.object 51, TargetValue.object 52, TargetValue.object 53, TargetValue.object 54, TargetValue.object 55, TargetValue.object 56], [], false, false⟩),
+      (56, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "effects", TargetValue.object 15], [], false, false⟩),
+      (55, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "directive", TargetValue.null], [], false, false⟩),
+      (54, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "guard", TargetValue.string "event.amount > 0"], [], false, false⟩),
+      (53, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "to", TargetValue.string "Ready"], [], false, false⟩),
+      (52, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "from", TargetValue.string "Ready"], [], false, false⟩),
+      (51, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "id", TargetValue.string "DEBIT"], [], false, false⟩),
+      (50, ⟨ObjectKind.pythonGenerator, none, [], [], [], false, false⟩),
+      (49, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.object 48], [], false, false⟩),
+      (48, ⟨ObjectKind.mappingProxy, some 47, [("id", ⟨some (TargetValue.string "nonnegative"), none, none, true, true, true⟩), ("predicate", ⟨some (TargetValue.string "balance >= 0"), none, none, true, true, true⟩)], [], [], true, false⟩),
+      (47, ⟨ObjectKind.pythonDict, none, [("id", ⟨some (TargetValue.string "nonnegative"), none, none, true, true, true⟩), ("predicate", ⟨some (TargetValue.string "balance >= 0"), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (46, ⟨ObjectKind.pythonList, none, [], [TargetValue.object 44, TargetValue.object 45], [], false, false⟩),
+      (45, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "predicate", TargetValue.string "balance >= 0"], [], false, false⟩),
+      (44, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "id", TargetValue.string "nonnegative"], [], false, false⟩),
+      (43, ⟨ObjectKind.pythonGenerator, none, [], [], [], false, false⟩),
+      (42, ⟨ObjectKind.mappingProxy, some 34, [("balance", ⟨some (TargetValue.object 41), none, none, true, true, true⟩)], [], [], true, false⟩),
+      (41, ⟨ObjectKind.mappingProxy, some 40, [("type", ⟨some (TargetValue.string "integer"), none, none, true, true, true⟩), ("min", ⟨some (TargetValue.number (NumberTag.pyInt) 0), none, none, true, true, true⟩), ("max", ⟨some (TargetValue.number   (NumberTag.pyInt)   9007199254740991), none, none, true, true, true⟩), ("default", ⟨some (TargetValue.number (NumberTag.pyInt) 100), none, none, true, true, true⟩)], [], [], true, false⟩),
+      (40, ⟨ObjectKind.pythonDict, none, [("type", ⟨some (TargetValue.string "integer"), none, none, true, true, true⟩), ("min", ⟨some (TargetValue.number (NumberTag.pyInt) 0), none, none, true, true, true⟩), ("max", ⟨some (TargetValue.number   (NumberTag.pyInt)   9007199254740991), none, none, true, true, true⟩), ("default", ⟨some (TargetValue.number (NumberTag.pyInt) 100), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (39, ⟨ObjectKind.pythonList, none, [], [TargetValue.object 35, TargetValue.object 36, TargetValue.object 37, TargetValue.object 38], [], false, false⟩),
+      (38, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "default", TargetValue.number (NumberTag.pyInt) 100], [], false, false⟩),
+      (37, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "max", TargetValue.number   (NumberTag.pyInt)   9007199254740991], [], false, false⟩),
+      (36, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "min", TargetValue.number (NumberTag.pyInt) 0], [], false, false⟩),
+      (35, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "type", TargetValue.string "integer"], [], false, false⟩),
+      (34, ⟨ObjectKind.pythonDict, none, [("balance", ⟨some (TargetValue.object 41), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (33, ⟨ObjectKind.pythonList, none, [], [TargetValue.object 32], [], false, false⟩),
+      (32, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "balance", TargetValue.object 11], [], false, false⟩),
+      (31, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.object 30], [], false, false⟩),
+      (30, ⟨ObjectKind.mappingProxy, some 29, [("id", ⟨some (TargetValue.string "Ready"), none, none, true, true, true⟩), ("initial", ⟨some (TargetValue.bool true), none, none, true, true, true⟩)], [], [], true, false⟩),
+      (29, ⟨ObjectKind.pythonDict, none, [("id", ⟨some (TargetValue.string "Ready"), none, none, true, true, true⟩), ("initial", ⟨some (TargetValue.bool true), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (28, ⟨ObjectKind.pythonList, none, [], [TargetValue.object 26, TargetValue.object 27], [], false, false⟩),
+      (27, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "initial", TargetValue.bool true], [], false, false⟩),
+      (26, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "id", TargetValue.string "Ready"], [], false, false⟩),
+      (25, ⟨ObjectKind.pythonGenerator, none, [], [], [], false, false⟩),
+      (24, ⟨ObjectKind.pythonDict, none, [("version", ⟨some (TargetValue.string "kadmos.world.v0"), none, none, true, true, true⟩), ("name", ⟨some (TargetValue.string "BalanceWorld"), none, none, true, true, true⟩), ("states", ⟨some (TargetValue.object 31), none, none, true, true, true⟩), ("context", ⟨some (TargetValue.object 42), none, none, true, true, true⟩), ("invariants", ⟨some (TargetValue.object 49), none, none, true, true, true⟩), ("transitions", ⟨some (TargetValue.object 62), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (23, ⟨ObjectKind.pythonList, none, [], [TargetValue.object 17, TargetValue.object 18, TargetValue.object 19, TargetValue.object 20, TargetValue.object 21, TargetValue.object 22], [], false, false⟩),
+      (22, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "transitions", TargetValue.object 16], [], false, false⟩),
+      (21, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "invariants", TargetValue.object 13], [], false, false⟩),
+      (20, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "context", TargetValue.object 10], [], false, false⟩),
+      (19, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "states", TargetValue.object 9], [], false, false⟩),
+      (18, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "name", TargetValue.string "BalanceWorld"], [], false, false⟩),
+      (17, ⟨ObjectKind.pythonTuple, none, [], [TargetValue.string "version", TargetValue.string "kadmos.world.v0"], [], false, false⟩),
+      (16, ⟨ObjectKind.pythonList, none, [], [TargetValue.object 14], [], false, false⟩),
+      (15, ⟨ObjectKind.pythonList, none, [], [TargetValue.string "balance = balance - event.amount"], [], false, false⟩),
+      (14, ⟨ObjectKind.pythonDict, none, [("id", ⟨some (TargetValue.string "DEBIT"), none, none, true, true, true⟩), ("from", ⟨some (TargetValue.string "Ready"), none, none, true, true, true⟩), ("to", ⟨some (TargetValue.string "Ready"), none, none, true, true, true⟩), ("guard", ⟨some (TargetValue.string "event.amount > 0"), none, none, true, true, true⟩), ("directive", ⟨some (TargetValue.null), none, none, true, true, true⟩), ("effects", ⟨some (TargetValue.object 15), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (13, ⟨ObjectKind.pythonList, none, [], [TargetValue.object 12], [], false, false⟩),
+      (12, ⟨ObjectKind.pythonDict, none, [("id", ⟨some (TargetValue.string "nonnegative"), none, none, true, true, true⟩), ("predicate", ⟨some (TargetValue.string "balance >= 0"), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (11, ⟨ObjectKind.pythonDict, none, [("type", ⟨some (TargetValue.string "integer"), none, none, true, true, true⟩), ("min", ⟨some (TargetValue.number (NumberTag.pyInt) 0), none, none, true, true, true⟩), ("max", ⟨some (TargetValue.number   (NumberTag.pyInt)   9007199254740991), none, none, true, true, true⟩), ("default", ⟨some (TargetValue.number (NumberTag.pyInt) 100), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (10, ⟨ObjectKind.pythonDict, none, [("balance", ⟨some (TargetValue.object 11), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (9, ⟨ObjectKind.pythonList, none, [], [TargetValue.object 8], [], false, false⟩),
+      (8, ⟨ObjectKind.pythonDict, none, [("id", ⟨some (TargetValue.string "Ready"), none, none, true, true, true⟩), ("initial", ⟨some (TargetValue.bool true), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (7, ⟨ObjectKind.pythonDict, none, [("version", ⟨some (TargetValue.string "kadmos.world.v0"), none, none, true, true, true⟩), ("name", ⟨some (TargetValue.string "BalanceWorld"), none, none, true, true, true⟩), ("states", ⟨some (TargetValue.object 9), none, none, true, true, true⟩), ("context", ⟨some (TargetValue.object 10), none, none, true, true, true⟩), ("invariants", ⟨some (TargetValue.object 13), none, none, true, true, true⟩), ("transitions", ⟨some (TargetValue.object 16), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (6, ⟨ObjectKind.jsOrdinary, some 0, [("MappingProxyType", ⟨some (TargetValue.builtin   (BuiltinId.mappingProxy)), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (5, ⟨ObjectKind.jsOrdinary, some 0, [("compile", ⟨some (TargetValue.builtin   (BuiltinId.regexCompile)), none, none, true, true, true⟩), ("S", ⟨some (TargetValue.number (NumberTag.pyInt) 1), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (4, ⟨ObjectKind.jsOrdinary, some 0, [("isfinite", ⟨some (TargetValue.builtin (BuiltinId.isFinite)), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (3, ⟨ObjectKind.jsOrdinary, some 0, [("loads", ⟨some (TargetValue.builtin (BuiltinId.jsonLoads)), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (2, ⟨ObjectKind.jsOrdinary, some 0, [("deepcopy", ⟨some (TargetValue.builtin (BuiltinId.deepCopy)), none, none, true, true, true⟩)], [], [], false, false⟩),
+      (0, ⟨ObjectKind.jsPrototype, none, [], [], [], true, false⟩),
+      (1, ⟨ObjectKind.pythonOrdinary, none, [], [], [], false, false⟩)]
+    closures := [(19, ⟨"WorldChecker.step", [{ name := "request", defaultValue := none }], [none], balanceSourceBody (balanceProgram .python) "WorldChecker.step", [("step", 99),  ("reset", 98),  ("_invariant", 97),  ("_bounds", 96),  ("getContext", 95),  ("get_context", 94),  ("getState", 93),  ("get_state", 92),  ("rollback_last_step", 91),  ("history", 90),  ("context", 89),  ("state", 88),  ("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (18, ⟨"WorldChecker.reset", [{ name := "initial_context", defaultValue := some (TargetExpr.null) }], [some (TargetValue.null)], balanceSourceBody (balanceProgram .python) "WorldChecker.reset", [("reset", 98),  ("_invariant", 97),  ("_bounds", 96),  ("getContext", 95),  ("get_context", 94),  ("getState", 93),  ("get_state", 92),  ("rollback_last_step", 91),  ("history", 90),  ("context", 89),  ("state", 88),  ("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (17, ⟨"WorldChecker._invariant", [{ name := "state", defaultValue := none },  { name := "values", defaultValue := none },  { name := "event", defaultValue := some (TargetExpr.null) }], [none, none, some (TargetValue.null)], balanceSourceBody (balanceProgram .python) "WorldChecker._invariant", [("_invariant", 97),  ("_bounds", 96),  ("getContext", 95),  ("get_context", 94),  ("getState", 93),  ("get_state", 92),  ("rollback_last_step", 91),  ("history", 90),  ("context", 89),  ("state", 88),  ("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (16, ⟨"WorldChecker._bounds", [{ name := "values", defaultValue := none }], [none], balanceSourceBody (balanceProgram .python) "WorldChecker._bounds", [("_bounds", 96),  ("getContext", 95),  ("get_context", 94),  ("getState", 93),  ("get_state", 92),  ("rollback_last_step", 91),  ("history", 90),  ("context", 89),  ("state", 88),  ("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (15, ⟨"WorldChecker.getContext", [], [], balanceSourceBody (balanceProgram .python) "WorldChecker.getContext", [("getContext", 95),  ("get_context", 94),  ("getState", 93),  ("get_state", 92),  ("rollback_last_step", 91),  ("history", 90),  ("context", 89),  ("state", 88),  ("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (14, ⟨"WorldChecker.get_context", [], [], balanceSourceBody (balanceProgram .python) "WorldChecker.get_context", [("get_context", 94),  ("getState", 93),  ("get_state", 92),  ("rollback_last_step", 91),  ("history", 90),  ("context", 89),  ("state", 88),  ("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (13, ⟨"WorldChecker.getState", [], [], balanceSourceBody (balanceProgram .python) "WorldChecker.getState", [("getState", 93),  ("get_state", 92),  ("rollback_last_step", 91),  ("history", 90),  ("context", 89),  ("state", 88),  ("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (12, ⟨"WorldChecker.get_state", [], [], balanceSourceBody (balanceProgram .python) "WorldChecker.get_state", [("get_state", 92),  ("rollback_last_step", 91),  ("history", 90),  ("context", 89),  ("state", 88),  ("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (11, ⟨"WorldChecker.rollback_last_step", [], [], balanceSourceBody (balanceProgram .python) "WorldChecker.rollback_last_step", [("rollback_last_step", 91),  ("history", 90),  ("context", 89),  ("state", 88),  ("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (10, ⟨"WorldChecker.history", [], [], balanceSourceBody (balanceProgram .python) "WorldChecker.history", [("history", 90),  ("context", 89),  ("state", 88),  ("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (9, ⟨"WorldChecker.context", [], [], balanceSourceBody (balanceProgram .python) "WorldChecker.context", [("context", 89),  ("state", 88),  ("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (8, ⟨"WorldChecker.state", [], [], balanceSourceBody (balanceProgram .python) "WorldChecker.state", [("state", 88),  ("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (7, ⟨"WorldChecker.__init__", [{ name := "initial_context", defaultValue := some (TargetExpr.null) }], [some (TargetValue.null)], balanceSourceBody (balanceProgram .python) "WorldChecker.__init__", [("__init__", 87),  ("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (6, ⟨"module.sanitize_world_payload", [{ name := "raw", defaultValue := none }], [none], balanceSourceBody (balanceProgram .python) "module.sanitize_world_payload", [("sanitize_world_payload", 86),  ("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (5, ⟨"module.evaluate_world", [{ name := "expression", defaultValue := none }, { name := "environment", defaultValue := none }], [none, none], balanceSourceBody (balanceProgram .python) "module.evaluate_world", [("evaluate_world", 85),  ("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (4, ⟨"module._safe_integer", [{ name := "value", defaultValue := none }], [none], balanceSourceBody (balanceProgram .python) "module._safe_integer", [("_safe_integer", 84),  ("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (3, ⟨"module._div", [{ name := "left", defaultValue := none }, { name := "right", defaultValue := none }], [none, none], balanceSourceBody (balanceProgram .python) "module._div", [("_div", 83),  ("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (2, ⟨"module._number", [{ name := "value", defaultValue := none }], [none], balanceSourceBody (balanceProgram .python) "module._number", [("_number", 82),  ("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (1, ⟨"module._boolean", [{ name := "value", defaultValue := none }], [none], balanceSourceBody (balanceProgram .python) "module._boolean", [("_boolean", 81),  ("_UNDEFINED", 80),  ("_MAX_INTEGER", 79),  ("_EFFECT", 78),  ("_NAME", 77),  ("_TOKEN", 76),  ("_PRECEDENCE", 75),  ("_DEFAULTS", 74),  ("_INITIAL", 71),  ("_WORLD", 69),  ("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩),
+      (0, ⟨"module._freeze", [{ name := "value", defaultValue := none }], [none], balanceSourceBody (balanceProgram .python) "module._freeze", [("_freeze", 26),  ("IWorldChecker", 25),  ("Any", 24),  ("types", 23),  ("re", 22),  ("math", 21),  ("json", 20),  ("copy", 19)], none⟩)]
+    generators := [(64,   { valueExpr := TargetExpr.index                    (TargetExpr.local "state")                    (TargetExpr.string "id"),     binders := ["state"],     filterExpr := TargetExpr.call                     (TargetExpr.property                       (TargetExpr.local "state")                       "get")                     (TargetExpr.sequence                       (TargetExpr.string "initial")                       (TargetExpr.empty)),     remaining := [],     frame := { qualifiedName := "module.generator",                remaining := [],                locals := [("state", 70)],                captures := [("_WORLD", 69),                             ("_freeze", 26),                             ("IWorldChecker", 25),                             ("Any", 24),                             ("types", 23),                             ("re", 22),                             ("math", 21),                             ("json", 20),                             ("copy", 19)],                receiver := none,                control := ControlResult.normal } }),  (59,   { valueExpr := TargetExpr.call                    (TargetExpr.local "_freeze")                    (TargetExpr.sequence                      (TargetExpr.local "v")                      (TargetExpr.empty)),     binders := ["v"],     filterExpr := TargetExpr.empty,     remaining := [],     frame := { qualifiedName := "module._freeze.generator",                remaining := [],                locals := [("v", 67)],                captures := [("value", 66),                             ("_freeze", 26),                             ("IWorldChecker", 25),                             ("Any", 24),                             ("types", 23),                             ("re", 22),                             ("math", 21),                             ("json", 20),                             ("copy", 19)],                receiver := none,                control := ControlResult.normal } }),  (50,   { valueExpr := TargetExpr.call                    (TargetExpr.local "_freeze")                    (TargetExpr.sequence                      (TargetExpr.local "v")                      (TargetExpr.empty)),     binders := ["v"],     filterExpr := TargetExpr.empty,     remaining := [],     frame := { qualifiedName := "module._freeze.generator",                remaining := [],                locals := [("v", 57)],                captures := [("value", 56),                             ("_freeze", 26),                             ("IWorldChecker", 25),                             ("Any", 24),                             ("types", 23),                             ("re", 22),                             ("math", 21),                             ("json", 20),                             ("copy", 19)],                receiver := none,                control := ControlResult.normal } }),  (43,   { valueExpr := TargetExpr.call                    (TargetExpr.local "_freeze")                    (TargetExpr.sequence                      (TargetExpr.local "v")                      (TargetExpr.empty)),     binders := ["v"],     filterExpr := TargetExpr.empty,     remaining := [],     frame := { qualifiedName := "module._freeze.generator",                remaining := [],                locals := [("v", 50)],                captures := [("value", 49),                             ("_freeze", 26),                             ("IWorldChecker", 25),                             ("Any", 24),                             ("types", 23),                             ("re", 22),                             ("math", 21),                             ("json", 20),                             ("copy", 19)],                receiver := none,                control := ControlResult.normal } }),  (25,   { valueExpr := TargetExpr.call                    (TargetExpr.local "_freeze")                    (TargetExpr.sequence                      (TargetExpr.local "v")                      (TargetExpr.empty)),     binders := ["v"],     filterExpr := TargetExpr.empty,     remaining := [],     frame := { qualifiedName := "module._freeze.generator",                remaining := [],                locals := [("v", 33)],                captures := [("value", 32),                             ("_freeze", 26),                             ("IWorldChecker", 25),                             ("Any", 24),                             ("types", 23),                             ("re", 22),                             ("math", 21),                             ("json", 20),                             ("copy", 19)],                receiver := none,                control := ControlResult.normal } })]
+    nextCell := 101
+    nextObject := 74
+    nextClosure := 20
+    objectPrototype := 0
+    checkerRef := 1
+    classMethods := [("__init__", 7),  ("state", 8),  ("context", 9),  ("history", 10),  ("rollback_last_step", 11),  ("get_state", 12),  ("getState", 13),  ("get_context", 14),  ("getContext", 15),  ("_bounds", 16),  ("_invariant", 17),  ("reset", 18),  ("step", 19)]
+    callableObjects := []
+    checker := { state := "", context := 0, history := 0, undo := none, constructorSeed := none, busy := false, instanceAttrs := [] }
+    fuel := 0 }
+
+def balanceInvariantPyPreparedFrame : TargetFrame := { qualifiedName := "module",   remaining := [],   locals := [("WorldChecker", 100),              ("sanitize_world_payload", 86),              ("evaluate_world", 85),              ("_safe_integer", 84),              ("_div", 83),              ("_number", 82),              ("_boolean", 81),              ("_UNDEFINED", 80),              ("_MAX_INTEGER", 79),              ("_EFFECT", 78),              ("_NAME", 77),              ("_TOKEN", 76),              ("_PRECEDENCE", 75),              ("_DEFAULTS", 74),              ("_INITIAL", 71),              ("_WORLD", 69),              ("_freeze", 26),              ("IWorldChecker", 25),              ("Any", 24),              ("types", 23),              ("re", 22),              ("math", 21),              ("json", 20),              ("copy", 19)],   captures := [],   receiver := none,   control := ControlResult.normal }
+
+
+set_option smartUnfolding false
+set_option maxRecDepth 200000
+set_option maxHeartbeats 10000000
+/-- Closed preparation certificate; generated data is checked against actual source preparation. -/
+theorem balanceInvariant_python_prepared_eq :
+    balancePreparation .python = (balanceInvariantPyPreparedModel 0, balanceInvariantPyPreparedFrame) := by
+  simp only [balancePreparation_python_eq, balancePythonPrepared,
+    balanceInvariantPyPreparedModel, balanceInvariantPyPreparedFrame]
+  simp only [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]
+  with_unfolding_all
+    try dsimp
+    rfl
+
+
+set_option smartUnfolding false
+set_option maxRecDepth 200000
+set_option maxHeartbeats 10000000
+
+theorem balanceInvariant_py_input_eq (b : Int) :
+    balanceResetPostBounds .python b = (balanceInvariantPyInput b, balanceInvariantPyInputFrame) := by
+  simp only [balanceResetPostBounds, balanceInvariantPyInput, balanceInvariantPyInputFrame, balanceBoundsFinal, balanceBoundsEntry,
+    balanceBoundsCandidate, balanceBoundsDefinition, balanceResetPostOverlay,
+    balanceBoundsStored_eq_generic, storedBounds, balancePythonSafeIntegerClosure,
+    balanceResetPythonOverlayAfterHelper, balanceResetPythonOverlayBound,
+    balanceResetMiddleEntry, balanceResetCandidateEntry,
+    balanceCanonicalResetStage, balanceCanonicalResetEntry, balancePythonResetBodyEntry,
+    resetSnapshotsInstalled, balanceResetRollback, balanceResetSnapshots,
+    balanceResetBodyEntry, balanceConstructorBodyEntry, balanceConstructorBoundEntry,
+    balanceConstructorArgumentEntry, balanceStoredReset, balanceResetLookup,
+    balanceStoredConstructor, balanceConstructorLookup, balanceConstructorName,
+    balanceInvariant_python_prepared_eq, balanceInvariantPyPreparedModel, balanceInvariantPyPreparedFrame]
+  try simp only [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]
+  with_unfolding_all
+    rfl
+
+
+namespace BalanceCanonicalPython
+set_option smartUnfolding false
+set_option maxRecDepth 200000
+set_option maxHeartbeats 1000000
+
+theorem invariant_evidence_of_call (b : Int)
+    (hCall : evalExpr 74 (balanceProgram .python)
+      (balanceInvariantPyInput b) balanceInvariantPyInputFrame (resetInvariantCall .python) =
+      .ok ⟨balanceInvariantPyFinal b, .ok .null⟩) :
+    BalanceResetInvariantEvidence .python b (balanceInvariantPyFinal b) 79 74 := by
+  constructor
+  · rw [congrArg Prod.fst (balanceInvariant_py_input_eq b),
+      congrArg Prod.snd (balanceInvariant_py_input_eq b)]
+    exact hCall
+  · intro _
+    rw [congrArg Prod.fst (balanceInvariant_py_input_eq b),
+      congrArg Prod.snd (balanceInvariant_py_input_eq b)]
+    rfl
+  · rw [congrArg Prod.snd (balanceInvariant_py_input_eq b)]
+    rfl
+  · rw [congrArg Prod.snd (balanceInvariant_py_input_eq b)]
+    rfl
+  · rw [congrArg Prod.snd (balanceInvariant_py_input_eq b)]
+    dsimp only
+    intro _
+    rfl
+
+theorem after_invariant_eq (b : Int) :
+    balanceResetAfterInvariant .python b (balanceInvariantPyFinal b) = balanceInvariantPyBound b := by
+  unfold balanceResetAfterInvariant
+  rw [congrArg Prod.snd (balanceInvariant_py_input_eq b)]
+  rfl
+
+
+theorem reset_final_eq (b : Int) :
+    balanceResetCanonicalFinal .python b (balanceInvariantPyFinal b) 79 = balanceInvariantPyReset b := by
+  unfold balanceResetCanonicalFinal balanceResetCanonicalPublished
+  rw [after_invariant_eq]
+  rfl
+
+
+theorem copied_heapWF (b : Int) : HeapWF .python (balanceInvariantPyCopied b) := by
+  unfold HeapWF
+  rw [balanceInvariant_py_heapWF_footprint]
+  exact balanceInvariant_py_heapWF_zero
+
+
+theorem constructor_ref (lang : TargetLang) (b : Int) :
+    (balanceConstructorBodyEntry lang b).1.checkerRef =
+      (balancePreparation lang).1.checkerRef := by
+  unfold balanceConstructorBodyEntry balanceConstructorBoundEntry
+    balanceConstructorArgumentEntry
+  rfl
+
+
+theorem preparation_ref : (balancePreparation .python).1.checkerRef = 1 := by
+  rw [balanceInvariant_python_prepared_eq]
+  rfl
+
+theorem constructor_locals (lang : TargetLang) (b : Int) :
+    (balanceConstructorBodyEntry lang b).2.locals =
+      [(balanceConstructorParam lang, (balanceConstructorBoundEntry lang b).1.nextCell)] := rfl
+
+theorem constructor_captures (lang : TargetLang) (b : Int) :
+    (balanceConstructorBodyEntry lang b).2.captures =
+      (balanceStoredConstructor lang).2.captures := rfl
+
+theorem address_of_bindings (m : TargetMachine) (f : TargetFrame) (name : String)
+    (hl : f.locals.lookup name = none) (hc : f.captures.lookup name = none)
+    (hg : m.globals.lookup name = some 1) : snapshotAddress m f name = some 1 := by
+  unfold snapshotAddress
+  rw [hl, hc]
+  exact hg
+
+theorem singleton_other (ref : CellRef) :
+    [(balanceConstructorParam .python, ref)].lookup "dict" = none := rfl
+
+theorem constructor_dict_address (b : Int) :
+    snapshotAddress (balanceInvariantPyReset b) (balanceConstructorBodyEntry .python b).2
+      "dict" = some 1 :=
+  address_of_bindings _ _ _
+    ((congrArg (fun ls => ls.lookup "dict") (constructor_locals .python b)).trans
+      (singleton_other _))
+    ((congrArg (fun ls => ls.lookup "dict") (constructor_captures .python b)).trans
+      balancePreparation_python_types.2.1)
+    (by rfl)
+
+theorem literal_copy_evidence (b : Int) :
+    BalanceConstructorCopyEvidence .python b (balanceInvariantPyReset b) := by
+  constructor
+  · exact (balanceConstructorBodyEntry_receiver .python b).trans
+      (congrArg some ((constructor_ref .python b).trans preparation_ref))
+  · rfl
+  · intro h; cases h
+  · intro h; cases h
+  · intro _
+    rw [localValue_of_snapshotAddress (by decide) (constructor_dict_address b)]
+    rfl
+
+theorem copy_evidence (b : Int) :
+    BalanceConstructorCopyEvidence .python b
+      (balanceResetCanonicalFinal .python b (balanceInvariantPyFinal b) 79) :=
+  Eq.mpr (congrArg (BalanceConstructorCopyEvidence .python b) (reset_final_eq b))
+    (literal_copy_evidence b)
+
+end BalanceCanonicalPython
+
+
+namespace BalanceCanonicalPython
+set_option smartUnfolding false
+set_option maxRecDepth 200000
+set_option maxHeartbeats 1000000
+
+/-- Conditional execution of the actual stored reset body on canonical seeds.
+The full call, publication, cleanup and frame are retained in the conclusion. -/
+theorem canonical_reset (b : Int) (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S)
+    (hCall : evalExpr 74 (balanceProgram .python)
+      (balanceInvariantPyInput b) balanceInvariantPyInputFrame (resetInvariantCall .python) =
+      .ok ⟨balanceInvariantPyFinal b, .ok .null⟩) :
+    execStmt 89 (balanceProgram .python)
+      (balanceResetOriginalEntry .python b).1 (balanceResetOriginalEntry .python b).2
+      (balanceStoredReset .python).2.body =
+      .ok ⟨balanceResetCanonicalFinal .python b (balanceInvariantPyFinal b) 79,
+        (balanceResetAfterInvariant .python b (balanceInvariantPyFinal b)).2, .normal⟩ :=
+  balanceReset_canonical_execute_of_invariant
+    (lang := .python) (b := b) (final := balanceInvariantPyFinal b) (candidate := 79)
+    hb (invariant_evidence_of_call b hCall)
+
+/-- The original parsed constructor body restores its caller frame and performs
+its final seed copy after the actual reset. Only the exact actual invariant call is assumed. -/
+theorem canonical_constructor (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S)
+    (hCall : evalExpr 74 (balanceProgram .python)
+      (balanceInvariantPyInput b) balanceInvariantPyInputFrame (resetInvariantCall .python) =
+      .ok ⟨balanceInvariantPyFinal b, .ok .null⟩) :
+    execStmt 99 (balanceProgram .python)
+      (balanceConstructorBodyEntry .python b).1 (balanceConstructorBodyEntry .python b).2
+      (balanceStoredConstructor .python).2.body =
+      .ok ⟨balanceConstructorCopied .python
+          (balanceResetCanonicalFinal .python b (balanceInvariantPyFinal b) 79) b,
+        (balanceConstructorBodyEntry .python b).2, .normal⟩ :=
+  balanceConstructor_canonical_execute_of_invariant
+    (lang := .python) (b := b) (final := balanceInvariantPyFinal b) (candidate := 79)
+    hb (invariant_evidence_of_call b hCall) (copy_evidence b)
+
+theorem targetConstruct_sound (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S)
+    (hCall : evalExpr 74 (balanceProgram .python)
+      (balanceInvariantPyInput b) balanceInvariantPyInputFrame (resetInvariantCall .python) =
+      .ok ⟨balanceInvariantPyFinal b, .ok .null⟩) :
+    targetConstruct (balanceProgram .python) (canonicalBalanceSeed .python b) =
+      .ok (balanceConstructorCopied .python
+        (balanceResetCanonicalFinal .python b (balanceInvariantPyFinal b) 79) b) :=
+  targetConstruct_balance_of_invariant
+    (lang := .python) (b := b) (final := balanceInvariantPyFinal b) (candidate := 79)
+    hb (invariant_evidence_of_call b hCall) (copy_evidence b)
+
+theorem copied_eq (b : Int) :
+    balanceConstructorCopied .python
+      (balanceResetCanonicalFinal .python b (balanceInvariantPyFinal b) 79) b =
+      balanceInvariantPyCopied b :=
+  congrArg (fun m => balanceConstructorCopied .python m b) (reset_final_eq b)
+
+theorem canonical_copied_heapWF (b : Int) :
+    HeapWF .python (balanceConstructorCopied .python
+      (balanceResetCanonicalFinal .python b (balanceInvariantPyFinal b) 79) b) :=
+  Eq.mpr (congrArg (HeapWF .python) (copied_eq b)) (copied_heapWF b)
+
+theorem canonical_balance_rep (b : Int) :
+    BalanceRep .python b (balanceConstructorCopied .python
+      (balanceResetCanonicalFinal .python b (balanceInvariantPyFinal b) 79) b) := by
+  have candidate : objectAt (balanceInvariantPyFinal b) 79 =
+      .ok (balanceHeapObject .python (balanceInvariantPyFinal b) b) := by rfl
+  exact balanceResetCanonicalFinal_rep_after_copy
+    (lang := .python) (b := b) (final := balanceInvariantPyFinal b) (candidate := 79)
+    candidate
+    (by change (79 : ObjRef) ≠ 100; decide)
+    (by change (79 : ObjRef) ≠ 101; decide)
+    (canonical_copied_heapWF b)
+
+/-- The literal allocation model is the actual targetConstruct result. -/
+theorem targetConstruct_literal (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S)
+    (hCall : evalExpr 74 (balanceProgram .python)
+      (balanceInvariantPyInput b) balanceInvariantPyInputFrame (resetInvariantCall .python) =
+      .ok ⟨balanceInvariantPyFinal b, .ok .null⟩) :
+    targetConstruct (balanceProgram .python) (canonicalBalanceSeed .python b) =
+      .ok (balanceInvariantPyCopied b) :=
+  (targetConstruct_sound b hb hCall).trans
+    (congrArg (fun m => (Except.ok m : Except TargetError TargetMachine)) (copied_eq b))
+
+theorem literal_balance_rep (b : Int) : BalanceRep .python b (balanceInvariantPyCopied b) :=
+  Eq.mp (congrArg (BalanceRep .python b) (copied_eq b)) (canonical_balance_rep b)
+
+theorem targetConstruct_balance_rep (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S)
+    (hCall : evalExpr 74 (balanceProgram .python)
+      (balanceInvariantPyInput b) balanceInvariantPyInputFrame (resetInvariantCall .python) =
+      .ok ⟨balanceInvariantPyFinal b, .ok .null⟩) :
+    ∃ m, targetConstruct (balanceProgram .python) (canonicalBalanceSeed .python b) = .ok m ∧
+      BalanceRep .python b m :=
+  ⟨balanceInvariantPyCopied b, targetConstruct_literal b hb hCall, literal_balance_rep b⟩
+
+end BalanceCanonicalPython
+
+
+namespace BalanceCanonicalPython
+
+/-- The literal call, publication and constructor copy retain their separate
+allocations. This is additional kernel evidence about the actual final model. -/
+theorem canonical_allocations (b : Int) :
+    (balanceInvariantPyFinal b).nextObject = 100 ∧
+    (balanceInvariantPyReset b).nextObject = 101 ∧
+    (balanceInvariantPyCopied b).nextObject = 102 ∧
+    (balanceInvariantPyCopied b).checker.context = 79 ∧
+    (balanceInvariantPyCopied b).checker.history = 100 ∧
+    (balanceInvariantPyCopied b).checker.constructorSeed = some 101 ∧
+    (balanceInvariantPyCopied b).nextCell = 144 ∧
+    (balanceInvariantPyCopied b).nextClosure = 26 := by
+  exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+
+theorem canonical_bindings (b : Int) :
+    (balanceInvariantPyCopied b).frames = (balanceInvariantPyInput b).frames ∧
+    (balanceInvariantPyCopied b).globals = (balanceInvariantPyFinal b).globals ∧
+    (balanceInvariantPyCopied b).cells = (balanceInvariantPyBound b).1.cells ∧
+    (balanceInvariantPyCopied b).closures = (balanceInvariantPyFinal b).closures ∧
+    (balanceInvariantPyCopied b).classMethods = (balanceInvariantPyFinal b).classMethods :=
+  ⟨rfl, rfl, rfl, rfl, rfl⟩
+
+end BalanceCanonicalPython
+
+
+namespace BalanceInvariantLexemes
+set_option smartUnfolding false
+set_option pp.maxSteps 100
+set_option maxRecDepth 4096
+set_option maxHeartbeats 1000000
+ theorem token0 : tokenMatchAt "balance >= 0" 0 = some ⟨"balance", 0, 7, []⟩ := by decide +kernel
+ theorem token7 : tokenMatchAt "balance >= 0" 7 = some ⟨" ", 7, 8, []⟩ := by decide +kernel
+ theorem token8 : tokenMatchAt "balance >= 0" 8 = some ⟨">=", 8, 10, []⟩ := by decide +kernel
+ theorem token10 : tokenMatchAt "balance >= 0" 10 = some ⟨" ", 10, 11, []⟩ := by decide +kernel
+ theorem token11 : tokenMatchAt "balance >= 0" 11 = some ⟨"0", 11, 12, []⟩ := by decide +kernel
+ theorem nameBalance : identifierFullMatch "balance" = true := by decide +kernel
+ theorem nameZero : identifierFullMatch "0" = false := by decide +kernel
+ theorem spaceBalance (m : TargetMachine) : hostCall .python m .stringIsSpace
+    (some (.string "balance")) [] = .ok ⟨m, .ok (.bool false)⟩ := by rw [hostCall.eq_def]; with_unfolding_all rfl
+ theorem spaceOperator (m : TargetMachine) : hostCall .python m .stringIsSpace
+    (some (.string ">=")) [] = .ok ⟨m, .ok (.bool false)⟩ := by rw [hostCall.eq_def]; with_unfolding_all rfl
+ theorem spaceZero (m : TargetMachine) : hostCall .python m .stringIsSpace
+    (some (.string "0")) [] = .ok ⟨m, .ok (.bool false)⟩ := by rw [hostCall.eq_def]; with_unfolding_all rfl
+ theorem spaceSpace (m : TargetMachine) : hostCall .python m .stringIsSpace
+    (some (.string " ")) [] = .ok ⟨m, .ok (.bool true)⟩ := by rw [hostCall.eq_def]; with_unfolding_all rfl
+ theorem digitBalance (m : TargetMachine) : hostCall .python m .stringIsDigit
+    (some (.string "b")) [] = .ok ⟨m, .ok (.bool false)⟩ := by rw [hostCall.eq_def]; with_unfolding_all rfl
+ theorem digitZero (m : TargetMachine) : hostCall .python m .stringIsDigit
+    (some (.string "0")) [] = .ok ⟨m, .ok (.bool true)⟩ := by rw [hostCall.eq_def]; with_unfolding_all rfl
+ theorem startsBalance (m : TargetMachine) : hostCall .python m .stringStartsWith
+    (some (.string "balance")) [.string "'"] = .ok ⟨m, .ok (.bool false)⟩ := by rw [hostCall.eq_def]; with_unfolding_all rfl
+ theorem startsZero (m : TargetMachine) : hostCall .python m .stringStartsWith
+    (some (.string "0")) [.string "'"] = .ok ⟨m, .ok (.bool false)⟩ := by rw [hostCall.eq_def]; with_unfolding_all rfl
+ theorem floatZero (m : TargetMachine) : hostCall .python m .float none
+    [.string "0"] = .ok ⟨m, .ok (.number .pyFloat 0)⟩ := by rw [hostCall.eq_def]; with_unfolding_all rfl
+end BalanceInvariantLexemes
+
+
+section PythonInvariantReduction
+attribute [local irreducible] hostCall binaryValue
+open BalanceInvariantLexemes
+set_option smartUnfolding false
+set_option maxRecDepth 32768
+set_option maxHeartbeats 5000000
+
+theorem balanceInvariant_py_call_nat (n : Nat) (hb : n ≤ 9007199254740991) :
+    evalExpr 74 (balanceProgram .python) (balanceInvariantPyInput (Int.ofNat n))
+      balanceInvariantPyInputFrame (resetInvariantCall .python) =
+      .ok ⟨balanceInvariantPyFinal (Int.ofNat n), .ok .null⟩ := by
+  have habs : (Int.ofNat n).natAbs ≤ 9007199254740991 := hb
+  have hfloat (m : TargetMachine) (tag : NumberTag) :
+      hostCall BalancePrograms.balancePyProgram.lang m .float none
+        [.number tag (Int.ofNat n)] =
+        .ok ⟨m, .ok (.number .pyFloat (Int.ofNat n))⟩ := by
+    change hostCall .python m .float none [.number tag (Int.ofNat n)] = _
+    exact host_float_exact_tag m tag (Int.ofNat n) habs
+  have hzero (m : TargetMachine) (tag : NumberTag) :
+      hostCall BalancePrograms.balancePyProgram.lang m .float none [.number tag 0] =
+        .ok ⟨m, .ok (.number .pyFloat 0)⟩ := by
+    change hostCall .python m .float none [.number tag 0] = _
+    exact host_float_exact_tag m tag 0 (by decide)
+  have hge (m : TargetMachine) (l r : NumberTag) :
+      binaryValue BalancePrograms.balancePyProgram.lang m .ge
+        (.number l (Int.ofNat n)) (.number r 0) = .ok (.ok (.bool true)) := by
+    change binaryValue .python m .ge (.number l (Int.ofNat n)) (.number r 0) = _
+    exact resetInvariant_ge_nonnegative_tags (Int.ofNat_nonneg n)
+  simp only [balanceInvariantPyInput, balanceInvariantPyInputFrame, balanceInvariantPyFinal]
+  simp only [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]
+  exact balance_python_invariant_certificate [n, hb, habs, hfloat, hzero, hge]
+
+end PythonInvariantReduction
+
+
+namespace BalanceCanonicalPython
+namespace Unconditional
+set_option smartUnfolding false
+set_option maxRecDepth 200000
+set_option maxHeartbeats 1000000
+
+theorem canonical_call (b : Int) (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S) :
+    evalExpr 74 (balanceProgram .python)
+      (balanceInvariantPyInput b) balanceInvariantPyInputFrame (resetInvariantCall .python) =
+      .ok ⟨balanceInvariantPyFinal b, .ok .null⟩ := by
+  have hc : Int.ofNat b.toNat = b := Int.toNat_of_nonneg hb.1
+  have hi : Int.ofNat b.toNat ≤ Int.ofNat 9007199254740991 := by
+    rw [hc]
+    exact hb.2
+  have h := balanceInvariant_py_call_nat b.toNat (Int.ofNat_le.mp hi)
+  rw [hc] at h
+  exact h
+
+theorem canonical_reset (b : Int) (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S) :
+    execStmt 89 (balanceProgram .python)
+      (balanceResetOriginalEntry .python b).1 (balanceResetOriginalEntry .python b).2
+      (balanceStoredReset .python).2.body =
+      .ok ⟨balanceResetCanonicalFinal .python b (balanceInvariantPyFinal b) 79,
+        (balanceResetAfterInvariant .python b (balanceInvariantPyFinal b)).2, .normal⟩ :=
+  BalanceCanonicalPython.canonical_reset b hb (canonical_call b hb)
+
+theorem canonical_constructor (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S) :
+    execStmt 99 (balanceProgram .python)
+      (balanceConstructorBodyEntry .python b).1 (balanceConstructorBodyEntry .python b).2
+      (balanceStoredConstructor .python).2.body =
+      .ok ⟨balanceConstructorCopied .python
+          (balanceResetCanonicalFinal .python b (balanceInvariantPyFinal b) 79) b,
+        (balanceConstructorBodyEntry .python b).2, .normal⟩ :=
+  BalanceCanonicalPython.canonical_constructor b hb (canonical_call b hb)
+
+theorem targetConstruct_sound (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S) :
+    targetConstruct (balanceProgram .python) (canonicalBalanceSeed .python b) =
+      .ok (balanceConstructorCopied .python
+        (balanceResetCanonicalFinal .python b (balanceInvariantPyFinal b) 79) b) :=
+  BalanceCanonicalPython.targetConstruct_sound b hb (canonical_call b hb)
+
+theorem targetConstruct_literal (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S) :
+    targetConstruct (balanceProgram .python) (canonicalBalanceSeed .python b) =
+      .ok (balanceInvariantPyCopied b) :=
+  BalanceCanonicalPython.targetConstruct_literal b hb (canonical_call b hb)
+
+theorem targetConstruct_balance_rep (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S) :
+    ∃ m, targetConstruct (balanceProgram .python) (canonicalBalanceSeed .python b) = .ok m ∧
+      BalanceRep .python b m :=
+  BalanceCanonicalPython.targetConstruct_balance_rep b hb (canonical_call b hb)
+
+end Unconditional
+end BalanceCanonicalPython
+
+
+/-- Full final heap of the source invariant method, including its helper calls. -/
+def balanceCanonicalInvariantFinal (lang : TargetLang) (b : Int) : TargetMachine :=
+  match lang with
+  | .ts => balanceInvariantTsFinal b
+  | .python => balanceInvariantPyFinal b
+
+def balanceCanonicalCandidate (lang : TargetLang) : ObjRef :=
+  match lang with
+  | .ts => 23
+  | .python => 79
+
+/-- The actual publication and cleanup result, before the constructor seed copy. -/
+def balanceCanonicalResetFinal (lang : TargetLang) (b : Int) : TargetMachine :=
+  balanceResetCanonicalFinal lang b (balanceCanonicalInvariantFinal lang b)
+    (balanceCanonicalCandidate lang)
+
+/-- The final source constructor result retains all intermediate allocations. -/
+def balanceCanonicalConstructed (lang : TargetLang) (b : Int) : TargetMachine :=
+  match lang with
+  | .ts => balanceInvariantTsCopied b
+  | .python => balanceInvariantPyCopied b
+
+/-- All invariant and publication premises are discharged for canonical seeds. -/
+theorem balanceReset_canonical_invariant_evidence (lang : TargetLang) (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S) :
+    BalanceResetInvariantEvidence lang b (balanceCanonicalInvariantFinal lang b)
+      (balanceCanonicalCandidate lang) (if lang == .ts then 80 else 74) := by
+  cases lang with
+  | ts => exact BalanceCanonicalTS.invariant_evidence b hb.1
+  | python => exact BalanceCanonicalPython.invariant_evidence_of_call b (BalanceCanonicalPython.Unconditional.canonical_call b hb)
+
+/-- Actual canonical source invariant calls return undefined in TS and null in
+Python for every bounded balance; no helper or execution-success premise. -/
+theorem resetInvariant_canonical_execute (lang : TargetLang) (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S) :
+    evalExpr (if lang == .ts then 80 else 74) (balanceProgram lang)
+      (balanceResetPostBounds lang b).1 (balanceResetPostBounds lang b).2
+      (resetInvariantCall lang) =
+      .ok ⟨balanceCanonicalInvariantFinal lang b, .ok (resetValidationResult lang)⟩ :=
+  (balanceReset_canonical_invariant_evidence lang b hb).call
+
+/-- Unconditional execution of the actual parsed reset body, with publication,
+finally cleanup and the exact returned frame. -/
+theorem balanceReset_canonical_execute (lang : TargetLang) (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S) :
+    execStmt (if lang == .ts then 96 else 89) (balanceProgram lang)
+      (balanceResetOriginalEntry lang b).1 (balanceResetOriginalEntry lang b).2
+      (balanceStoredReset lang).2.body =
+      .ok ⟨balanceCanonicalResetFinal lang b,
+        (balanceResetAfterInvariant lang b (balanceCanonicalInvariantFinal lang b)).2,
+        .normal⟩ :=
+  balanceReset_canonical_execute_of_invariant hb
+    (balanceReset_canonical_invariant_evidence lang b hb)
+
+/-- Unconditional original constructor execution restores its caller frame. -/
+theorem balanceConstructor_canonical_execute (lang : TargetLang) (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S) :
+    execStmt 99 (balanceProgram lang)
+      (balanceConstructorBodyEntry lang b).1 (balanceConstructorBodyEntry lang b).2
+      (balanceStoredConstructor lang).2.body =
+      .ok ⟨balanceConstructorCopied lang (balanceCanonicalResetFinal lang b) b,
+        (balanceConstructorBodyEntry lang b).2, .normal⟩ := by
+  cases lang with
+  | ts => exact BalanceCanonicalTS.canonical_constructor b hb
+  | python => exact BalanceCanonicalPython.Unconditional.canonical_constructor b hb
+
+/-- The canonical generated constructor executes successfully for every safe,
+nonnegative balance in either target language. -/
+theorem targetConstruct_sound (lang : TargetLang) (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S) :
+    targetConstruct (balanceProgram lang) (canonicalBalanceSeed lang b) =
+      .ok (balanceCanonicalConstructed lang b) := by
+  cases lang with
+  | ts => exact BalanceCanonicalTS.targetConstruct_literal b hb
+  | python => exact BalanceCanonicalPython.Unconditional.targetConstruct_literal b hb
+
+/-- The exact constructed model satisfies the complete physical representation. -/
+theorem balanceCanonicalConstructed_rep (lang : TargetLang) (b : Int) :
+    BalanceRep lang b (balanceCanonicalConstructed lang b) := by
+  cases lang with
+  | ts => exact BalanceCanonicalTS.literal_balance_rep b
+  | python => exact BalanceCanonicalPython.literal_balance_rep b
+
+theorem targetConstruct_balance_rep (lang : TargetLang) (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S) :
+    ∃ m, targetConstruct (balanceProgram lang) (canonicalBalanceSeed lang b) = .ok m ∧
+      BalanceRep lang b m :=
+  ⟨balanceCanonicalConstructed lang b, targetConstruct_sound lang b hb,
+    balanceCanonicalConstructed_rep lang b⟩
+
+
+
+end CanonicalBalanceExecution
 
 end Harmonia.Applications.Kadmos.Generated

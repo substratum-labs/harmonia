@@ -814,3 +814,701 @@ example (lang : TargetLang) (m : TargetMachine) (f : TargetFrame)
         (resetInvariantBindings lang m f candidate).2, .ok ()⟩ := by
   rw [(balanceStoredInvariant_params lang).1]
   exact resetInvariant_bindCallParams (balanceStoredInvariant_params lang).2
+
+-- Batch 16: direct contracts, mirrored in both requested regression roots.
+
+section Batch16NumericCleanContracts
+
+open Harmonia.Applications.Kadmos.Generated.T398Batch16Numeric
+
+example (m : TargetMachine) (f : TargetFrame) (k : Nat) :
+    execStmt (k + 3) (balanceProgram .ts) m f tsDefinition =
+      .ok ⟨definedMachine .ts m f "numeric" tsBody, definedFrame m f "numeric", .normal⟩ := by
+  apply tsCreate_execute <;> assumption
+
+example {m f b k} (h : TsPhysical m f b) :
+    execStmt (k + 8) (balanceProgram .ts) m f tsBody =
+      .ok ⟨m, f, .returned (.number .jsNumber b)⟩ := by
+  apply tsBody_execute <;> assumption
+
+example {m f callee arg ref closure b k}
+    (hc : localValue m f callee = .ok (.closure ref))
+    (hv : localValue m f arg = .ok (.number .jsNumber b))
+    (hr : closureAt m ref = .ok closure)
+    (hp : closure.params = [⟨"value", none⟩])
+    (hs : closure.body = tsBody)
+    (h : let e := callEntry m closure (.number .jsNumber b)
+      TsPhysical e.1 e.2 b) :
+    evalExpr (k + 9) (balanceProgram .ts) m f
+      (.call (.local callee) (.sequence (.local arg) .empty)) =
+      .ok ⟨(callEntry m closure (.number .jsNumber b)).1, .ok (.number .jsNumber b)⟩ := by
+  apply tsCall_execute <;> assumption
+
+example {m f b k} (h : PyPhysical m f b)
+    (hb : b.natAbs ≤ 9007199254740991) :
+    execStmt (k + 10) (balanceProgram .python) m f pyClosure.body =
+      .ok ⟨resetSafeTupleMachine m, f, .returned (.number .pyFloat b)⟩ := by
+  apply pyBody_execute <;> assumption
+
+example {m f callee arg ref closure b k}
+    (hc : localValue m f callee = .ok (.closure ref))
+    (hv : localValue m f arg = .ok (.number .pyInt b))
+    (hr : closureAt m ref = .ok closure)
+    (hp : closure.params = [⟨"value", none⟩]) (hs : closure.body = pyClosure.body)
+    (h : let e := callEntry m closure (.number .pyInt b)
+      PyPhysical e.1 e.2 b)
+    (hb : 0 ≤ b ∧ b ≤ 9007199254740991) :
+    evalExpr (k + 11) (balanceProgram .python) m f
+      (.call (.local callee) (.sequence (.local arg) .empty)) =
+      .ok ⟨resetSafeTupleMachine (callEntry m closure (.number .pyInt b)).1,
+        .ok (.number .pyFloat b)⟩ := by
+  apply pyCall_interval <;> assumption
+
+example {m f callee arg ref closure k}
+    (hc : localValue m f callee = .ok (.closure ref))
+    (hv : localValue m f arg = .ok (.number .pyFloat 0))
+    (hr : closureAt m ref = .ok closure)
+    (hp : closure.params = [⟨"value", none⟩]) (hs : closure.body = pyClosure.body)
+    (h : let e := callEntry m closure (.number .pyFloat 0)
+      PyFloatPhysical e.1 e.2 0) :
+    evalExpr (k + 11) (balanceProgram .python) m f
+      (.call (.local callee) (.sequence (.local arg) .empty)) =
+      .ok ⟨resetSafeTupleMachine (callEntry m closure (.number .pyFloat 0)).1,
+        .ok (.number .pyFloat 0)⟩ := by
+  apply pyFloatCall_zero <;> assumption
+
+example {m f b k} (h : PyFloatPhysical m f b)
+    (hb : b.natAbs ≤ 9007199254740991) :
+    execStmt (k + 10) (balanceProgram .python) m f pyClosure.body =
+      .ok ⟨resetSafeTupleMachine m, f, .returned (.number .pyFloat b)⟩ := by
+  apply pyFloatBody_execute <;> assumption
+
+example {m f ref closure b k}
+    (hc : localValue m f "numeric" = .ok (.closure ref))
+    (hl : localValue m f "left" = .ok (.number .jsNumber b))
+    (hr : closureAt m ref = .ok closure)
+    (hp : closure.params = [⟨"value", none⟩]) (hs : closure.body = tsBody)
+    (h : let e := callEntry m closure (.number .jsNumber b)
+      TsPhysical e.1 e.2 b)
+    (hc2 : let n := (callEntry m closure (.number .jsNumber b)).1
+      localValue n f "numeric" = .ok (.closure ref))
+    (hz : let n := (callEntry m closure (.number .jsNumber b)).1
+      localValue n f "right" = .ok (.number .jsNumber 0))
+    (h2 : let n := (callEntry m closure (.number .jsNumber b)).1
+      let e := callEntry n closure (.number .jsNumber 0)
+      TsPhysical e.1 e.2 0)
+    (hb : 0 ≤ b) :
+    let n := (callEntry m closure (.number .jsNumber b)).1
+    evalExpr (k + 10) (balanceProgram .ts) m f
+      (.binary .ge
+        (.call (.local "numeric") (.sequence (.local "left") .empty))
+        (.call (.local "numeric") (.sequence (.local "right") .empty))) =
+      .ok ⟨(callEntry n closure (.number .jsNumber 0)).1, .ok (.bool true)⟩ := by
+  apply tsGe_execute <;> assumption
+
+example {m f ref closure b k}
+    (hc : localValue m f "_number" = .ok (.closure ref))
+    (hl : localValue m f "left" = .ok (.number .pyInt b))
+    (hr : closureAt m ref = .ok closure)
+    (hp : closure.params = [⟨"value", none⟩]) (hs : closure.body = pyClosure.body)
+    (h : let e := callEntry m closure (.number .pyInt b)
+      PyPhysical e.1 e.2 b)
+    (hc2 : let n := resetSafeTupleMachine (callEntry m closure (.number .pyInt b)).1
+      localValue n f "_number" = .ok (.closure ref))
+    (hz : let n := resetSafeTupleMachine (callEntry m closure (.number .pyInt b)).1
+      localValue n f "right" = .ok (.number .pyFloat 0))
+    (h2 : let n := resetSafeTupleMachine (callEntry m closure (.number .pyInt b)).1
+      let e := callEntry n closure (.number .pyFloat 0)
+      PyFloatPhysical e.1 e.2 0)
+    (hb : 0 ≤ b ∧ b ≤ 9007199254740991) :
+    let n := resetSafeTupleMachine (callEntry m closure (.number .pyInt b)).1
+    evalExpr (k + 12) (balanceProgram .python) m f
+      (.binary .ge
+        (.call (.local "_number") (.sequence (.local "left") .empty))
+        (.call (.local "_number") (.sequence (.local "right") .empty))) =
+      .ok ⟨resetSafeTupleMachine (callEntry n closure (.number .pyFloat 0)).1, .ok (.bool true)⟩ := by
+  apply pyGe_execute <;> assumption
+
+example (lang : TargetLang) (m : TargetMachine) (f : TargetFrame)
+    (name : String) (body : TargetStmt) :
+    let n := definedMachine lang m f name body
+    n.nextCell = m.nextCell + 1 ∧ n.nextClosure = m.nextClosure + 1 ∧
+    n.nextObject = m.nextObject ∧ n.objects = m.objects ∧ n.checker = m.checker ∧
+    n.globals = m.globals := by
+  apply definedMachine_effects <;> assumption
+
+end Batch16NumericCleanContracts
+
+section Batch16CompositionContracts
+
+example (lang : TargetLang) (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ 9007199254740991) (k : Nat) :
+    execStmt (k + (if lang == .ts then 33 else 32)) (balanceProgram lang)
+      (balanceCanonicalResetStage lang b 3).1 (balanceCanonicalResetStage lang b 3).2
+      (balanceResetProtected lang).body =
+    execStmt (k + 27) (balanceProgram lang)
+      (balanceResetPostBounds lang b).1 (balanceResetPostBounds lang b).2
+      (dropStmts (resetValidationIndex lang + 2) (balanceResetProtected lang).body) := by
+  apply balanceReset_canonical_to_invariant <;> assumption
+
+example {lang b final candidate}
+    (hb : 0 ≤ b ∧ b ≤ 9007199254740991)
+    (h : BalanceResetInvariantEvidence lang b final candidate (if lang == .ts then 80 else 74)) :
+    execStmt (if lang == .ts then 96 else 89) (balanceProgram lang)
+      (balanceResetOriginalEntry lang b).1 (balanceResetOriginalEntry lang b).2
+      (balanceStoredReset lang).2.body =
+      .ok ⟨balanceResetCanonicalFinal lang b final candidate,
+        (balanceResetAfterInvariant lang b final).2, .normal⟩ := by
+  apply balanceReset_canonical_execute_of_invariant <;> assumption
+
+example {lang b final candidate}
+    (hb : 0 ≤ b ∧ b ≤ 9007199254740991)
+    (h : BalanceResetInvariantEvidence lang b final candidate (if lang == .ts then 80 else 74))
+    (hc : BalanceConstructorCopyEvidence lang b (balanceResetCanonicalFinal lang b final candidate)) :
+    execStmt 99 (balanceProgram lang)
+      (balanceConstructorBodyEntry lang b).1 (balanceConstructorBodyEntry lang b).2
+      (balanceStoredConstructor lang).2.body =
+      .ok ⟨balanceConstructorCopied lang (balanceResetCanonicalFinal lang b final candidate) b,
+        (balanceConstructorBodyEntry lang b).2, .normal⟩ := by
+  apply balanceConstructor_canonical_execute_of_invariant <;> assumption
+
+example {lang b final candidate}
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S)
+    (h : BalanceResetInvariantEvidence lang b final candidate (if lang == .ts then 80 else 74))
+    (hc : BalanceConstructorCopyEvidence lang b (balanceResetCanonicalFinal lang b final candidate)) :
+    targetConstruct (balanceProgram lang) (canonicalBalanceSeed lang b) =
+      .ok (balanceConstructorCopied lang (balanceResetCanonicalFinal lang b final candidate) b) := by
+  apply targetConstruct_balance_of_invariant <;> assumption
+
+example {lang b m}
+    (hw : HeapWF lang (balanceConstructorCopied lang m b))
+    (hr : m.checker.state = "Ready")
+    (hc : objectAt m m.checker.context = .ok (balanceHeapObject lang m b))
+    (hh : objectAt m m.checker.history = .ok (emptyBalanceHistory lang m))
+    (hu : m.checker.undo = none) (hi : m.checker.busy = false)
+    (hnc : m.checker.context ≠ m.nextObject)
+    (hnh : m.checker.history ≠ m.nextObject) :
+    BalanceRep lang b (balanceConstructorCopied lang m b) := by
+  apply balanceConstructorCopied_rep <;> assumption
+
+example {lang b final candidate}
+    (hc : objectAt final candidate = .ok (balanceHeapObject lang final b))
+    (hn : candidate ≠ final.nextObject)
+    (hnext : candidate ≠ final.nextObject + 1)
+    (hw : HeapWF lang
+      (balanceConstructorCopied lang (balanceResetCanonicalFinal lang b final candidate) b)) :
+    BalanceRep lang b
+      (balanceConstructorCopied lang (balanceResetCanonicalFinal lang b final candidate) b) := by
+  apply balanceResetCanonicalFinal_rep_after_copy <;> assumption
+
+example {lang b final candidate}
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S)
+    (h : BalanceResetInvariantEvidence lang b final candidate (if lang == .ts then 80 else 74))
+    (hcopy : BalanceConstructorCopyEvidence lang b (balanceResetCanonicalFinal lang b final candidate))
+    (hc : objectAt final candidate = .ok (balanceHeapObject lang final b))
+    (hn : candidate ≠ final.nextObject)
+    (hnext : candidate ≠ final.nextObject + 1)
+    (hw : HeapWF lang
+      (balanceConstructorCopied lang (balanceResetCanonicalFinal lang b final candidate) b)) :
+    ∃ m, targetConstruct (balanceProgram lang) (canonicalBalanceSeed lang b) = .ok m ∧
+      BalanceRep lang b m := by
+  apply targetConstruct_balance_rep_of_invariant <;> assumption
+
+end Batch16CompositionContracts
+
+
+
+
+
+
+-- Batch 16: canonical execution contracts, mirrored in both regression roots.
+section Batch16CanonicalContracts
+
+example : HeapWF .ts (balanceInvariantTsCopied 0) := by
+  apply balanceInvariant_ts_heapWF_zero <;> assumption
+
+example (b : Int) :
+    heapWFCheck .ts (balanceInvariantTsCopied b) = heapWFCheck .ts (balanceInvariantTsCopied 0) := by
+  apply balanceInvariant_ts_heapWF_footprint <;> assumption
+
+example : HeapWF .python (balanceInvariantPyCopied 0) := by
+  apply balanceInvariant_py_heapWF_zero <;> assumption
+
+example (b : Int) :
+    heapWFCheck .python (balanceInvariantPyCopied b) = heapWFCheck .python (balanceInvariantPyCopied 0) := by
+  apply balanceInvariant_py_heapWF_footprint <;> assumption
+
+example (b : Int) :
+    balanceResetPostBounds .ts b = (balanceInvariantTsInput b, balanceInvariantTsInputFrame) := by
+  apply balanceInvariant_ts_input_eq <;> assumption
+
+example (n : Nat) :
+    evalExpr 80 (balanceProgram .ts) (balanceInvariantTsInput (Int.ofNat n))
+      balanceInvariantTsInputFrame (resetInvariantCall .ts) =
+      .ok ⟨balanceInvariantTsFinal (Int.ofNat n), .ok .undefined⟩ := by
+  apply balanceInvariant_ts_call_nat <;> assumption
+
+example (b : Int) (hb : 0 ≤ b) :
+    evalExpr 80 (balanceProgram .ts)
+      (balanceResetPostBounds .ts b).1 (balanceResetPostBounds .ts b).2
+      (resetInvariantCall .ts) = .ok ⟨balanceInvariantTsFinal b, .ok .undefined⟩ := by
+  apply BalanceCanonicalTS.canonical_call <;> assumption
+
+example (b : Int) (hb : 0 ≤ b) :
+    BalanceResetInvariantEvidence .ts b (balanceInvariantTsFinal b) 23 80 := by
+  apply BalanceCanonicalTS.invariant_evidence <;> assumption
+
+example (b : Int) :
+    balanceResetAfterInvariant .ts b (balanceInvariantTsFinal b) = balanceInvariantTsBound b := by
+  apply BalanceCanonicalTS.after_invariant_eq <;> assumption
+
+example (b : Int) :
+    balanceResetCanonicalFinal .ts b (balanceInvariantTsFinal b) 23 = balanceInvariantTsReset b := by
+  apply BalanceCanonicalTS.reset_final_eq <;> assumption
+
+example (b : Int) : HeapWF .ts (balanceInvariantTsCopied b) := by
+  apply BalanceCanonicalTS.copied_heapWF <;> assumption
+
+example (b : Int) :
+    ∀ e ∈ (balanceInvariantTsReset b).objects, e.1 ≠ (balanceInvariantTsReset b).nextObject := by
+  apply BalanceCanonicalTS.reset_object_fresh <;> assumption
+
+example (lang : TargetLang) (m : TargetMachine) (f : TargetFrame) :
+    (resetSnapshotsInstalled lang m f).1.checkerRef = m.checkerRef := by
+  apply BalanceCanonicalTS.snapshots_ref <;> assumption
+
+example (lang : TargetLang) (b : Int) :
+    (balanceConstructorBodyEntry lang b).1.checkerRef =
+      (balancePreparation lang).1.checkerRef := by
+  apply BalanceCanonicalTS.constructor_ref <;> assumption
+
+example (m : TargetMachine) (busy : Bool) :
+    (balanceSetBusy m busy).checkerRef = m.checkerRef := by
+  apply BalanceCanonicalTS.busy_ref <;> assumption
+
+example (lang : TargetLang) (b : Int) :
+    (balanceResetBodyEntry lang b).1.checkerRef =
+      (balanceConstructorBodyEntry lang b).1.checkerRef := by
+  apply BalanceCanonicalTS.reset_entry_ref <;> assumption
+
+example : (balancePreparation .ts).1.checkerRef = 1 := by
+  apply BalanceCanonicalTS.preparation_ref <;> assumption
+
+example (b : Int) :
+    BalanceConstructorCopyEvidence .ts b
+      (balanceResetCanonicalFinal .ts b (balanceInvariantTsFinal b) 23) := by
+  apply BalanceCanonicalTS.copy_evidence <;> assumption
+
+example (b : Int) (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S) :
+    execStmt 96 (balanceProgram .ts)
+      (balanceResetOriginalEntry .ts b).1 (balanceResetOriginalEntry .ts b).2
+      (balanceStoredReset .ts).2.body =
+      .ok ⟨balanceResetCanonicalFinal .ts b (balanceInvariantTsFinal b) 23,
+        (balanceResetAfterInvariant .ts b (balanceInvariantTsFinal b)).2, .normal⟩ := by
+  apply BalanceCanonicalTS.canonical_reset <;> assumption
+
+example (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S) :
+    execStmt 99 (balanceProgram .ts)
+      (balanceConstructorBodyEntry .ts b).1 (balanceConstructorBodyEntry .ts b).2
+      (balanceStoredConstructor .ts).2.body =
+      .ok ⟨balanceConstructorCopied .ts
+          (balanceResetCanonicalFinal .ts b (balanceInvariantTsFinal b) 23) b,
+        (balanceConstructorBodyEntry .ts b).2, .normal⟩ := by
+  apply BalanceCanonicalTS.canonical_constructor <;> assumption
+
+example (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S) :
+    targetConstruct (balanceProgram .ts) (canonicalBalanceSeed .ts b) =
+      .ok (balanceConstructorCopied .ts
+        (balanceResetCanonicalFinal .ts b (balanceInvariantTsFinal b) 23) b) := by
+  apply BalanceCanonicalTS.targetConstruct_sound <;> assumption
+
+example (b : Int) :
+    balanceConstructorCopied .ts
+      (balanceResetCanonicalFinal .ts b (balanceInvariantTsFinal b) 23) b =
+      balanceInvariantTsCopied b := by
+  apply BalanceCanonicalTS.copied_eq <;> assumption
+
+example (b : Int) :
+    HeapWF .ts (balanceConstructorCopied .ts
+      (balanceResetCanonicalFinal .ts b (balanceInvariantTsFinal b) 23) b) := by
+  apply BalanceCanonicalTS.canonical_copied_heapWF <;> assumption
+
+example (b : Int) :
+    BalanceRep .ts b (balanceConstructorCopied .ts
+      (balanceResetCanonicalFinal .ts b (balanceInvariantTsFinal b) 23) b) := by
+  apply BalanceCanonicalTS.canonical_balance_rep <;> assumption
+
+example (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S) :
+    targetConstruct (balanceProgram .ts) (canonicalBalanceSeed .ts b) =
+      .ok (balanceInvariantTsCopied b) := by
+  apply BalanceCanonicalTS.targetConstruct_literal <;> assumption
+
+example (b : Int) : BalanceRep .ts b (balanceInvariantTsCopied b) := by
+  apply BalanceCanonicalTS.literal_balance_rep <;> assumption
+
+example (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S) :
+    ∃ m, targetConstruct (balanceProgram .ts) (canonicalBalanceSeed .ts b) = .ok m ∧
+      BalanceRep .ts b m := by
+  apply BalanceCanonicalTS.targetConstruct_balance_rep <;> assumption
+
+example (b : Int) :
+    (balanceInvariantTsFinal b).nextObject = 44 ∧
+    (balanceInvariantTsReset b).nextObject = 45 ∧
+    (balanceInvariantTsCopied b).nextObject = 46 ∧
+    (balanceInvariantTsCopied b).checker.context = 23 ∧
+    (balanceInvariantTsCopied b).checker.history = 44 ∧
+    (balanceInvariantTsCopied b).checker.constructorSeed = some 45 ∧
+    (balanceInvariantTsCopied b).nextCell = 69 ∧
+    (balanceInvariantTsCopied b).nextClosure = 19 := by
+  apply BalanceCanonicalTS.canonical_allocations <;> assumption
+
+example (b : Int) :
+    (balanceInvariantTsCopied b).frames = (balanceInvariantTsInput b).frames ∧
+    (balanceInvariantTsCopied b).globals = (balanceInvariantTsFinal b).globals ∧
+    (balanceInvariantTsCopied b).cells = (balanceInvariantTsBound b).1.cells ∧
+    (balanceInvariantTsCopied b).closures = (balanceInvariantTsFinal b).closures ∧
+    (balanceInvariantTsCopied b).classMethods = (balanceInvariantTsFinal b).classMethods := by
+  apply BalanceCanonicalTS.canonical_bindings <;> assumption
+
+example :
+    balancePreparation .python = (balanceInvariantPyPreparedModel 0, balanceInvariantPyPreparedFrame) := by
+  apply balanceInvariant_python_prepared_eq <;> assumption
+
+example (b : Int) :
+    balanceResetPostBounds .python b = (balanceInvariantPyInput b, balanceInvariantPyInputFrame) := by
+  apply balanceInvariant_py_input_eq <;> assumption
+
+example (b : Int)
+    (hCall : evalExpr 74 (balanceProgram .python)
+      (balanceInvariantPyInput b) balanceInvariantPyInputFrame (resetInvariantCall .python) =
+      .ok ⟨balanceInvariantPyFinal b, .ok .null⟩) :
+    BalanceResetInvariantEvidence .python b (balanceInvariantPyFinal b) 79 74 := by
+  apply BalanceCanonicalPython.invariant_evidence_of_call <;> assumption
+
+example (b : Int) :
+    balanceResetAfterInvariant .python b (balanceInvariantPyFinal b) = balanceInvariantPyBound b := by
+  apply BalanceCanonicalPython.after_invariant_eq <;> assumption
+
+example (b : Int) :
+    balanceResetCanonicalFinal .python b (balanceInvariantPyFinal b) 79 = balanceInvariantPyReset b := by
+  apply BalanceCanonicalPython.reset_final_eq <;> assumption
+
+example (b : Int) : HeapWF .python (balanceInvariantPyCopied b) := by
+  apply BalanceCanonicalPython.copied_heapWF <;> assumption
+
+example (lang : TargetLang) (b : Int) :
+    (balanceConstructorBodyEntry lang b).1.checkerRef =
+      (balancePreparation lang).1.checkerRef := by
+  apply BalanceCanonicalPython.constructor_ref <;> assumption
+
+example : (balancePreparation .python).1.checkerRef = 1 := by
+  apply BalanceCanonicalPython.preparation_ref <;> assumption
+
+example (lang : TargetLang) (b : Int) :
+    (balanceConstructorBodyEntry lang b).2.locals =
+      [(balanceConstructorParam lang, (balanceConstructorBoundEntry lang b).1.nextCell)] := by
+  apply BalanceCanonicalPython.constructor_locals <;> assumption
+
+example (lang : TargetLang) (b : Int) :
+    (balanceConstructorBodyEntry lang b).2.captures =
+      (balanceStoredConstructor lang).2.captures := by
+  apply BalanceCanonicalPython.constructor_captures <;> assumption
+
+example (m : TargetMachine) (f : TargetFrame) (name : String)
+    (hl : f.locals.lookup name = none) (hc : f.captures.lookup name = none)
+    (hg : m.globals.lookup name = some 1) : snapshotAddress m f name = some 1 := by
+  apply BalanceCanonicalPython.address_of_bindings <;> assumption
+
+example (ref : CellRef) :
+    [(balanceConstructorParam .python, ref)].lookup "dict" = none := by
+  apply BalanceCanonicalPython.singleton_other <;> assumption
+
+example (b : Int) :
+    snapshotAddress (balanceInvariantPyReset b) (balanceConstructorBodyEntry .python b).2
+      "dict" = some 1 := by
+  apply BalanceCanonicalPython.constructor_dict_address <;> assumption
+
+example (b : Int) :
+    BalanceConstructorCopyEvidence .python b (balanceInvariantPyReset b) := by
+  apply BalanceCanonicalPython.literal_copy_evidence <;> assumption
+
+example (b : Int) :
+    BalanceConstructorCopyEvidence .python b
+      (balanceResetCanonicalFinal .python b (balanceInvariantPyFinal b) 79) := by
+  apply BalanceCanonicalPython.copy_evidence <;> assumption
+
+example (b : Int) (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S)
+    (hCall : evalExpr 74 (balanceProgram .python)
+      (balanceInvariantPyInput b) balanceInvariantPyInputFrame (resetInvariantCall .python) =
+      .ok ⟨balanceInvariantPyFinal b, .ok .null⟩) :
+    execStmt 89 (balanceProgram .python)
+      (balanceResetOriginalEntry .python b).1 (balanceResetOriginalEntry .python b).2
+      (balanceStoredReset .python).2.body =
+      .ok ⟨balanceResetCanonicalFinal .python b (balanceInvariantPyFinal b) 79,
+        (balanceResetAfterInvariant .python b (balanceInvariantPyFinal b)).2, .normal⟩ := by
+  apply BalanceCanonicalPython.canonical_reset <;> assumption
+
+example (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S)
+    (hCall : evalExpr 74 (balanceProgram .python)
+      (balanceInvariantPyInput b) balanceInvariantPyInputFrame (resetInvariantCall .python) =
+      .ok ⟨balanceInvariantPyFinal b, .ok .null⟩) :
+    execStmt 99 (balanceProgram .python)
+      (balanceConstructorBodyEntry .python b).1 (balanceConstructorBodyEntry .python b).2
+      (balanceStoredConstructor .python).2.body =
+      .ok ⟨balanceConstructorCopied .python
+          (balanceResetCanonicalFinal .python b (balanceInvariantPyFinal b) 79) b,
+        (balanceConstructorBodyEntry .python b).2, .normal⟩ := by
+  apply BalanceCanonicalPython.canonical_constructor <;> assumption
+
+example (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S)
+    (hCall : evalExpr 74 (balanceProgram .python)
+      (balanceInvariantPyInput b) balanceInvariantPyInputFrame (resetInvariantCall .python) =
+      .ok ⟨balanceInvariantPyFinal b, .ok .null⟩) :
+    targetConstruct (balanceProgram .python) (canonicalBalanceSeed .python b) =
+      .ok (balanceConstructorCopied .python
+        (balanceResetCanonicalFinal .python b (balanceInvariantPyFinal b) 79) b) := by
+  apply BalanceCanonicalPython.targetConstruct_sound <;> assumption
+
+example (b : Int) :
+    balanceConstructorCopied .python
+      (balanceResetCanonicalFinal .python b (balanceInvariantPyFinal b) 79) b =
+      balanceInvariantPyCopied b := by
+  apply BalanceCanonicalPython.copied_eq <;> assumption
+
+example (b : Int) :
+    HeapWF .python (balanceConstructorCopied .python
+      (balanceResetCanonicalFinal .python b (balanceInvariantPyFinal b) 79) b) := by
+  apply BalanceCanonicalPython.canonical_copied_heapWF <;> assumption
+
+example (b : Int) :
+    BalanceRep .python b (balanceConstructorCopied .python
+      (balanceResetCanonicalFinal .python b (balanceInvariantPyFinal b) 79) b) := by
+  apply BalanceCanonicalPython.canonical_balance_rep <;> assumption
+
+example (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S)
+    (hCall : evalExpr 74 (balanceProgram .python)
+      (balanceInvariantPyInput b) balanceInvariantPyInputFrame (resetInvariantCall .python) =
+      .ok ⟨balanceInvariantPyFinal b, .ok .null⟩) :
+    targetConstruct (balanceProgram .python) (canonicalBalanceSeed .python b) =
+      .ok (balanceInvariantPyCopied b) := by
+  apply BalanceCanonicalPython.targetConstruct_literal <;> assumption
+
+example (b : Int) : BalanceRep .python b (balanceInvariantPyCopied b) := by
+  apply BalanceCanonicalPython.literal_balance_rep <;> assumption
+
+example (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S)
+    (hCall : evalExpr 74 (balanceProgram .python)
+      (balanceInvariantPyInput b) balanceInvariantPyInputFrame (resetInvariantCall .python) =
+      .ok ⟨balanceInvariantPyFinal b, .ok .null⟩) :
+    ∃ m, targetConstruct (balanceProgram .python) (canonicalBalanceSeed .python b) = .ok m ∧
+      BalanceRep .python b m := by
+  apply BalanceCanonicalPython.targetConstruct_balance_rep <;> assumption
+
+example (b : Int) :
+    (balanceInvariantPyFinal b).nextObject = 100 ∧
+    (balanceInvariantPyReset b).nextObject = 101 ∧
+    (balanceInvariantPyCopied b).nextObject = 102 ∧
+    (balanceInvariantPyCopied b).checker.context = 79 ∧
+    (balanceInvariantPyCopied b).checker.history = 100 ∧
+    (balanceInvariantPyCopied b).checker.constructorSeed = some 101 ∧
+    (balanceInvariantPyCopied b).nextCell = 144 ∧
+    (balanceInvariantPyCopied b).nextClosure = 26 := by
+  apply BalanceCanonicalPython.canonical_allocations <;> assumption
+
+example (b : Int) :
+    (balanceInvariantPyCopied b).frames = (balanceInvariantPyInput b).frames ∧
+    (balanceInvariantPyCopied b).globals = (balanceInvariantPyFinal b).globals ∧
+    (balanceInvariantPyCopied b).cells = (balanceInvariantPyBound b).1.cells ∧
+    (balanceInvariantPyCopied b).closures = (balanceInvariantPyFinal b).closures ∧
+    (balanceInvariantPyCopied b).classMethods = (balanceInvariantPyFinal b).classMethods := by
+  apply BalanceCanonicalPython.canonical_bindings <;> assumption
+
+example : tokenMatchAt "balance >= 0" 0 = some ⟨"balance", 0, 7, []⟩ := by
+  apply BalanceInvariantLexemes.token0 <;> assumption
+
+example : tokenMatchAt "balance >= 0" 7 = some ⟨" ", 7, 8, []⟩ := by
+  apply BalanceInvariantLexemes.token7 <;> assumption
+
+example : tokenMatchAt "balance >= 0" 8 = some ⟨">=", 8, 10, []⟩ := by
+  apply BalanceInvariantLexemes.token8 <;> assumption
+
+example : tokenMatchAt "balance >= 0" 10 = some ⟨" ", 10, 11, []⟩ := by
+  apply BalanceInvariantLexemes.token10 <;> assumption
+
+example : tokenMatchAt "balance >= 0" 11 = some ⟨"0", 11, 12, []⟩ := by
+  apply BalanceInvariantLexemes.token11 <;> assumption
+
+example : identifierFullMatch "balance" = true := by
+  apply BalanceInvariantLexemes.nameBalance <;> assumption
+
+example : identifierFullMatch "0" = false := by
+  apply BalanceInvariantLexemes.nameZero <;> assumption
+
+example (m : TargetMachine) : hostCall .python m .stringIsSpace
+    (some (.string "balance")) [] = .ok ⟨m, .ok (.bool false)⟩ := by
+  apply BalanceInvariantLexemes.spaceBalance <;> assumption
+
+example (m : TargetMachine) : hostCall .python m .stringIsSpace
+    (some (.string ">=")) [] = .ok ⟨m, .ok (.bool false)⟩ := by
+  apply BalanceInvariantLexemes.spaceOperator <;> assumption
+
+example (m : TargetMachine) : hostCall .python m .stringIsSpace
+    (some (.string "0")) [] = .ok ⟨m, .ok (.bool false)⟩ := by
+  apply BalanceInvariantLexemes.spaceZero <;> assumption
+
+example (m : TargetMachine) : hostCall .python m .stringIsSpace
+    (some (.string " ")) [] = .ok ⟨m, .ok (.bool true)⟩ := by
+  apply BalanceInvariantLexemes.spaceSpace <;> assumption
+
+example (m : TargetMachine) : hostCall .python m .stringIsDigit
+    (some (.string "b")) [] = .ok ⟨m, .ok (.bool false)⟩ := by
+  apply BalanceInvariantLexemes.digitBalance <;> assumption
+
+example (m : TargetMachine) : hostCall .python m .stringIsDigit
+    (some (.string "0")) [] = .ok ⟨m, .ok (.bool true)⟩ := by
+  apply BalanceInvariantLexemes.digitZero <;> assumption
+
+example (m : TargetMachine) : hostCall .python m .stringStartsWith
+    (some (.string "balance")) [.string "'"] = .ok ⟨m, .ok (.bool false)⟩ := by
+  apply BalanceInvariantLexemes.startsBalance <;> assumption
+
+example (m : TargetMachine) : hostCall .python m .stringStartsWith
+    (some (.string "0")) [.string "'"] = .ok ⟨m, .ok (.bool false)⟩ := by
+  apply BalanceInvariantLexemes.startsZero <;> assumption
+
+example (m : TargetMachine) : hostCall .python m .float none
+    [.string "0"] = .ok ⟨m, .ok (.number .pyFloat 0)⟩ := by
+  apply BalanceInvariantLexemes.floatZero <;> assumption
+
+example (n : Nat) (hb : n ≤ 9007199254740991) :
+    evalExpr 74 (balanceProgram .python) (balanceInvariantPyInput (Int.ofNat n))
+      balanceInvariantPyInputFrame (resetInvariantCall .python) =
+      .ok ⟨balanceInvariantPyFinal (Int.ofNat n), .ok .null⟩ := by
+  apply balanceInvariant_py_call_nat <;> assumption
+
+example (b : Int) (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S) :
+    evalExpr 74 (balanceProgram .python)
+      (balanceInvariantPyInput b) balanceInvariantPyInputFrame (resetInvariantCall .python) =
+      .ok ⟨balanceInvariantPyFinal b, .ok .null⟩ := by
+  apply BalanceCanonicalPython.Unconditional.canonical_call <;> assumption
+
+example (b : Int) (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S) :
+    execStmt 89 (balanceProgram .python)
+      (balanceResetOriginalEntry .python b).1 (balanceResetOriginalEntry .python b).2
+      (balanceStoredReset .python).2.body =
+      .ok ⟨balanceResetCanonicalFinal .python b (balanceInvariantPyFinal b) 79,
+        (balanceResetAfterInvariant .python b (balanceInvariantPyFinal b)).2, .normal⟩ := by
+  apply BalanceCanonicalPython.Unconditional.canonical_reset <;> assumption
+
+example (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S) :
+    execStmt 99 (balanceProgram .python)
+      (balanceConstructorBodyEntry .python b).1 (balanceConstructorBodyEntry .python b).2
+      (balanceStoredConstructor .python).2.body =
+      .ok ⟨balanceConstructorCopied .python
+          (balanceResetCanonicalFinal .python b (balanceInvariantPyFinal b) 79) b,
+        (balanceConstructorBodyEntry .python b).2, .normal⟩ := by
+  apply BalanceCanonicalPython.Unconditional.canonical_constructor <;> assumption
+
+example (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S) :
+    targetConstruct (balanceProgram .python) (canonicalBalanceSeed .python b) =
+      .ok (balanceConstructorCopied .python
+        (balanceResetCanonicalFinal .python b (balanceInvariantPyFinal b) 79) b) := by
+  apply BalanceCanonicalPython.Unconditional.targetConstruct_sound <;> assumption
+
+example (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S) :
+    targetConstruct (balanceProgram .python) (canonicalBalanceSeed .python b) =
+      .ok (balanceInvariantPyCopied b) := by
+  apply BalanceCanonicalPython.Unconditional.targetConstruct_literal <;> assumption
+
+example (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S) :
+    ∃ m, targetConstruct (balanceProgram .python) (canonicalBalanceSeed .python b) = .ok m ∧
+      BalanceRep .python b m := by
+  apply BalanceCanonicalPython.Unconditional.targetConstruct_balance_rep <;> assumption
+
+example (lang : TargetLang) (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S) :
+    BalanceResetInvariantEvidence lang b (balanceCanonicalInvariantFinal lang b)
+      (balanceCanonicalCandidate lang) (if lang == .ts then 80 else 74) := by
+  apply balanceReset_canonical_invariant_evidence <;> assumption
+
+example (lang : TargetLang) (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S) :
+    evalExpr (if lang == .ts then 80 else 74) (balanceProgram lang)
+      (balanceResetPostBounds lang b).1 (balanceResetPostBounds lang b).2
+      (resetInvariantCall lang) =
+      .ok ⟨balanceCanonicalInvariantFinal lang b, .ok (resetValidationResult lang)⟩ := by
+  apply resetInvariant_canonical_execute <;> assumption
+
+example (lang : TargetLang) (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S) :
+    execStmt (if lang == .ts then 96 else 89) (balanceProgram lang)
+      (balanceResetOriginalEntry lang b).1 (balanceResetOriginalEntry lang b).2
+      (balanceStoredReset lang).2.body =
+      .ok ⟨balanceCanonicalResetFinal lang b,
+        (balanceResetAfterInvariant lang b (balanceCanonicalInvariantFinal lang b)).2,
+        .normal⟩ := by
+  apply balanceReset_canonical_execute <;> assumption
+
+example (lang : TargetLang) (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S) :
+    execStmt 99 (balanceProgram lang)
+      (balanceConstructorBodyEntry lang b).1 (balanceConstructorBodyEntry lang b).2
+      (balanceStoredConstructor lang).2.body =
+      .ok ⟨balanceConstructorCopied lang (balanceCanonicalResetFinal lang b) b,
+        (balanceConstructorBodyEntry lang b).2, .normal⟩ := by
+  apply balanceConstructor_canonical_execute <;> assumption
+
+example (lang : TargetLang) (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S) :
+    targetConstruct (balanceProgram lang) (canonicalBalanceSeed lang b) =
+      .ok (balanceCanonicalConstructed lang b) := by
+  apply targetConstruct_sound <;> assumption
+
+example (lang : TargetLang) (b : Int) :
+    BalanceRep lang b (balanceCanonicalConstructed lang b) := by
+  apply balanceCanonicalConstructed_rep <;> assumption
+
+example (lang : TargetLang) (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S) :
+    ∃ m, targetConstruct (balanceProgram lang) (canonicalBalanceSeed lang b) = .ok m ∧
+      BalanceRep lang b m := by
+  apply targetConstruct_balance_rep <;> assumption
+
+example {ε α β : Type} {err : ε → β} {ok : α → β}
+    {x y : Except ε α} (h : x = y) :
+    @Except.rec ε α (fun _ => β) err ok x =
+      @Except.rec ε α (fun _ => β) err ok y :=
+  BalanceInvariantCertificate.exceptRec_congr h
+
+-- Both closed endpoints exercise the unconditional common interface.
+example (lang : TargetLang) :
+    evalExpr (if lang == .ts then 80 else 74) (balanceProgram lang)
+      (balanceResetPostBounds lang 0).1 (balanceResetPostBounds lang 0).2
+      (resetInvariantCall lang) =
+      .ok ⟨balanceCanonicalInvariantFinal lang 0, .ok (resetValidationResult lang)⟩ :=
+  resetInvariant_canonical_execute lang 0 (by decide)
+
+example (lang : TargetLang) :
+    targetConstruct (balanceProgram lang) (canonicalBalanceSeed lang Harmonia.Applications.Kadmos.S) =
+      .ok (balanceCanonicalConstructed lang Harmonia.Applications.Kadmos.S) :=
+  targetConstruct_sound lang Harmonia.Applications.Kadmos.S (by decide)
+
+#print axioms resetInvariant_canonical_execute
+#print axioms balanceReset_canonical_execute
+#print axioms balanceConstructor_canonical_execute
+#print axioms targetConstruct_sound
+#print axioms targetConstruct_balance_rep
+
+end Batch16CanonicalContracts

@@ -94,16 +94,53 @@ class GeneratedK02InventoryTests(unittest.TestCase):
 
     def test_python_line_stack_option_is_exact(self):
         self.change('lakefile.lean',
-                    'moreLeanArgs := #["--tstack=131072"]',
-                    'moreLeanArgs := #["-DtrustLevel=1"]')
+                    '`HarmoniaTests.KadmosGeneratedK02PythonOrderLinesAll]\n'
+                    '  -- The closed 19 KB source-line certificates need a larger Lean thread\n'
+                    '  -- stack; this changes resource capacity, not proof trust or reduction mode.\n'
+                    '  moreLeanArgs := #["--tstack=131072"]',
+                    '`HarmoniaTests.KadmosGeneratedK02PythonOrderLinesAll]\n'
+                    '  moreLeanArgs := #["-DtrustLevel=1"]')
         with self.assertRaisesRegex(AuditInventoryError, 'stack option'):
             check(self.root)
 
     def test_commented_python_line_stack_option_is_rejected(self):
         self.change('lakefile.lean',
+                    '`HarmoniaTests.KadmosGeneratedK02PythonOrderLinesAll]\n'
+                    '  -- The closed 19 KB source-line certificates need a larger Lean thread\n'
+                    '  -- stack; this changes resource capacity, not proof trust or reduction mode.\n'
+                    '  moreLeanArgs := #["--tstack=131072"]',
+                    '`HarmoniaTests.KadmosGeneratedK02PythonOrderLinesAll]\n'
+                    '  -- moreLeanArgs := #["--tstack=131072"]')
+        with self.assertRaisesRegex(AuditInventoryError, 'stack option'):
+            check(self.root)
+
+    def test_harmonia_stack_option_is_exact(self):
+        self.change('lakefile.lean',
+                    'moreLeanArgs := #["--tstack=131072"]',
+                    'moreLeanArgs := #["--trust=1"]')
+        with self.assertRaisesRegex(AuditInventoryError, 'library stack option'):
+            check(self.root)
+
+    def test_commented_harmonia_stack_option_is_rejected(self):
+        self.change('lakefile.lean',
                     'moreLeanArgs := #["--tstack=131072"]',
                     '-- moreLeanArgs := #["--tstack=131072"]')
-        with self.assertRaisesRegex(AuditInventoryError, 'stack option'):
+        with self.assertRaisesRegex(AuditInventoryError, 'library stack option'):
+            check(self.root)
+
+    def test_harmonia_extra_compiler_options_are_rejected(self):
+        self.change('lakefile.lean',
+                    'moreLeanArgs := #["--tstack=131072"]',
+                    'moreLeanArgs := #["--tstack=131072"]\n'
+                    '  weakLeanArgs := #["--trust=1"]')
+        with self.assertRaisesRegex(AuditInventoryError, 'library stack option'):
+            check(self.root)
+
+    def test_block_commented_harmonia_stack_option_is_rejected(self):
+        self.change('lakefile.lean',
+                    'moreLeanArgs := #["--tstack=131072"]',
+                    '/-\n  moreLeanArgs := #["--tstack=131072"]\n  -/')
+        with self.assertRaisesRegex(AuditInventoryError, 'library stack option'):
             check(self.root)
 
     def test_closed_program_stack_option_is_exact(self):

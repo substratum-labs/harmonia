@@ -56,11 +56,24 @@ def trap(name):
 
 
 def checked_lake_roots_source(lake):
-    """Permit the exact stack-capacity option on two certificate targets.
+    """Permit the exact stack-capacity settings used by certificates.
 
     No proof-trust option or arbitrary root-array suffix is accepted. The
     common strict root parser consumes the remaining literal declarations.
     """
+    library = re.search(
+        r'(?ms)^lean_lib «Harmonia» where\n(.*?)(?=^@|^lean_lib |^lean_exe |\Z)',
+        lake)
+    if not library:
+        raise AuditInventoryError('missing Harmonia library stack option')
+    block = library.group(1)
+    settings = list(re.finditer(r'(?m)^' + re.escape(PYTHON_LINES_STACK) + r'$', block))
+    clean = scrub(block)
+    if (len(settings) != 1 or
+            clean[settings[0].start():settings[0].end()] != scrub(PYTHON_LINES_STACK) or
+            (clean[:settings[0].start()] + clean[settings[0].end():]).strip()):
+        raise AuditInventoryError('Harmonia library stack option differs')
+    lake = lake[:library.start(1)] + block.replace(PYTHON_LINES_STACK, '', 1) + lake[library.end(1):]
     for target, label in (
         ('kadmosGeneratedK02PythonLinesTest', 'Python line-certificate'),
         ('kadmosGeneratedK02ClosedProgramsTest', 'closed-program certificate'),
