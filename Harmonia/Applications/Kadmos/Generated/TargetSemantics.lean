@@ -2406,4 +2406,67 @@ theorem execForDo_ts_one_pair {program m source final f ff listRef pairRef list 
   rw [hb]
   rfl
 
+
+/-- Fresh named pair binding for source-selected bounds loops. -/
+def namedForPairBound (lang : TargetLang) (m : TargetMachine)
+    (f : TargetFrame) (leftName rightName : String)
+    (left right : TargetValue) : TargetMachine × TargetFrame :=
+  let first := allocCell m left (lang == .python)
+  let second := allocCell first.1 right (lang == .python)
+  (second.1,
+    { f with locals :=
+        (rightName, first.1.nextCell) :: (leftName, m.nextCell) :: f.locals })
+
+theorem execForDo_named_one_pair {program m source final f ff listRef pairRef list pair leftName rightName left right k iterable body}
+    (hne : rightName ≠ leftName)
+    (he : evalExpr (k + 2) program m f iterable = .ok ⟨source, .ok (.object listRef)⟩)
+    (hl : objectAt source listRef = .ok list)
+    (hk : list.kind = (if program.lang == .ts then .jsArray else .pythonList))
+    (hi : list.items = [.object pairRef])
+    (hp : objectAt source pairRef = .ok pair)
+    (hv : pair.items = [left, right])
+    (hn : program.lang = .python → f.locals.lookup leftName = none)
+    (hf : program.lang = .python → f.locals.lookup rightName = none)
+    (hb : execStmt (k + 1) program (namedForPairBound program.lang source f leftName rightName left right).1
+      (namedForPairBound program.lang source f leftName rightName left right).2 body = .ok ⟨final, ff, .normal⟩) :
+    execStmt (k + 3) program m f (.forDo [leftName, rightName] iterable body) =
+      .ok ⟨final, (if program.lang == .ts then f else ff), .normal⟩ := by
+  rw [execStmt, he]
+  simp only [Bind.bind, Except.bind]
+  rw [hl]
+  simp only [Bind.bind, Except.bind]
+  rw [hk]
+  cases hlang : program.lang <;> rw [hlang] at hb
+  all_goals simp only [show (TargetLang.ts == .ts) = true from rfl,
+    show (TargetLang.python == .ts) = false from rfl, Bool.false_eq_true, if_true, if_false]
+  all_goals rw [hi]
+  all_goals simp only [execForItems, bindLoopValue, hp, hv, bindOne, hlang,
+    show (TargetLang.ts == .python) = false from rfl,
+    show (TargetLang.python == .python) = true from rfl,
+    Bool.false_eq_true, if_true, if_false, Bind.bind, Except.bind, Pure.pure, Except.pure]
+  · change (do
+      let result ← execStmt (k + 1) program (namedForPairBound .ts source f leftName rightName left right).1
+        (namedForPairBound .ts source f leftName rightName left right).2 body
+      match result.control with
+      | .normal | .continued "loop" => _
+      | .broke "loop" => _
+      | _ => _) = _
+    rw [hb]
+    rfl
+  · rw [hn hlang]
+    simp only [Bind.bind, Except.bind, Pure.pure, Except.pure, List.lookup_cons,
+      beq_eq_false_iff_ne.mpr hne, beq_eq_false_iff_ne.mpr (Ne.symm hne),
+      Bool.false_eq_true, if_false, hf hlang]
+    change (do
+      let result ← execStmt (k + 1) program (namedForPairBound .python source f leftName rightName left right).1
+        (namedForPairBound .python source f leftName rightName left right).2 body
+      match result.control with
+      | .normal | .continued "loop" => _
+      | .broke "loop" => _
+      | _ => _) = _
+    rw [hb]
+    rfl
+
+
+
 end Harmonia.Applications.Kadmos.Generated

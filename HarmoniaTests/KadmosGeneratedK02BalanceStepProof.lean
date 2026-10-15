@@ -694,3 +694,123 @@ example :
 
 #print axioms balanceReset_ts_canonical_overlay_bounds_bind
 #print axioms balanceReset_python_canonical_overlay_bounds_bind
+
+-- Batch 15: actual emitted bounds execution on the complete canonical overlay.
+example (lang : TargetLang) (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ 9007199254740991) (k : Nat) :
+    let e := balanceResetPostOverlay lang b
+    evalExpr (k + 24) (balanceProgram lang) e.1 e.2 (resetBoundsCall lang) =
+      .ok ⟨balanceBoundsFinal lang b, .ok (resetValidationResult lang)⟩ :=
+  balanceReset_bounds_call_execute lang b hb k
+
+example (lang : TargetLang) (k : Nat) :
+    let e := balanceResetPostOverlay lang 0
+    evalExpr (k + 24) (balanceProgram lang) e.1 e.2 (resetBoundsCall lang) =
+      .ok ⟨balanceBoundsFinal lang 0, .ok (resetValidationResult lang)⟩ :=
+  balanceReset_bounds_call_execute lang 0 (by decide) k
+
+example (lang : TargetLang) (k : Nat) :
+    let e := balanceResetPostOverlay lang 9007199254740991
+    evalExpr (k + 24) (balanceProgram lang) e.1 e.2 (resetBoundsCall lang) =
+      .ok ⟨balanceBoundsFinal lang 9007199254740991, .ok (resetValidationResult lang)⟩ :=
+  balanceReset_bounds_call_execute lang 9007199254740991 (by decide) k
+
+-- The Pratt routine's numeric comparison is universal; whole runtime parsing
+-- and invariant-body execution are still distinct obligations.
+example (lang : TargetLang) (m : TargetMachine) (b : Int) (hb : 0 ≤ b) :
+    binaryValue lang m .ge (integerValue lang b) (integerValue lang 0) =
+      .ok (.ok (.bool true)) := resetInvariant_ge_nonnegative lang m hb
+
+#print axioms balanceReset_bounds_body_execute
+#print axioms balanceReset_bounds_call_execute
+#print axioms balanceReset_ts_canonical_overlay_bounds_bind_complete
+#print axioms balanceReset_python_canonical_overlay_bounds_bind_complete
+#print axioms resetInvariantCall_eq_body
+#print axioms resetInvariant_ts_identifier_execute
+#print axioms resetInvariant_python_identifier_execute
+#print axioms balanceReset_invariant_publication_cleanup
+
+-- The optional event binding matches the actual installed invariant methods.
+example (lang : TargetLang) :
+    (balanceStoredInvariant lang).params = resetInvariantParams lang ∧
+    (lang = .python → (balanceStoredInvariant lang).pythonDefaults =
+      [none, none, some TargetValue.null]) := balanceStoredInvariant_params lang
+
+-- These are the source Pratt routines' identifier expressions, not a closed
+-- zero-only interpreter run.
+example {m f ref b k}
+    (he : localValue m f "env" = .ok (.object ref))
+    (ht : localValue m f "token" = .ok (.string "balance"))
+    (hc : ref ≠ m.checkerRef) (hp : ref ≠ m.objectPrototype)
+    (ho : objectAt m ref = .ok (balanceHeapObject .ts m b)) :
+    evalExpr (k + 2) (balanceProgram .ts) m f
+      (.index (.local "env") (.local "token")) =
+      .ok ⟨m, .ok (integerValue .ts b)⟩ :=
+  resetInvariant_ts_identifier_execute he ht hc hp ho rfl rfl
+
+example {m f ref fallback b k}
+    (he : localValue m f "environment" = .ok (.object ref))
+    (ht : localValue m f "token" = .ok (.string "balance"))
+    (hu : localValue m f "_UNDEFINED" = .ok fallback)
+    (hc : ref ≠ m.checkerRef) (hp : ref ≠ m.objectPrototype)
+    (ho : objectAt m ref = .ok (balanceHeapObject .python m b)) :
+    evalExpr (k + 4) (balanceProgram .python) m f
+      (.call (.property (.local "environment") "get")
+        (.sequence (.local "token") (.sequence (.local "_UNDEFINED") .empty))) =
+      .ok ⟨m, .ok (integerValue .python b)⟩ :=
+  resetInvariant_python_identifier_execute he ht hu hc hp ho rfl rfl
+
+-- The actual source invariant suffix and cleanup retain helper allocations.
+example {lang m final f candidate k}
+    (he : evalExpr (k + 10) (balanceProgram lang) m f (resetInvariantCall lang) =
+      .ok ⟨final, .ok (resetValidationResult lang)⟩)
+    (hn : lang = .python → snapshotAddress m f "violated" = none)
+    (hr : let bound := snapshotBound lang final f "violated" (resetValidationResult lang)
+      bound.2.receiver = some bound.1.checkerRef)
+    (hc : let bound := snapshotBound lang final f "violated" (resetValidationResult lang)
+      localValue bound.1 bound.2 "candidate" = .ok (.object candidate))
+    (hi : let bound := snapshotBound lang final f "violated" (resetValidationResult lang)
+      lang = .python → localValue bound.1 bound.2 "_INITIAL" = .ok (.string "Ready")) :
+    let bound := snapshotBound lang final f "violated" (resetValidationResult lang)
+    execStmt (k + 13) (balanceProgram lang) m f
+      (.sequence
+        (dropStmts (resetValidationIndex lang + 2) (balanceResetProtected lang).body)
+        (balanceResetProtected lang).cleanup) =
+      .ok ⟨balanceSetBusy (resetPublished lang bound.1 candidate) false, bound.2, .normal⟩ :=
+  balanceReset_invariant_publication_cleanup he hn hr hc hi
+
+example (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ 9007199254740991) (k : Nat) :
+    let e := balanceResetMiddleEntry .ts b
+    let bound := snapshotBound .ts (balanceBoundsFinal .ts b)
+      (balanceResetTsDescriptorEntry b).2 "invalid" .undefined
+    execStmt (k + 28) (balanceProgram .ts) e.1 e.2
+      (.sequence (.sequence (balanceResetMiddleStmt .ts 2) (balanceResetOverlayLoop .ts))
+        (balanceResetMiddleStmt .ts 4)) = .ok ⟨bound.1, bound.2, .normal⟩ ∧
+    execStmt (k + 27) (balanceProgram .ts) bound.1 bound.2
+      (balanceResetMiddleStmt .ts 5) = .ok ⟨bound.1, bound.2, .normal⟩ :=
+  balanceReset_ts_canonical_overlay_bounds_bind_complete b hb k
+
+example (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ 9007199254740991) (k : Nat) :
+    let e := balanceResetMiddleEntry .python b
+    let bound := snapshotBound .python (balanceBoundsFinal .python b)
+      (balanceResetPythonOverlayBound b).2 "invalid" .null
+    execStmt (k + 26) (balanceProgram .python) e.1 e.2
+      (.sequence (balanceResetMiddleStmt .python 2) (balanceResetMiddleStmt .python 3)) =
+      .ok ⟨bound.1, bound.2, .normal⟩ ∧
+    execStmt (k + 25) (balanceProgram .python) bound.1 bound.2
+      (balanceResetMiddleStmt .python 4) = .ok ⟨bound.1, bound.2, .normal⟩ :=
+  balanceReset_python_canonical_overlay_bounds_bind_complete b hb k
+
+-- Execute the two provided arguments and omitted event default using the
+-- actual installed invariant closure's parameter/default metadata.
+example (lang : TargetLang) (m : TargetMachine) (f : TargetFrame)
+    (candidate : ObjRef) (k : Nat) :
+    bindCallParams (k + 4) (balanceProgram lang) m f
+      (balanceStoredInvariant lang).params (balanceStoredInvariant lang).pythonDefaults
+      [.string "Ready", .object candidate] =
+      .ok ⟨(resetInvariantBindings lang m f candidate).1,
+        (resetInvariantBindings lang m f candidate).2, .ok ()⟩ := by
+  rw [(balanceStoredInvariant_params lang).1]
+  exact resetInvariant_bindCallParams (balanceStoredInvariant_params lang).2

@@ -7779,6 +7779,2893 @@ theorem balanceReset_python_canonical_overlay_bounds_bind (b : Int)
 
 end Batch14CanonicalTsOverlay
 
+
+
+section Batch15BoundsAndInvariant
+
+set_option maxRecDepth 65536
+set_option maxHeartbeats 10000000
+
+def resetBoundsKey (lang : TargetLang) : String :=
+  if lang == .ts then "key" else "name"
+
+def resetBoundsMember (lang : TargetLang) (field : String) : TargetExpr :=
+  if lang == .ts then
+    .property (.local "definition") field
+  else
+    .index (.local "definition") (.string field)
+
+def resetBoundsIterable (lang : TargetLang) : TargetExpr :=
+  if lang == .ts then
+    .call (.property (.local "Object") "entries")
+      (.sequence (.local "contextDefinitions") .empty)
+  else
+    .call
+      (.property
+        (.index (.local "_WORLD") (.string "context"))
+        "items")
+      .empty
+
+def resetBoundsValueExpr (lang : TargetLang) : TargetExpr :=
+  if lang == .ts then
+    .index (.local "values") (.local "key")
+  else
+    .call (.property (.local "values") "get")
+      (.sequence (.local "name") .empty)
+
+def resetBoundsTypeGuard (lang : TargetLang) : TargetExpr :=
+  if lang == .ts then
+    .conditional
+      (.binary .strictEq (resetBoundsMember .ts "type") (.string "string"))
+      (.binary .strictNe
+        (.unary .typeof (.local "value")) (.string "string"))
+      (.orElse
+        (.binary .strictNe
+          (.unary .typeof (.local "value")) (.string "number"))
+        (.unary .not resetTsOverlaySafeCall))
+  else
+    .conditional
+      (.binary .eq (resetBoundsMember .python "type") (.string "string"))
+      (.binary .isNotIdentity
+        (.call (.local "type") (.sequence (.local "value") .empty))
+        (.local "str"))
+      (.unary .not resetPythonSafeCall)
+
+def resetBoundsLimitGuard
+    (lang : TargetLang) (field : String) (op : BinaryOp) : TargetExpr :=
+  let present :=
+    TargetExpr.binary .inObject (.string field) (.local "definition")
+  let reject :=
+    TargetExpr.binary op (.local "value") (resetBoundsMember lang field)
+  if lang == .ts then
+    .andThen
+      (.andThen
+        (.andThen present
+          (.binary .strictEq
+            (.unary .typeof (resetBoundsMember .ts field))
+            (.string "number")))
+        resetTsOverlayNumberTest)
+      reject
+  else
+    .andThen present reject
+
+def resetBoundsRejectStmt (lang : TargetLang) : TargetStmt :=
+  if lang == .ts then
+    .returnValue (.local "key")
+  else
+    .sequence (.returnValue (.local "name")) .empty
+
+def resetBoundsIterationAst (lang : TargetLang) : TargetStmt :=
+  let reject := resetBoundsRejectStmt lang
+  .sequence
+    (snapshotBindStmt lang "value" (resetBoundsValueExpr lang))
+    (.sequence
+      (.ifThenElse (resetBoundsTypeGuard lang) reject .empty)
+      (if lang == .ts then
+        .sequence
+          (.ifThenElse (resetBoundsLimitGuard .ts "min" .lt) reject .empty)
+          (.sequence
+            (.ifThenElse (resetBoundsLimitGuard .ts "max" .gt) reject .empty)
+            .empty)
+       else
+        .sequence
+          (.ifThenElse
+            (.orElse
+              (resetBoundsLimitGuard .python "min" .lt)
+              (resetBoundsLimitGuard .python "max" .gt))
+            reject .empty)
+          .empty))
+
+def resetBoundsBodyAst (lang : TargetLang) : TargetStmt :=
+  .sequence
+    (.forDo [resetBoundsKey lang, "definition"]
+      (resetBoundsIterable lang)
+      (resetBoundsIterationAst lang))
+    (.sequence
+      (.returnValue (if lang == .ts then .undefined else .null))
+      .empty)
+
+def resetBoundsPairEntry
+    (lang : TargetLang) (m : TargetMachine) (f : TargetFrame)
+    (definition : ObjRef) : TargetMachine × TargetFrame :=
+  namedForPairBound lang
+    (oneEntryMachine lang m "balance" (.object definition))
+    f (resetBoundsKey lang) "definition"
+    (.string "balance") (.object definition)
+
+def resetBoundsValueEntry
+    (lang : TargetLang) (m : TargetMachine) (f : TargetFrame)
+    (definition : ObjRef) (b : Int) : TargetMachine × TargetFrame :=
+  let p := resetBoundsPairEntry lang m f definition
+  snapshotBound lang p.1 p.2 "value" (integerValue lang b)
+
+def resetBoundsFinal
+    (lang : TargetLang) (m : TargetMachine) (f : TargetFrame)
+    (definition : ObjRef) (helper : TargetClosure) (b : Int) : TargetMachine :=
+  let v := resetBoundsValueEntry lang m f definition b
+  if lang == .ts then v.1
+  else resetSafeTupleMachine (resetPythonSafeCallEntry v.1 helper b).1
+
+def resetBoundsFinalFrame
+    (lang : TargetLang) (m : TargetMachine) (f : TargetFrame)
+    (definition : ObjRef) (b : Int) : TargetFrame :=
+  if lang == .ts then f
+  else (resetBoundsValueEntry lang m f definition b).2
+
+structure ResetBoundsIterablePhysical
+    (lang : TargetLang) (m : TargetMachine) (f : TargetFrame)
+    (definition : ObjRef) where
+  definitions : ObjRef
+  table : HeapObject
+  tableRead : objectAt m definitions = .ok table
+  tableOwn : table.own =
+    [("balance", ⟨some (.object definition), none, none, true, true, true⟩)]
+
+  tsReads : lang = .ts → ∃ object,
+    localValue m f "Object" = .ok (.object object) ∧
+    localValue m f "contextDefinitions" = .ok (.object definitions) ∧
+    readPropertyValue .ts m (.object object) "entries" =
+      .ok ⟨m, .ok (.builtin .objectEntries)⟩
+
+  pythonReads : lang = .python → ∃ world,
+    localValue m f "_WORLD" = .ok (.object world) ∧
+    readPropertyValue .python m (.object world) "context" =
+      .ok ⟨m, .ok (.object definitions)⟩ ∧
+    readPropertyValue .python m (.object definitions) "items" =
+      .ok ⟨m, .ok (.boundBuiltin .dictItems (.object definitions))⟩
+
+structure ResetBoundsRangePhysical
+    (lang : TargetLang) (m : TargetMachine) (f : TargetFrame)
+    (definition : ObjRef) (b : Int) where
+  valueRead : localValue m f "value" = .ok (integerValue lang b)
+  definitionRead : localValue m f "definition" = .ok (.object definition)
+  object : HeapObject
+  objectRead : objectAt m definition = .ok object
+  kind : object.kind = (if lang == .ts then .jsOrdinary else .mappingProxy)
+  minPresent : (object.own.lookup "min").isSome = true
+  maxPresent : (object.own.lookup "max").isSome = true
+  minRead : readPropertyValue lang m (.object definition) "min" =
+    .ok ⟨m, .ok (integerValue lang 0)⟩
+  maxRead : readPropertyValue lang m (.object definition) "max" =
+    .ok ⟨m, .ok (integerValue lang 9007199254740991)⟩
+
+structure ResetBoundsBodyPhysical
+    (lang : TargetLang) (m : TargetMachine) (f : TargetFrame)
+    (definition candidate : ObjRef) (helper : TargetClosure) (b : Int) where
+  iterable : ResetBoundsIterablePhysical lang m f definition
+
+  keyFresh : lang = .python →
+    f.locals.lookup (resetBoundsKey lang) = none
+  definitionFresh : lang = .python →
+    f.locals.lookup "definition" = none
+
+  valuesRead :
+    let p := resetBoundsPairEntry lang m f definition
+    localValue p.1 p.2 "values" = .ok (.object candidate)
+
+  candidateTs : lang = .ts →
+    let p := resetBoundsPairEntry lang m f definition
+    readPropertyValue .ts p.1 (.object candidate) "balance" =
+      .ok ⟨p.1, .ok (integerValue .ts b)⟩
+
+  candidatePython : lang = .python →
+    let p := resetBoundsPairEntry lang m f definition
+    readPropertyValue .python p.1 (.object candidate) "get" =
+      .ok ⟨p.1, .ok (.boundBuiltin .dictGet (.object candidate))⟩ ∧
+    ∃ descriptor,
+      readOwn p.1 candidate "balance" = .ok (some descriptor) ∧
+      descriptor.value = some (integerValue .python b)
+
+  valueFresh : lang = .python →
+    let p := resetBoundsPairEntry lang m f definition
+    snapshotAddress p.1 p.2 "value" = none
+
+  definitionRead :
+    let v := resetBoundsValueEntry lang m f definition b
+    localValue v.1 v.2 "definition" = .ok (.object definition)
+
+  typeRead :
+    let v := resetBoundsValueEntry lang m f definition b
+    readPropertyValue lang v.1 (.object definition) "type" =
+      .ok ⟨v.1, .ok (.string "integer")⟩
+
+  safeTs : lang = .ts →
+    let v := resetBoundsValueEntry lang m f definition b
+    ∃ number,
+      localValue v.1 v.2 "Number" = .ok (.object number) ∧
+      readPropertyValue .ts v.1 (.object number) "isSafeInteger" =
+        .ok ⟨v.1, .ok (.builtin .jsIsSafeInteger)⟩
+
+  safePython : lang = .python →
+    let v := resetBoundsValueEntry lang m f definition b
+    ∃ ref,
+      localValue v.1 v.2 "_safe_integer" = .ok (.closure ref) ∧
+      closureAt v.1 ref = .ok helper ∧
+      helper.params = [⟨"value", none⟩] ∧
+      helper.body = balancePythonSafeIntegerClosure.body ∧
+      (let e := resetPythonSafeCallEntry v.1 helper b
+       Nonempty (ResetPythonSafePhysical e.1 e.2 b))
+
+  range :
+    let v := resetBoundsValueEntry lang m f definition b
+    ResetBoundsRangePhysical lang
+      (resetBoundsFinal lang m f definition helper b)
+      v.2 definition b
+
+/-- Select the method actually installed by module preparation. -/
+def storedBounds (lang : TargetLang) : TargetClosure :=
+  ((do
+    let ref ← (balancePreparation lang).1.classMethods.lookup
+      (if lang == .ts then "checkBounds" else "_bounds")
+    (closureAt (balancePreparation lang).1 ref).toOption) : Option TargetClosure).getD
+      ⟨"missing", [], [], .empty, [], none⟩
+
+set_option maxRecDepth 65536 in
+set_option maxHeartbeats 10000000 in
+theorem storedBounds_body_shape (lang : TargetLang) :
+    (storedBounds lang).body = resetBoundsBodyAst lang := by
+  cases lang <;> unfold storedBounds balancePreparation
+  · rw [balanceProgram_of_parse BalancePrograms.balanceTsProgram_source]
+    decide +kernel
+  · rw [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]
+    decide +kernel
+
+private theorem boundsFuel {r n : Nat} (k : Nat) (h : r < n) : r < k + n :=
+  Nat.lt_of_lt_of_le h (Nat.le_add_left n k)
+
+theorem resetBoundsMember_execute {lang m f definition field value k}
+    (hd : localValue m f "definition" = .ok (.object definition))
+    (hr : readPropertyValue lang m (.object definition) field = .ok ⟨m, .ok value⟩) :
+    evalExpr (k + 2) (balanceProgram lang) m f (resetBoundsMember lang field) =
+      .ok ⟨m, .ok value⟩ := by
+  cases lang with
+  | ts =>
+    change evalExpr (k + 2) (balanceProgram .ts) m f
+      (.property (.local "definition") field) = _
+    rw [evalExpr, evalExpr_adequate (.localRead hd) (Nat.zero_lt_succ _)]
+    simpa only [Bind.bind, Except.bind, balanceProgram_lang] using hr
+  | python =>
+    change evalExpr (k + 2) (balanceProgram .python) m f
+      (.index (.local "definition") (.string field)) = _
+    rw [evalExpr, evalExpr_adequate (.localRead hd) (Nat.zero_lt_succ _)]
+    simp only [Bind.bind, Except.bind]
+    rw [evalExpr_adequate (.string field) (Nat.zero_lt_succ _)]
+    simpa only [Bind.bind, Except.bind, balanceProgram_lang] using hr
+
+theorem resetBounds_iterable_execute {lang m f definition k}
+    (h : ResetBoundsIterablePhysical lang m f definition) :
+    evalExpr (k + 4) (balanceProgram lang) m f (resetBoundsIterable lang) =
+      .ok ⟨oneEntryMachine lang m "balance" (.object definition),
+        .ok (.object (m.nextObject + 1))⟩ := by
+  cases lang with
+  | ts =>
+    obtain ⟨object, ho, hd, he⟩ := h.tsReads rfl
+    change evalExpr (k + 4) (balanceProgram .ts) m f
+      (.call (.property (.local "Object") "entries")
+        (.sequence (.local "contextDefinitions") .empty)) = _
+    apply evalExpr_adequate (.callBuiltin
+      (.property (.localRead ho) (by simpa only [balanceProgram_lang] using he))
+      (.cons (.localRead hd) .empty) (by decide) ?_) (boundsFuel k (by decide))
+    rw [balanceProgram_lang]
+    exact hostEntries_one h.tableRead h.tableOwn
+  | python =>
+    obtain ⟨world, hw, hc, hi⟩ := h.pythonReads rfl
+    have context : evalExpr (k + 2) (balanceProgram .python) m f
+        (.index (.local "_WORLD") (.string "context")) =
+        .ok ⟨m, .ok (.object h.definitions)⟩ := by
+      rw [evalExpr, evalExpr_adequate (.localRead hw) (Nat.zero_lt_succ _)]
+      simp only [Bind.bind, Except.bind]
+      rw [evalExpr_adequate (.string "context") (Nat.zero_lt_succ _)]
+      simpa only [Bind.bind, Except.bind, balanceProgram_lang] using hc
+    have callee : evalExpr (k + 3) (balanceProgram .python) m f
+        (.property (.index (.local "_WORLD") (.string "context")) "items") =
+        .ok ⟨m, .ok (.boundBuiltin .dictItems (.object h.definitions))⟩ := by
+      rw [evalExpr, context]
+      simpa only [Bind.bind, Except.bind, balanceProgram_lang] using hi
+    have host := hostEntries_one (lang := TargetLang.python) h.tableRead h.tableOwn
+    change evalExpr (k + 4) (balanceProgram .python) m f
+      (.call (.property (.index (.local "_WORLD") (.string "context")) "items") .empty) = _
+    rw [evalExpr, callee]
+    simp only [Bind.bind, Except.bind, evalArgValues, balanceProgram_lang]
+    change hostCall .python m .dictItems (some (.object h.definitions)) [] = _
+    exact host
+
+theorem resetBounds_iterable_objects
+    (lang : TargetLang) (m : TargetMachine) (definition : ObjRef) :
+    objectAt (oneEntryMachine lang m "balance" (.object definition)) (m.nextObject + 1) =
+        .ok (oneEntryItems lang m) ∧
+    objectAt (oneEntryMachine lang m "balance" (.object definition)) m.nextObject =
+        .ok (oneEntryPair lang m "balance" (.object definition)) := by
+  have h : m.nextObject ≠ m.nextObject + 1 := Nat.ne_of_lt (Nat.lt_succ_self _)
+  simp only [oneEntryMachine, objectAt, allocObject, Prod.fst, List.lookup_cons,
+    beq_self_eq_true, if_true, beq_eq_false_iff_ne.mpr h, if_false]
+  constructor <;> trivial
+
+/-- The key cell is read after both binder allocations. -/
+theorem resetBoundsPairEntry_key (lang : TargetLang) (m : TargetMachine)
+    (f : TargetFrame) (definition : ObjRef) :
+    let p := resetBoundsPairEntry lang m f definition
+    localValue p.1 p.2 (resetBoundsKey lang) = .ok (.string "balance") := by
+  have h : m.nextCell ≠ m.nextCell + 1 := Nat.ne_of_lt (Nat.lt_succ_self _)
+  cases lang <;>
+    simp only [resetBoundsPairEntry, resetBoundsKey, namedForPairBound,
+      oneEntryMachine, allocObject, allocCell, localValue, readCell,
+      List.lookup_cons, String.reduceBEq, Bool.or_false, Bool.false_eq_true,
+      beq_self_eq_true, if_true, if_false, Prod.fst, Prod.snd,
+      beq_eq_false_iff_ne.mpr h,
+      show (TargetLang.ts == .ts) = true from rfl,
+      show (TargetLang.python == .ts) = false from rfl,
+      show (TargetLang.ts == .python) = false from rfl,
+      show (TargetLang.python == .python) = true from rfl]
+
+/-- A new value binding always reads back the newly allocated cell. -/
+theorem resetBoundsValueEntry_value (lang : TargetLang) (m : TargetMachine)
+    (f : TargetFrame) (definition : ObjRef) (b : Int) :
+    let v := resetBoundsValueEntry lang m f definition b
+    localValue v.1 v.2 "value" = .ok (integerValue lang b) := by
+  simp only [resetBoundsValueEntry, snapshotBound, allocCell, localValue,
+    readCell, List.lookup_cons, String.reduceBEq, Bool.or_false,
+    Bool.false_eq_true, beq_self_eq_true, if_true, if_false, Prod.fst, Prod.snd]
+
+theorem resetBounds_value_execute {lang m f definition candidate helper b k}
+    (h : ResetBoundsBodyPhysical lang m f definition candidate helper b) :
+    let p := resetBoundsPairEntry lang m f definition
+    evalExpr (k + 3) (balanceProgram lang) p.1 p.2 (resetBoundsValueExpr lang) =
+      .ok ⟨p.1, .ok (integerValue lang b)⟩ := by
+  have key := resetBoundsPairEntry_key lang m f definition
+  cases lang with
+  | ts =>
+    change localValue _ _ "key" = .ok (.string "balance") at key
+    change evalExpr (k + 3) (balanceProgram .ts) _ _
+      (.index (.local "values") (.local "key")) = _
+    rw [evalExpr, evalExpr_adequate (.localRead h.valuesRead) (Nat.zero_lt_succ _)]
+    simp only [Bind.bind, Except.bind]
+    rw [evalExpr_adequate (.localRead key) (Nat.zero_lt_succ _)]
+    simpa only [Bind.bind, Except.bind, balanceProgram_lang] using h.candidateTs rfl
+  | python =>
+    change localValue _ _ "name" = .ok (.string "balance") at key
+    obtain ⟨get, descriptor, own, value⟩ := h.candidatePython rfl
+    change evalExpr (k + 3) (balanceProgram .python) _ _
+      (.call (.property (.local "values") "get") (.sequence (.local "name") .empty)) = _
+    apply evalExpr_adequate (.callBoundBuiltin
+      (.property (.localRead h.valuesRead) (by simpa only [balanceProgram_lang] using get))
+      (.cons (.localRead key) .empty) (by decide) ?_) (boundsFuel k (by decide))
+    rw [balanceProgram_lang]
+    change (do
+      let found ← readOwn (resetBoundsPairEntry .python m f definition).1 candidate "balance"
+      match found with
+      | some descriptor =>
+        match descriptor.value with
+        | some result => pure (⟨(resetBoundsPairEntry .python m f definition).1, .ok result⟩ : ExprOutcome)
+        | none => throw TargetError.badDescriptor
+      | none => pure (⟨(resetBoundsPairEntry .python m f definition).1, .ok .null⟩ : ExprOutcome)) = _
+    rw [own]
+    simp only [Bind.bind, Except.bind, value]
+    rfl
+
+private theorem boundsAndTrue {lang m f left right value k}
+    (hl : evalExpr k (balanceProgram lang) m f left = .ok ⟨m, .ok (.bool true)⟩)
+    (hr : evalExpr k (balanceProgram lang) m f right = .ok ⟨m, .ok value⟩) :
+    evalExpr (k + 1) (balanceProgram lang) m f (.andThen left right) =
+      .ok ⟨m, .ok value⟩ := by
+  rw [evalAndThen_of_true hl rfl]
+  exact hr
+
+private theorem boundsOrFalse {lang m final f left right value k}
+    (hl : evalExpr k (balanceProgram lang) m f left = .ok ⟨m, .ok (.bool false)⟩)
+    (hr : evalExpr k (balanceProgram lang) m f right = .ok ⟨final, .ok value⟩) :
+    evalExpr (k + 1) (balanceProgram lang) m f (.orElse left right) =
+      .ok ⟨final, .ok value⟩ := by
+  rw [evalExpr, hl]
+  simpa only [Bind.bind, Except.bind, sourceTruthy, balanceProgram_lang,
+    Bool.false_eq_true, if_false] using hr
+
+/-- Own-table membership is independent of the property-read premise. -/
+theorem resetBounds_present_execute {lang m f definition field object k}
+    (hd : localValue m f "definition" = .ok (.object definition))
+    (ho : objectAt m definition = .ok object)
+    (hk : object.kind = (if lang == .ts then .jsOrdinary else .mappingProxy))
+    (hp : (object.own.lookup field).isSome = true) :
+    evalExpr (k + 2) (balanceProgram lang) m f
+      (.binary .inObject (.string field) (.local "definition")) =
+      .ok ⟨m, .ok (.bool true)⟩ := by
+  apply evalExpr_adequate
+    (.binary (by decide) (.string field) (.localRead hd) ?_)
+    (boundsFuel k (by decide))
+  rw [balanceProgram_lang]
+  cases lang <;>
+    simp only [binaryValue, ho, hk, hp, Bind.bind, Except.bind,
+      Pure.pure, Except.pure, beq_self_eq_true, Bool.false_eq_true, if_true, if_false,
+      show (TargetLang.python == .ts) = false from rfl]
+
+private theorem boundsMemberNumber {m f definition field n k}
+    (hd : localValue m f "definition" = .ok (.object definition))
+    (hr : readPropertyValue .ts m (.object definition) field =
+      .ok ⟨m, .ok (integerValue .ts n)⟩) :
+    evalExpr (k + 4) (balanceProgram .ts) m f
+      (.binary .strictEq (.unary .typeof (resetBoundsMember .ts field)) (.string "number")) =
+      .ok ⟨m, .ok (.bool true)⟩ := by
+  have member := resetBoundsMember_execute (k := k) hd hr
+  have ty : evalExpr (k + 3) (balanceProgram .ts) m f
+      (.unary .typeof (resetBoundsMember .ts field)) = .ok ⟨m, .ok (.string "number")⟩ := by
+    rw [evalExpr, member]
+    rfl
+  rw [evalExpr, ty]
+  simp only [Bind.bind, Except.bind]
+  rw [evalExpr_adequate (.string "number") (Nat.zero_lt_succ _)]
+  rw [balanceProgram_lang]
+  rfl
+
+/-- The literal left-associated TS conjunction and the Python conjunction. -/
+theorem resetBounds_limit_execute {lang m f definition field limit op b k}
+    (hv : localValue m f "value" = .ok (integerValue lang b))
+    (hd : localValue m f "definition" = .ok (.object definition))
+    (object : HeapObject)
+    (ho : objectAt m definition = .ok object)
+    (hk : object.kind = (if lang == .ts then .jsOrdinary else .mappingProxy))
+    (hp : (object.own.lookup field).isSome = true)
+    (hr : readPropertyValue lang m (.object definition) field =
+      .ok ⟨m, .ok (integerValue lang limit)⟩)
+    (hop : op ≠ .add)
+    (hc : binaryValue lang m op (integerValue lang b) (integerValue lang limit) =
+      .ok (.ok (.bool false))) :
+    evalExpr (k + 7) (balanceProgram lang) m f (resetBoundsLimitGuard lang field op) =
+      .ok ⟨m, .ok (.bool false)⟩ := by
+  have comparison (j : Nat) :
+      evalExpr (j + 3) (balanceProgram lang) m f
+        (.binary op (.local "value") (resetBoundsMember lang field)) =
+        .ok ⟨m, .ok (.bool false)⟩ := by
+    have member := resetBoundsMember_execute (k := j) hd hr
+    rw [evalExpr, evalExpr_adequate (.localRead hv) (Nat.zero_lt_succ _)]
+    simp only [Bind.bind, Except.bind]
+    rw [member]
+    simp only [Bind.bind, Except.bind, balanceProgram_lang,
+      beq_eq_false_iff_ne.mpr hop, Bool.and_false, Bool.false_eq_true, if_false, hc,
+      Pure.pure, Except.pure]
+  cases lang with
+  | ts =>
+    have present := resetBounds_present_execute (k := k + 2) hd ho hk hp
+    have member := boundsMemberNumber (k := k) hd hr
+    have first := boundsAndTrue present member
+    have number := resetTsOverlayNumberTest_execute (k := k + 2) hv
+    have second := boundsAndTrue first number
+    exact boundsAndTrue second (comparison (k + 3))
+  | python =>
+    exact boundsAndTrue (resetBounds_present_execute (k := k + 4) hd ho hk hp)
+      (comparison (k + 3))
+
+theorem resetBounds_range_execute {lang m f definition b k}
+    (h : ResetBoundsRangePhysical lang m f definition b)
+    (hb : 0 ≤ b ∧ b ≤ 9007199254740991) :
+    evalExpr (k + 7) (balanceProgram lang) m f (resetBoundsLimitGuard lang "min" .lt) =
+        .ok ⟨m, .ok (.bool false)⟩ ∧
+    evalExpr (k + 7) (balanceProgram lang) m f (resetBoundsLimitGuard lang "max" .gt) =
+        .ok ⟨m, .ok (.bool false)⟩ := by
+  have comparisons := resetBounds_reject_comparisons (lang := lang) m hb
+  exact ⟨resetBounds_limit_execute h.valueRead h.definitionRead h.object h.objectRead
+      h.kind h.minPresent h.minRead (by decide) comparisons.1,
+    resetBounds_limit_execute h.valueRead h.definitionRead h.object h.objectRead
+      h.kind h.maxPresent h.maxRead (by decide) comparisons.2⟩
+private theorem boundsTypeTest {lang m f definition k}
+    (hd : localValue m f "definition" = .ok (.object definition))
+    (ht : readPropertyValue lang m (.object definition) "type" =
+      .ok ⟨m, .ok (.string "integer")⟩) :
+    evalExpr (k + 3) (balanceProgram lang) m f
+      (.binary (if lang == .ts then .strictEq else .eq)
+        (resetBoundsMember lang "type") (.string "string")) =
+      .ok ⟨m, .ok (.bool false)⟩ := by
+  have member := resetBoundsMember_execute (k := k) hd ht
+  cases lang <;>
+    rw [evalExpr, member] <;>
+    simp only [Bind.bind, Except.bind] <;>
+    rw [evalExpr_adequate (.string "string") (Nat.zero_lt_succ _)] <;>
+    rw [balanceProgram_lang] <;> rfl
+
+theorem resetBounds_ts_type_execute {m f definition number b k}
+    (hd : localValue m f "definition" = .ok (.object definition))
+    (ht : readPropertyValue .ts m (.object definition) "type" =
+      .ok ⟨m, .ok (.string "integer")⟩)
+    (hv : localValue m f "value" = .ok (integerValue .ts b))
+    (hn : localValue m f "Number" = .ok (.object number))
+    (hs : readPropertyValue .ts m (.object number) "isSafeInteger" =
+      .ok ⟨m, .ok (.builtin .jsIsSafeInteger)⟩)
+    (hb : b.natAbs ≤ 9007199254740991) :
+    evalExpr (k + 6) (balanceProgram .ts) m f (resetBoundsTypeGuard .ts) =
+      .ok ⟨m, .ok (.bool false)⟩ := by
+  have test := boundsTypeTest (k := k + 2) hd ht
+  change evalExpr (k + 5) (balanceProgram .ts) m f
+    (.binary .strictEq (resetBoundsMember .ts "type") (.string "string")) = _ at test
+  have ty : evalExpr (k + 3) (balanceProgram .ts) m f
+      (.unary .typeof (.local "value")) = .ok ⟨m, .ok (.string "number")⟩ := by
+    rw [evalExpr, evalExpr_adequate (.localRead hv) (Nat.zero_lt_succ _)]
+    rfl
+  have wrong : evalExpr (k + 4) (balanceProgram .ts) m f
+      (.binary .strictNe (.unary .typeof (.local "value")) (.string "number")) =
+      .ok ⟨m, .ok (.bool false)⟩ := by
+    rw [evalExpr, ty]
+    simp only [Bind.bind, Except.bind]
+    rw [evalExpr_adequate (.string "number") (Nat.zero_lt_succ _)]
+    rw [balanceProgram_lang]
+    rfl
+  have safe := resetTsOverlaySafeCall_execute (k := k) hv hn hs hb
+  have neg : evalExpr (k + 4) (balanceProgram .ts) m f
+      (.unary .not resetTsOverlaySafeCall) = .ok ⟨m, .ok (.bool false)⟩ := by
+    rw [evalExpr, safe]
+    rfl
+  have numeric := boundsOrFalse wrong neg
+  change evalExpr (k + 6) (balanceProgram .ts) m f
+    (.conditional
+      (.binary .strictEq (resetBoundsMember .ts "type") (.string "string"))
+      (.binary .strictNe (.unary .typeof (.local "value")) (.string "string"))
+      (.orElse
+        (.binary .strictNe (.unary .typeof (.local "value")) (.string "number"))
+        (.unary .not resetTsOverlaySafeCall))) = _
+  rw [evalExpr, test]
+  simpa only [Bind.bind, Except.bind, sourceTruthy, balanceProgram_lang,
+    Bool.false_eq_true, if_false] using numeric
+
+theorem resetBounds_python_type_execute {m f definition ref helper b k}
+    (hd : localValue m f "definition" = .ok (.object definition))
+    (ht : readPropertyValue .python m (.object definition) "type" =
+      .ok ⟨m, .ok (.string "integer")⟩)
+    (hr : localValue m f "_safe_integer" = .ok (.closure ref))
+    (hv : localValue m f "value" = .ok (integerValue .python b))
+    (hc : closureAt m ref = .ok helper)
+    (hp : helper.params = [⟨"value", none⟩])
+    (hs : helper.body = balancePythonSafeIntegerClosure.body)
+    (hSafe : let e := resetPythonSafeCallEntry m helper b
+      ResetPythonSafePhysical e.1 e.2 b)
+    (hb : b.natAbs ≤ 9007199254740991) :
+    evalExpr (k + 14) (balanceProgram .python) m f (resetBoundsTypeGuard .python) =
+      .ok ⟨resetSafeTupleMachine (resetPythonSafeCallEntry m helper b).1,
+        .ok (.bool false)⟩ := by
+  have test := boundsTypeTest (k := k + 10) hd ht
+  change evalExpr (k + 13) (balanceProgram .python) m f
+    (.binary .eq (resetBoundsMember .python "type") (.string "string")) = _ at test
+  have safe := balanceReset_safe_integer_call_execute (k := k) hr hv hc hp hs hSafe hb
+  have neg : evalExpr (k + 13) (balanceProgram .python) m f
+      (.unary .not resetPythonSafeCall) =
+      .ok ⟨resetSafeTupleMachine (resetPythonSafeCallEntry m helper b).1,
+        .ok (.bool false)⟩ := by
+    rw [evalExpr, safe]
+    rfl
+  change evalExpr (k + 14) (balanceProgram .python) m f
+    (.conditional
+      (.binary .eq (resetBoundsMember .python "type") (.string "string"))
+      (.binary .isNotIdentity
+        (.call (.local "type") (.sequence (.local "value") .empty)) (.local "str"))
+      (.unary .not resetPythonSafeCall)) = _
+  rw [evalExpr, test]
+  simpa only [Bind.bind, Except.bind, sourceTruthy, balanceProgram_lang,
+    Bool.false_eq_true, if_false] using neg
+
+theorem resetBounds_type_execute {lang m f definition candidate helper b k}
+    (h : ResetBoundsBodyPhysical lang m f definition candidate helper b)
+    (hb : b.natAbs ≤ 9007199254740991) :
+    let v := resetBoundsValueEntry lang m f definition b
+    evalExpr (k + 14) (balanceProgram lang) v.1 v.2 (resetBoundsTypeGuard lang) =
+      .ok ⟨resetBoundsFinal lang m f definition helper b, .ok (.bool false)⟩ := by
+  have value := resetBoundsValueEntry_value lang m f definition b
+  cases lang with
+  | ts =>
+    obtain ⟨number, hn, hs⟩ := h.safeTs rfl
+    exact resetBounds_ts_type_execute (k := k + 8) h.definitionRead h.typeRead value hn hs hb
+  | python =>
+    obtain ⟨ref, hr, hc, hp, hs, ⟨phys⟩⟩ := h.safePython rfl
+    exact resetBounds_python_type_execute (k := k) h.definitionRead h.typeRead
+      hr value hc hp hs phys hb
+
+theorem resetBounds_iteration_execute {lang m f definition candidate helper b k}
+    (h : ResetBoundsBodyPhysical lang m f definition candidate helper b)
+    (hb : 0 ≤ b ∧ b ≤ 9007199254740991) :
+    let p := resetBoundsPairEntry lang m f definition
+    let v := resetBoundsValueEntry lang m f definition b
+    execStmt (k + 20) (balanceProgram lang) p.1 p.2 (resetBoundsIterationAst lang) =
+      .ok ⟨resetBoundsFinal lang m f definition helper b, v.2, .normal⟩ := by
+  let p := resetBoundsPairEntry lang m f definition
+  let v := resetBoundsValueEntry lang m f definition b
+  let final := resetBoundsFinal lang m f definition helper b
+  have value : execStmt (k + 19) (balanceProgram lang) p.1 p.2
+      (snapshotBindStmt lang "value" (resetBoundsValueExpr lang)) =
+      .ok ⟨v.1, v.2, .normal⟩ :=
+    execSnapshotBind (resetBounds_value_execute (k := k + 15) h) h.valueFresh
+  have typed : execStmt (k + 18) (balanceProgram lang) v.1 v.2
+      (.ifThenElse (resetBoundsTypeGuard lang) (resetBoundsRejectStmt lang) .empty) =
+      .ok ⟨final, v.2, .normal⟩ := by
+    rw [execIf_of_false (resetBounds_type_execute (k := k + 3) h (balance_natAbs hb)) rfl]
+    exact execStmt_adequate .empty (Nat.zero_lt_succ _)
+  dsimp only
+  unfold resetBoundsIterationAst
+  dsimp only
+  rw [execSequence_of_normal value, execSequence_of_normal typed]
+  cases lang with
+  | ts =>
+    have lower : execStmt (k + 17) (balanceProgram .ts) final v.2
+        (.ifThenElse (resetBoundsLimitGuard .ts "min" .lt) (resetBoundsRejectStmt .ts) .empty) =
+        .ok ⟨final, v.2, .normal⟩ := by
+      rw [execIf_of_false (resetBounds_range_execute (k := k + 9) h.range hb).1 rfl]
+      simp only [execStmt]
+      rfl
+    have upper : execStmt (k + 16) (balanceProgram .ts) final v.2
+        (.ifThenElse (resetBoundsLimitGuard .ts "max" .gt) (resetBoundsRejectStmt .ts) .empty) =
+        .ok ⟨final, v.2, .normal⟩ := by
+      rw [execIf_of_false (resetBounds_range_execute (k := k + 8) h.range hb).2 rfl]
+      simp only [execStmt]
+      rfl
+    change execStmt (k + 18) (balanceProgram .ts) final v.2
+      (.sequence
+        (.ifThenElse (resetBoundsLimitGuard .ts "min" .lt) (resetBoundsRejectStmt .ts) .empty)
+        (.sequence
+          (.ifThenElse (resetBoundsLimitGuard .ts "max" .gt) (resetBoundsRejectStmt .ts) .empty)
+          .empty)) = _
+    rw [execSequence_of_normal lower, execSequence_of_normal upper]
+    simp only [execStmt]
+    rfl
+  | python =>
+    have ranges := resetBounds_range_execute (k := k + 8) h.range hb
+    have guard := boundsOrFalse ranges.1 ranges.2
+    have checked : execStmt (k + 17) (balanceProgram .python) final v.2
+        (.ifThenElse
+          (.orElse (resetBoundsLimitGuard .python "min" .lt)
+            (resetBoundsLimitGuard .python "max" .gt))
+          (resetBoundsRejectStmt .python) .empty) = .ok ⟨final, v.2, .normal⟩ := by
+      rw [execIf_of_false guard rfl]
+      simp only [execStmt]
+      rfl
+    change execStmt (k + 18) (balanceProgram .python) final v.2
+      (.sequence
+        (.ifThenElse
+          (.orElse (resetBoundsLimitGuard .python "min" .lt)
+            (resetBoundsLimitGuard .python "max" .gt))
+          (resetBoundsRejectStmt .python) .empty) .empty) = _
+    rw [execSequence_of_normal checked]
+    simp only [execStmt]
+    rfl
+
+theorem resetBounds_body_execute {lang m f definition candidate helper b k}
+    (h : ResetBoundsBodyPhysical lang m f definition candidate helper b)
+    (hb : 0 ≤ b ∧ b ≤ 9007199254740991) :
+    execStmt (k + 23) (balanceProgram lang) m f (resetBoundsBodyAst lang) =
+      .ok ⟨resetBoundsFinal lang m f definition helper b,
+        resetBoundsFinalFrame lang m f definition b,
+        .returned (resetValidationResult lang)⟩ := by
+  let source := oneEntryMachine lang m "balance" (.object definition)
+  let v := resetBoundsValueEntry lang m f definition b
+  let final := resetBoundsFinal lang m f definition helper b
+  have objects := resetBounds_iterable_objects lang m definition
+  have loop : execStmt (k + 22) (balanceProgram lang) m f
+      (.forDo [resetBoundsKey lang, "definition"]
+        (resetBoundsIterable lang) (resetBoundsIterationAst lang)) =
+      .ok ⟨final, (if lang == .ts then f else v.2), .normal⟩ := by
+    suffices result : execStmt (k + 22) (balanceProgram lang) m f
+        (.forDo [resetBoundsKey lang, "definition"]
+          (resetBoundsIterable lang) (resetBoundsIterationAst lang)) =
+        .ok ⟨final, (if (balanceProgram lang).lang == .ts then f else v.2), .normal⟩ by
+      simpa only [balanceProgram_lang] using result
+    apply execForDo_named_one_pair (k := k + 19) (source := source)
+      (list := oneEntryItems lang m)
+      (pair := oneEntryPair lang m "balance" (.object definition))
+      (pairRef := m.nextObject) (left := .string "balance") (right := .object definition)
+    · cases lang <;> decide
+    · exact resetBounds_iterable_execute (k := k + 17) h.iterable
+    · exact objects.1
+    · simp only [oneEntryItems, balanceProgram_lang]
+    · rfl
+    · exact objects.2
+    · rfl
+    · simpa only [balanceProgram_lang] using h.keyFresh
+    · simpa only [balanceProgram_lang] using h.definitionFresh
+    · simpa only [balanceProgram_lang, resetBoundsPairEntry] using
+        (resetBounds_iteration_execute (k := k) h hb)
+  rw [resetBoundsBodyAst, execSequence_of_normal loop]
+  cases lang <;> simp only [execStmt, evalExpr, resetBoundsFinalFrame, resetValidationResult,
+    beq_self_eq_true, show (TargetLang.python == .ts) = false from rfl,
+    Bool.false_eq_true, if_true, if_false, Bind.bind, Except.bind, Pure.pure, Except.pure] <;> rfl
+
+theorem resetBoundsCall_execute
+    {lang m f methodRef method candidate error definition helper b k}
+    (hr : localValue m f (if lang == .ts then "this" else "self") =
+      .ok (.object m.checkerRef))
+    (hv : localValue m f "candidate" = .ok (.object candidate))
+    (hf : readCheckerField m (if lang == .ts then "checkBounds" else "_bounds") = .error error)
+    (hm : m.classMethods.lookup (if lang == .ts then "checkBounds" else "_bounds") = some methodRef)
+    (hc : closureAt m methodRef = .ok method)
+    (hp : method.params = [⟨"values", none⟩])
+    (hs : method.body = resetBoundsBodyAst lang)
+    (h : let e := resetBoundsBodyEntry m method candidate
+      ResetBoundsBodyPhysical lang e.1 e.2 definition candidate helper b)
+    (hb : 0 ≤ b ∧ b ≤ 9007199254740991) :
+    let e := resetBoundsBodyEntry m method candidate
+    evalExpr (k + 24) (balanceProgram lang) m f (resetBoundsCall lang) =
+      .ok ⟨resetBoundsFinal lang e.1 e.2 definition helper b,
+        .ok (resetValidationResult lang)⟩ := by
+  rw [resetBoundsCall_eq_body (k := k + 21) hr hv hf hm hc hp, hs]
+  rw [resetBounds_body_execute (k := k) h hb]
+  rfl
+
+set_option maxRecDepth 65536
+set_option maxHeartbeats 1000000
+structure BoundsStable where
+  globals : List (String × CellRef)
+  checkerRef : ObjRef
+  checker : TargetStore
+  classMethods : List (String × ClosureRef)
+  objectPrototype : ObjRef
+  closures : List (ClosureRef × TargetClosure)
+  nextClosure : ClosureRef
+
+def boundsStable (m : TargetMachine) : BoundsStable :=
+  ⟨m.globals,m.checkerRef,m.checker,m.classMethods,m.objectPrototype,m.closures,m.nextClosure⟩
+
+theorem boundsStable_overlay (lang m ref b) :
+    boundsStable (balanceOverlayUpdated lang m ref b) = boundsStable m := rfl
+
+theorem boundsStable_iterable (lang m b) :
+    boundsStable (resetIterableMachine lang m b) = boundsStable m := by
+  cases lang <;> rfl
+
+theorem boundsStable_pair (lang m f value) :
+    boundsStable (resetOverlayPairBinding lang m f value).1 = boundsStable m := rfl
+
+theorem boundsStable_descriptor (m f b cell) :
+    boundsStable (resetTsDescriptorCopyModel m f b cell).1 = boundsStable m := by
+  simp only [boundsStable, resetTsDescriptorCopyModel, resetTsDescriptorsMachine,
+    snapshotBound, resetTsDescriptorPairBound, allocObject, allocCell, oneEntryMachine,
+    Prod.fst, Prod.snd]
+
+theorem boundsStable_helper (m f b) :
+    boundsStable (resetSafeTupleMachine (resetPythonSafeCallEntry
+      (resetPythonOverlayTypedMachine m) f b).1) = boundsStable m := by
+  simp only [boundsStable, resetSafeTupleMachine, resetSafeTupleStage,
+    resetPythonSafeCallEntry, resetPythonOverlayTypedMachine, allocObject, allocCell,
+    Prod.fst, Prod.snd]
+
+theorem boundsStable_middle (lang stage seed) :
+    boundsStable (resetCandidateMiddleModel lang stage seed).1 = boundsStable stage.1 := by
+  cases lang <;> simp only [boundsStable, resetCandidateMiddleModel,
+    resetTsOverridesEntry, snapshotBound, allocObject, allocCell, Prod.fst, Prod.snd,
+    beq_self_eq_true, show (TargetLang.python == .ts) = false from rfl,
+    Bool.false_eq_true, if_true, if_false]
+
+set_option maxRecDepth 65536
+set_option maxHeartbeats 1000000
+ theorem boundsPairFrame {lang m n f g value other}
+    (hf : f = g) (hn : m.nextCell = n.nextCell) :
+    (resetOverlayPairBinding lang m f value).2 =
+      (resetOverlayPairBinding lang n g other).2 := by
+  simp only [resetOverlayPairBinding, forPairBound, allocCell, Prod.fst, Prod.snd, hf, hn]
+ theorem boundsIterable_nextCell (lang m b) :
+    (resetIterableMachine lang m b).nextCell = m.nextCell := by
+  cases lang <;> rfl
+ theorem boundsOverlay_localValue (lang m f ref b name) :
+    localValue (balanceOverlayUpdated lang m ref b) f name = localValue m f name :=
+  localValue_fields_congr rfl rfl rfl
+
+set_option maxRecDepth 65536
+set_option maxHeartbeats 1000000
+theorem boundsMethods_cell (m value mutable) :
+    (allocCell m value mutable).1.classMethods = m.classMethods := rfl
+theorem boundsMethods_closure (m closure) :
+    (allocClosure m closure).1.classMethods = m.classMethods := rfl
+theorem boundsMethods_object (m object) :
+    (allocObject m object).1.classMethods = m.classMethods := rfl
+theorem boundsMethods_busy (m busy) :
+    (balanceSetBusy m busy).classMethods = m.classMethods := rfl
+theorem boundsMethods_initialized (m state) :
+    (balancePythonInitialized m state).classMethods = m.classMethods := by
+  simp only [balancePythonInitialized, allocObject, Prod.fst]
+theorem boundsMethods_snapshots (lang m f) :
+    (resetSnapshotsInstalled lang m f).1.classMethods = m.classMethods := by
+  cases lang <;> simp only [resetSnapshotsInstalled, resetSnapshotHistory,
+    resetSnapshotContext, resetSnapshotState, snapshotBound, snapshotRollbackInstalled,
+    functionInstalled, allocCell, allocClosure, allocObject, Prod.fst, Prod.snd,
+    beq_self_eq_true, show (TargetLang.python == .ts) = false from rfl,
+    Bool.false_eq_true, if_true, if_false]
+theorem boundsMethods_constructor (lang b) :
+    (balanceConstructorBodyEntry lang b).1.classMethods = (balancePreparation lang).1.classMethods := by
+  unfold balanceConstructorBodyEntry balanceConstructorBoundEntry
+  rw [boundsMethods_cell, boundsMethods_closure]
+  unfold balanceConstructorArgumentEntry
+  rw [boundsMethods_cell, boundsMethods_object]
+theorem boundsMethods_reset (lang b) :
+    (balanceResetBodyEntry lang b).1.classMethods = (balancePreparation lang).1.classMethods := by
+  unfold balanceResetBodyEntry
+  rw [boundsMethods_cell, boundsMethods_closure, boundsMethods_constructor]
+theorem boundsMethods_python_reset (b) :
+    (balancePythonResetBodyEntry b).1.classMethods = (balancePreparation .python).1.classMethods := by
+  unfold balancePythonResetBodyEntry
+  rw [boundsMethods_cell, boundsMethods_closure, boundsMethods_initialized, boundsMethods_constructor]
+theorem boundsStage_three (lang b) :
+    balanceCanonicalResetStage lang b 3 =
+      resetSnapshotsInstalled lang (balanceCanonicalResetEntry lang b).1
+        (balanceCanonicalResetEntry lang b).2 := rfl
+theorem balanceBounds_stage_methods (lang : TargetLang) (b : Int) :
+    (balanceCanonicalResetStage lang b 3).1.classMethods = (balancePreparation lang).1.classMethods := by
+  rw [boundsStage_three, boundsMethods_snapshots]
+  unfold balanceCanonicalResetEntry
+  cases lang with
+  | ts =>
+    change (balanceSetBusy (balanceResetBodyEntry .ts b).1 true).classMethods = _
+    rw [boundsMethods_busy, boundsMethods_reset]
+  | python =>
+    change (balanceSetBusy (balancePythonResetBodyEntry b).1 true).classMethods = _
+    rw [boundsMethods_busy, boundsMethods_python_reset]
+
+set_option maxRecDepth 65536
+set_option maxHeartbeats 10000000
+
+def balanceBoundsName (lang : TargetLang) : String :=
+  if lang == .ts then "checkBounds" else "_bounds"
+
+def balanceBoundsReceiverName (lang : TargetLang) : String :=
+  if lang == .ts then "this" else "self"
+
+def balanceBoundsCandidateRef (lang : TargetLang) : ObjRef :=
+  if lang == .ts then 23 else 79
+
+/- Exact machines and frames returned by canonical overlay execution. -/
+def balanceResetPostOverlay (lang : TargetLang) (b : Int) :
+    TargetMachine × TargetFrame :=
+  match lang with
+  | .ts =>
+      (balanceOverlayUpdated .ts (balanceResetTsOverlayBound b).1 23 b,
+        (balanceResetTsDescriptorEntry b).2)
+  | .python =>
+      (balanceOverlayUpdated .python
+          (balanceResetPythonOverlayAfterHelper b) 79 b,
+        (balanceResetPythonOverlayBound b).2)
+
+/- Select the actual installed method, retaining its captures and body. -/
+def balanceStoredBounds (lang : TargetLang) : ClosureRef × TargetClosure :=
+  (if lang == .ts then 8 else 16, storedBounds lang)
+
+/-
+Only dispatch-relevant projections are invariant in b.
+The full cells and objects are deliberately absent.
+-/
+theorem balanceResetPostOverlay_stable (lang : TargetLang) (b : Int) :
+    boundsStable (balanceResetPostOverlay lang b).1 =
+      boundsStable (balanceCanonicalResetStage lang b 3).1 := by
+  cases lang with
+  | ts =>
+    rw [balanceResetPostOverlay, boundsStable_overlay]
+    unfold balanceResetTsOverlayBound
+    rw [boundsStable_pair, boundsStable_iterable]
+    unfold balanceResetTsDescriptorEntry
+    rw [boundsStable_descriptor, balanceResetMiddleEntry_model, boundsStable_middle]
+  | python =>
+    rw [balanceResetPostOverlay, boundsStable_overlay]
+    unfold balanceResetPythonOverlayAfterHelper
+    rw [boundsStable_helper]
+    unfold balanceResetPythonOverlayBound
+    rw [boundsStable_pair, boundsStable_iterable, balanceResetMiddleEntry_model, boundsStable_middle]
+
+
+theorem balanceResetPostOverlay_frame (lang : TargetLang) (b : Int) :
+    (balanceResetPostOverlay lang b).2 = (balanceResetPostOverlay lang 0).2 := by
+  cases lang with
+  | ts => exact (balanceResetTsDescriptorEntry_fields b).1
+  | python =>
+    rw [balanceResetPostOverlay, balanceResetPostOverlay]
+    unfold balanceResetPythonOverlayBound
+    apply boundsPairFrame (value := integerValue .python b) (other := integerValue .python 0)
+      (balanceResetMiddleEntry_python_frame b)
+    rw [boundsIterable_nextCell, boundsIterable_nextCell]
+    exact balanceResetMiddleEntry_nextCell .python b
+
+theorem postOverlay_footprint (lang : TargetLang) (b : Int) :
+    let e := balanceResetPostOverlay lang b
+    let z := balanceResetPostOverlay lang 0
+    e.2 = z.2 ∧
+    e.1.globals = z.1.globals ∧
+    e.1.checkerRef = z.1.checkerRef ∧
+    e.1.checker = z.1.checker ∧
+    e.1.classMethods = (balancePreparation lang).1.classMethods := by
+  have hs := balanceCanonicalResetStage_footprint lang b 3 (by decide)
+  have eb := balanceResetPostOverlay_stable lang b
+  have ez := balanceResetPostOverlay_stable lang 0
+  have frame := balanceResetPostOverlay_frame lang b
+  exact ⟨frame,
+    (congrArg BoundsStable.globals eb).trans (hs.2.2.2.1.trans (congrArg BoundsStable.globals ez).symm),
+    (congrArg BoundsStable.checkerRef eb).trans (hs.2.2.2.2.2.2.1.trans (congrArg BoundsStable.checkerRef ez).symm),
+    (congrArg BoundsStable.checker eb).trans (hs.2.2.2.2.2.2.2.1.trans (congrArg BoundsStable.checker ez).symm),
+    (congrArg BoundsStable.classMethods eb).trans (balanceBounds_stage_methods lang b)⟩
+
+
+/-
+Closed physical inventory. Successful preparation lookup and closure lookup
+exclude the fallback in balanceStoredBounds. No bounds-body execution is inspected.
+-/
+def BalanceBoundsInventory (lang : TargetLang) : Prop :=
+  let z := balanceResetPostOverlay lang 0
+  let selected := balanceStoredBounds lang
+  z.2.receiver = some z.1.checkerRef ∧
+  readCheckerField z.1 (balanceBoundsName lang) =
+    .error (.unboundLocal (balanceBoundsName lang)) ∧
+  (balancePreparation lang).1.classMethods.lookup (balanceBoundsName lang) =
+    some selected.1 ∧
+  closureAt (balancePreparation lang).1 selected.1 = .ok selected.2 ∧
+  selected.2.params = [⟨"values", none⟩] ∧
+  selected.1 < (balancePreparation lang).1.nextClosure ∧
+  (lang = .python → snapshotAddress z.1 z.2 "invalid" = none)
+
+instance (lang : TargetLang) : Decidable (BalanceBoundsInventory lang) := by
+  unfold BalanceBoundsInventory
+  infer_instance
+
+theorem balanceBoundsInventory_true (lang : TargetLang) : BalanceBoundsInventory lang := by
+  cases lang <;>
+    simp only [
+      BalanceBoundsInventory, balanceResetPostOverlay, balanceStoredBounds, storedBounds, balanceBoundsName,
+      balanceResetTsOverlayBound, balanceResetTsDescriptorEntry,
+      balanceResetPythonOverlayAfterHelper, balanceResetPythonOverlayBound,
+      balanceResetMiddleEntry, balanceResetCandidateEntry,
+      balanceCanonicalResetStage, balanceCanonicalResetEntry,
+      balanceResetBodyEntry, balancePythonResetBodyEntry,
+      balanceConstructorBodyEntry, balanceConstructorBoundEntry,
+      balanceConstructorArgumentEntry,
+      balanceStoredReset, balanceResetLookup,
+      balanceStoredConstructor, balanceConstructorLookup,
+      balanceConstructorName,
+      balancePreparation_ts_eq, balancePreparation_python_eq]
+  all_goals decide +kernel
+
+
+/- TS restores the descriptor-entry frame, not the iteration frame. -/
+theorem postOverlay_candidate (lang : TargetLang) (b : Int) :
+    localValue (balanceResetPostOverlay lang b).1 (balanceResetPostOverlay lang b).2 "candidate" =
+      .ok (.object (balanceBoundsCandidateRef lang)) := by
+  cases lang with
+  | ts =>
+      rw [balanceResetPostOverlay, boundsOverlay_localValue]
+      exact
+        (resetOverlayPairBinding_old_frame_read
+          (lang := .ts)
+          (m := resetIterableMachine .ts
+            (balanceResetTsDescriptorEntry b).1 b)
+          (f := (balanceResetTsDescriptorEntry b).2)
+          (value := integerValue .ts b)
+          (name := "candidate") (by decide) (by decide)).trans
+        (balanceResetTsOverlayBound_candidate b).1
+  | python =>
+      rw [balanceResetPostOverlay, boundsOverlay_localValue]
+      exact (balanceReset_python_canonical_post_candidate b).1
+
+
+/-
+TS analogue of balanceCanonicalResetStage_python_closureAt_other.
+The constructor, reset receiver binding, and rollback installation allocate
+at preparation.nextClosure, +1, and +2.
+-/
+theorem balanceBounds_tsStage_closureAt_preparation {b : Int} {ref : ClosureRef}
+    (hf : ref < (balancePreparation .ts).1.nextClosure) :
+    closureAt (balanceCanonicalResetStage .ts b 3).1 ref =
+      closureAt (balancePreparation .ts).1 ref := by
+  obtain ⟨h0, h1, h2⟩ := resetClosureFresh_inequalities hf
+  change closureAt
+    (resetSnapshotsInstalled .ts
+      (balanceSetBusy (balanceResetBodyEntry .ts b).1 true)
+      (balanceResetBodyEntry .ts b).2).1 ref = _
+  rw [resetSnapshotsInstalled_closureAt_other (by
+    change ref ≠ (balanceResetBodyEntry .ts b).1.nextClosure
+    unfold balanceResetBodyEntry
+    rw [allocCell_nextClosure, allocClosure_nextClosure,
+      balanceConstructorBodyEntry_nextClosure]
+    exact h2)]
+  rw [balanceSetBusy_closureAt]
+  unfold balanceResetBodyEntry
+  rw [closureAt_allocCell,
+    closureAt_allocClosure_other
+      (m := (balanceConstructorBodyEntry .ts b).1) (by
+        rw [balanceConstructorBodyEntry_nextClosure]
+        exact h1)]
+  exact balanceConstructorBodyEntry_closureAt_other
+    (lang := .ts) (b := b) (ref := ref) h0
+
+/-
+Descriptor copying, iterable allocation, pair binding, Python's eager dict,
+helper parameter, helper tuple, and candidate update preserve closure lookup.
+-/
+theorem postOverlay_closureAt_stage
+    (lang : TargetLang) (b : Int) (ref : ClosureRef) :
+    closureAt (balanceResetPostOverlay lang b).1 ref =
+      closureAt (balanceCanonicalResetStage lang b 3).1 ref := by
+  unfold closureAt
+  rw [show (balanceResetPostOverlay lang b).1.closures =
+      (balanceCanonicalResetStage lang b 3).1.closures from
+    congrArg BoundsStable.closures (balanceResetPostOverlay_stable lang b)]
+
+theorem postOverlay_closureAt_preparation
+    (lang : TargetLang) (b : Int) (ref : ClosureRef)
+    (hf : ref < (balancePreparation lang).1.nextClosure) :
+    closureAt (balanceResetPostOverlay lang b).1 ref =
+      closureAt (balancePreparation lang).1 ref := by
+  rw [postOverlay_closureAt_stage]
+  cases lang with
+  | ts =>
+      exact balanceBounds_tsStage_closureAt_preparation hf
+  | python =>
+      obtain ⟨h0, h1, h2⟩ := resetClosureFresh_inequalities hf
+      exact balanceCanonicalResetStage_python_closureAt_other
+        (b := b) (ref := ref) h0 h1 h2
+
+/- All physical obligations for canonical bounds dispatch, including freshness. -/
+theorem balanceResetPostOverlay_bounds_lookup (lang : TargetLang) (b : Int) :
+    let e := balanceResetPostOverlay lang b
+    let selected := balanceStoredBounds lang
+    localValue e.1 e.2 (balanceBoundsReceiverName lang) =
+      .ok (.object e.1.checkerRef) ∧
+    localValue e.1 e.2 "candidate" =
+      .ok (.object (balanceBoundsCandidateRef lang)) ∧
+    readCheckerField e.1 (balanceBoundsName lang) =
+      .error (.unboundLocal (balanceBoundsName lang)) ∧
+    e.1.classMethods.lookup (balanceBoundsName lang) = some selected.1 ∧
+    closureAt e.1 selected.1 = .ok selected.2 ∧
+    selected.2.params = [⟨"values", none⟩] ∧
+    (lang = .python → snapshotAddress e.1 e.2 "invalid" = none) := by
+  obtain ⟨hr, hmissing, hmethod, hclosure, hparams, hfresh, hinvalid⟩ :=
+    balanceBoundsInventory_true lang
+  obtain ⟨hframe, hglobals, hcheckerRef, hchecker, hmethods⟩ :=
+    postOverlay_footprint lang b
+  dsimp only
+  refine ⟨?_, postOverlay_candidate lang b, ?_, ?_, ?_, hparams, ?_⟩
+  · have receiver :
+        (balanceResetPostOverlay lang b).2.receiver =
+          some (balanceResetPostOverlay lang b).1.checkerRef := by
+      rw [hframe, hcheckerRef]
+      exact hr
+    cases lang <;> simp [balanceBoundsReceiverName, localValue, receiver]
+  · simpa only [readCheckerField, hchecker] using hmissing
+  · rw [hmethods]
+    exact hmethod
+  · exact (postOverlay_closureAt_preparation
+      lang b (balanceStoredBounds lang).1 hfresh).trans hclosure
+  · intro hlang
+    rw [snapshotAddress_fields_congr hframe hglobals]
+    exact hinvalid hlang
+
+/- The previously explicit Python binding-freshness premise is discharged. -/
+theorem balanceResetPostOverlay_python_invalid_fresh (b : Int) :
+    snapshotAddress
+      (balanceOverlayUpdated .python
+        (balanceResetPythonOverlayAfterHelper b) 79 b)
+      (balanceResetPythonOverlayBound b).2 "invalid" = none := by
+  obtain ⟨_, _, _, _, _, _, fresh⟩ := balanceResetPostOverlay_bounds_lookup .python b
+  exact fresh rfl
+
+/-
+Direct handoff to the generic bounds-body helper.
+This is an execution equation, not a successful-body-execution assertion.
+-/
+theorem balanceResetPostOverlay_bounds_eq_body
+    (lang : TargetLang) (b : Int) (k : Nat) :
+    let e := balanceResetPostOverlay lang b
+    let method := (balanceStoredBounds lang).2
+    evalExpr (k + 3) (balanceProgram lang) e.1 e.2
+      (resetBoundsCall lang) = (do
+        let body ← execStmt (k + 2) (balanceProgram lang)
+          (resetBoundsBodyEntry e.1 method (balanceBoundsCandidateRef lang)).1
+          (resetBoundsBodyEntry e.1 method (balanceBoundsCandidateRef lang)).2
+          method.body
+        closureResult lang body) := by
+  obtain ⟨hr, hv, hf, hm, hc, hp, _⟩ := balanceResetPostOverlay_bounds_lookup lang b
+  exact resetBoundsCall_eq_body
+    (lang := lang)
+    (m := (balanceResetPostOverlay lang b).1)
+    (f := (balanceResetPostOverlay lang b).2)
+    (methodRef := (balanceStoredBounds lang).1)
+    (method := (balanceStoredBounds lang).2)
+    (candidate := balanceBoundsCandidateRef lang)
+    (error := .unboundLocal (balanceBoundsName lang))
+    (k := k) hr hv hf hm hc hp
+
+set_option maxRecDepth 65536
+set_option maxHeartbeats 1000000
+def boundsIdentity (m : TargetMachine) : ObjRef × ObjRef := (m.checkerRef,m.objectPrototype)
+theorem boundsIdentity_cell (m value mutable) :
+    boundsIdentity (allocCell m value mutable).1 = boundsIdentity m := rfl
+theorem boundsIdentity_closure (m closure) :
+    boundsIdentity (allocClosure m closure).1 = boundsIdentity m := rfl
+theorem boundsIdentity_object (m object) :
+    boundsIdentity (allocObject m object).1 = boundsIdentity m := rfl
+theorem boundsIdentity_snapshot (lang m f name value) :
+    boundsIdentity (snapshotBound lang m f name value).1 = boundsIdentity m := by
+  unfold snapshotBound
+  rw [boundsIdentity_cell]
+theorem boundsIdentity_named (lang m f leftName rightName left right) :
+    boundsIdentity (namedForPairBound lang m f leftName rightName left right).1 = boundsIdentity m := by
+  unfold namedForPairBound
+  rw [boundsIdentity_cell,boundsIdentity_cell]
+theorem boundsIdentity_entries (lang m key value) :
+    boundsIdentity (oneEntryMachine lang m key value) = boundsIdentity m := by
+  unfold oneEntryMachine
+  rw [boundsIdentity_object,boundsIdentity_object]
+theorem boundsIdentity_body (m method candidate) :
+    boundsIdentity (resetBoundsBodyEntry m method candidate).1 = boundsIdentity m := by
+  unfold resetBoundsBodyEntry
+  rw [boundsIdentity_cell,boundsIdentity_closure]
+theorem boundsIdentity_pair (lang m f definition) :
+    boundsIdentity (resetBoundsPairEntry lang m f definition).1 = boundsIdentity m := by
+  unfold resetBoundsPairEntry
+  rw [boundsIdentity_named,boundsIdentity_entries]
+theorem boundsIdentity_value (lang m f definition b) :
+    boundsIdentity (resetBoundsValueEntry lang m f definition b).1 = boundsIdentity m := by
+  unfold resetBoundsValueEntry
+  rw [boundsIdentity_snapshot,boundsIdentity_pair]
+theorem boundsIdentity_safe (m helper b) :
+    boundsIdentity (resetPythonSafeCallEntry m helper b).1 = boundsIdentity m := by
+  unfold resetPythonSafeCallEntry
+  rw [boundsIdentity_cell]
+theorem boundsIdentity_tuple (m) :
+    boundsIdentity (resetSafeTupleMachine m) = boundsIdentity m := by
+  simp only [boundsIdentity,resetSafeTupleMachine,resetSafeTupleStage,allocObject,Prod.fst]
+theorem boundsIdentity_final (lang m f definition helper b) :
+    boundsIdentity (resetBoundsFinal lang m f definition helper b) = boundsIdentity m := by
+  unfold resetBoundsFinal
+  cases lang with
+  | ts =>
+    rw [if_pos (by decide : (TargetLang.ts == .ts) = true),boundsIdentity_value]
+  | python =>
+    rw [if_neg (by decide : ¬ (TargetLang.python == .ts) = true),
+      boundsIdentity_tuple,boundsIdentity_safe,boundsIdentity_value]
+
+set_option maxRecDepth 65536
+set_option maxHeartbeats 1000000
+def boundsGlobals (m : TargetMachine) : List (String × CellRef) := m.globals
+theorem boundsGlobals_cell (m value mutable) :
+    boundsGlobals (allocCell m value mutable).1 = boundsGlobals m := rfl
+theorem boundsGlobals_closure (m closure) :
+    boundsGlobals (allocClosure m closure).1 = boundsGlobals m := rfl
+theorem boundsGlobals_object (m object) :
+    boundsGlobals (allocObject m object).1 = boundsGlobals m := rfl
+theorem boundsGlobals_snapshot (lang m f name value) :
+    boundsGlobals (snapshotBound lang m f name value).1 = boundsGlobals m := by
+  unfold snapshotBound
+  rw [boundsGlobals_cell]
+theorem boundsGlobals_named (lang m f leftName rightName left right) :
+    boundsGlobals (namedForPairBound lang m f leftName rightName left right).1 = boundsGlobals m := by
+  unfold namedForPairBound
+  rw [boundsGlobals_cell,boundsGlobals_cell]
+theorem boundsGlobals_entries (lang m key value) :
+    boundsGlobals (oneEntryMachine lang m key value) = boundsGlobals m := by
+  unfold oneEntryMachine
+  rw [boundsGlobals_object,boundsGlobals_object]
+theorem boundsGlobals_body (m method candidate) :
+    boundsGlobals (resetBoundsBodyEntry m method candidate).1 = boundsGlobals m := by
+  unfold resetBoundsBodyEntry
+  rw [boundsGlobals_cell,boundsGlobals_closure]
+theorem boundsGlobals_pair (lang m f definition) :
+    boundsGlobals (resetBoundsPairEntry lang m f definition).1 = boundsGlobals m := by
+  unfold resetBoundsPairEntry
+  rw [boundsGlobals_named,boundsGlobals_entries]
+theorem boundsGlobals_value (lang m f definition b) :
+    boundsGlobals (resetBoundsValueEntry lang m f definition b).1 = boundsGlobals m := by
+  unfold resetBoundsValueEntry
+  rw [boundsGlobals_snapshot,boundsGlobals_pair]
+theorem boundsGlobals_safe (m helper b) :
+    boundsGlobals (resetPythonSafeCallEntry m helper b).1 = boundsGlobals m := by
+  unfold resetPythonSafeCallEntry
+  rw [boundsGlobals_cell]
+theorem boundsGlobals_tuple (m) :
+    boundsGlobals (resetSafeTupleMachine m) = boundsGlobals m := by
+  simp only [boundsGlobals,resetSafeTupleMachine,resetSafeTupleStage,allocObject,Prod.fst]
+theorem boundsGlobals_final (lang m f definition helper b) :
+    boundsGlobals (resetBoundsFinal lang m f definition helper b) = boundsGlobals m := by
+  unfold resetBoundsFinal
+  cases lang with
+  | ts =>
+    rw [if_pos (by decide : (TargetLang.ts == .ts) = true),boundsGlobals_value]
+  | python =>
+    rw [if_neg (by decide : ¬ (TargetLang.python == .ts) = true),
+      boundsGlobals_tuple,boundsGlobals_safe,boundsGlobals_value]
+
+set_option maxRecDepth 65536
+set_option maxHeartbeats 1000000
+abbrev BoundsEnv := List (String × CellRef) × List (String × CellRef) × List (String × CellRef)
+def boundsEnv (e : TargetMachine × TargetFrame) : BoundsEnv :=
+  (e.2.locals,e.2.captures,e.1.globals)
+def boundsAddressOfEnv (env : BoundsEnv) (name : String) : Option CellRef :=
+  (env.1.lookup name).orElse (fun _ => (env.2.1.lookup name).orElse (fun _ => env.2.2.lookup name))
+theorem boundsAddress_env (e : TargetMachine × TargetFrame) (name) :
+    snapshotAddress e.1 e.2 name = boundsAddressOfEnv (boundsEnv e) name := rfl
+theorem boundsEnv_body (m method candidate) :
+    boundsEnv (resetBoundsBodyEntry m method candidate) =
+      ([("values",m.nextCell)],method.captures,m.globals) := by
+  simp only [boundsEnv,resetBoundsBodyEntry,allocClosure,allocCell,closureFrame,Prod.fst,Prod.snd]
+theorem boundsEnv_pair (lang m f definition) :
+    boundsEnv (resetBoundsPairEntry lang m f definition) =
+      (("definition",m.nextCell+1)::(resetBoundsKey lang,m.nextCell)::f.locals,f.captures,m.globals) := by
+  simp only [boundsEnv,resetBoundsPairEntry,namedForPairBound,oneEntryMachine,
+    allocObject,allocCell,Prod.fst,Prod.snd]
+theorem boundsEnv_value (lang m f definition b) :
+    boundsEnv (resetBoundsValueEntry lang m f definition b) =
+      (("value",m.nextCell+2)::("definition",m.nextCell+1)::(resetBoundsKey lang,m.nextCell)::f.locals,
+        f.captures,m.globals) := by
+  simp only [boundsEnv,resetBoundsValueEntry,snapshotBound,resetBoundsPairEntry,namedForPairBound,
+    oneEntryMachine,allocObject,allocCell,Prod.fst,Prod.snd,Nat.add_assoc]
+theorem boundsEnv_helper (m helper b) :
+    boundsEnv (resetPythonSafeCallEntry m helper b) =
+      ([("value",m.nextCell)],helper.captures,m.globals) := by
+  simp only [boundsEnv,resetPythonSafeCallEntry,allocCell,closureFrame,Prod.fst,Prod.snd]
+theorem boundsEnv_final (lang m f definition helper b) :
+    boundsEnv (resetBoundsFinal lang m f definition helper b,
+      (resetBoundsValueEntry lang m f definition b).2) =
+      (("value",m.nextCell+2)::("definition",m.nextCell+1)::(resetBoundsKey lang,m.nextCell)::f.locals,
+        f.captures,m.globals) := by
+  have value := boundsEnv_value lang m f definition b
+  have gl := boundsGlobals_final lang m f definition helper b
+  unfold boundsGlobals at gl
+  unfold boundsEnv
+  rw [gl]
+  exact value
+
+theorem boundsBody_nextCell (m method candidate) :
+    (resetBoundsBodyEntry m method candidate).1.nextCell = m.nextCell+1 := by
+  simp only [resetBoundsBodyEntry,allocClosure,allocCell,Prod.fst]
+theorem boundsValue_nextCell (lang m f definition b) :
+    (resetBoundsValueEntry lang m f definition b).1.nextCell = m.nextCell+3 := by
+  simp only [resetBoundsValueEntry,snapshotBound,resetBoundsPairEntry,namedForPairBound,
+    oneEntryMachine,allocCell,allocObject,Prod.fst,Prod.snd,Nat.add_assoc]
+
+/- Generic bounds and physical dispatch are established above.
+   Canonical proofs below specialize abstract projection/lookup lemmas;
+   only closed zero-balance inventories use kernel decision procedures. -/
+set_option maxRecDepth 65536
+set_option maxHeartbeats 10000000
+
+/- The physical dispatch selection uses the checked generic stored method. -/
+theorem balanceBoundsStored_eq_generic (lang : TargetLang) :
+    (balanceStoredBounds lang).2 = storedBounds lang := rfl
+
+def balanceBoundsCandidate (lang : TargetLang) : ObjRef :=
+  if lang == .ts then 23 else 79
+
+def balanceBoundsDefinition (lang : TargetLang) : ObjRef :=
+  if lang == .ts then 11 else 41
+
+def balanceBoundsDefinitions (lang : TargetLang) : ObjRef :=
+  if lang == .ts then 10 else 42
+
+def balanceBoundsEntry (lang : TargetLang) (b : Int) : TargetMachine × TargetFrame :=
+  resetBoundsBodyEntry (balanceResetPostOverlay lang b).1
+    (balanceStoredBounds lang).2 (balanceBoundsCandidate lang)
+
+def balanceBoundsPair (lang : TargetLang) (b : Int) : TargetMachine × TargetFrame :=
+  let e := balanceBoundsEntry lang b
+  resetBoundsPairEntry lang e.1 e.2 (balanceBoundsDefinition lang)
+
+def balanceBoundsValue (lang : TargetLang) (b : Int) : TargetMachine × TargetFrame :=
+  let e := balanceBoundsEntry lang b
+  resetBoundsValueEntry lang e.1 e.2 (balanceBoundsDefinition lang) b
+
+def balanceBoundsFinal (lang : TargetLang) (b : Int) : TargetMachine :=
+  let e := balanceBoundsEntry lang b
+  resetBoundsFinal lang e.1 e.2 (balanceBoundsDefinition lang)
+    balancePythonSafeIntegerClosure b
+
+def balanceBoundsHelper (lang : TargetLang) (b : Int) : TargetMachine × TargetFrame :=
+  resetPythonSafeCallEntry (balanceBoundsValue lang b).1
+    balancePythonSafeIntegerClosure b
+
+inductive BalanceBoundsPhase where
+  | entry | pair | value | final | helper
+  deriving DecidableEq
+
+def balanceBoundsPhase (lang : TargetLang) (b : Int)
+    (phase : BalanceBoundsPhase) : TargetMachine × TargetFrame :=
+  match phase with
+  | .entry => balanceBoundsEntry lang b
+  | .pair => balanceBoundsPair lang b
+  | .value => balanceBoundsValue lang b
+  | .final => (balanceBoundsFinal lang b, (balanceBoundsValue lang b).2)
+  | .helper => balanceBoundsHelper lang b
+
+/- All simplification of allocation records below is over abstract machines.
+   Canonical specializations only rewrite these small equations. -/
+def boundsFastPhase (lang : TargetLang) (m : TargetMachine)
+    (method helper : TargetClosure) (candidate definition : ObjRef)
+    (b : Int) (phase : BalanceBoundsPhase) : TargetMachine × TargetFrame :=
+  let e := resetBoundsBodyEntry m method candidate
+  match phase with
+  | .entry => e
+  | .pair => resetBoundsPairEntry lang e.1 e.2 definition
+  | .value => resetBoundsValueEntry lang e.1 e.2 definition b
+  | .final => (resetBoundsFinal lang e.1 e.2 definition helper b,
+      (resetBoundsValueEntry lang e.1 e.2 definition b).2)
+  | .helper => resetPythonSafeCallEntry
+      (resetBoundsValueEntry lang e.1 e.2 definition b).1 helper b
+
+theorem balanceBoundsPhase_model (lang b phase) :
+    balanceBoundsPhase lang b phase =
+      boundsFastPhase lang (balanceResetPostOverlay lang b).1
+        (balanceStoredBounds lang).2 balancePythonSafeIntegerClosure
+        (balanceBoundsCandidate lang) (balanceBoundsDefinition lang) b phase := by
+  cases phase <;>
+    simp only [balanceBoundsPhase, boundsFastPhase, balanceBoundsHelper,
+      balanceBoundsFinal, balanceBoundsValue, balanceBoundsPair, balanceBoundsEntry]
+  all_goals rfl
+
+/- The six observations needed by bounds, excluding code and mutable heaps. -/
+def boundsFastFields (e z : TargetMachine × TargetFrame) : Prop :=
+  e.2 = z.2 ∧ e.1.globals = z.1.globals ∧
+    e.1.checkerRef = z.1.checkerRef ∧
+    e.1.objectPrototype = z.1.objectPrototype ∧
+    e.1.nextObject = z.1.nextObject ∧ e.1.nextCell = z.1.nextCell
+
+theorem boundsFastBody_fields {m n : TargetMachine} {method candidate}
+    (hg : m.globals = n.globals) (hk : m.checkerRef = n.checkerRef)
+    (hp : m.objectPrototype = n.objectPrototype)
+    (ho : m.nextObject = n.nextObject) (hn : m.nextCell = n.nextCell) :
+    boundsFastFields (resetBoundsBodyEntry m method candidate)
+      (resetBoundsBodyEntry n method candidate) := by
+  simp only [boundsFastFields, resetBoundsBodyEntry, allocCell, allocClosure,
+    Prod.fst, Prod.snd, hg, hk, hp, ho, hn]
+  all_goals repeat' constructor
+
+/- Strip the bounds operations while both machines and frames are variables. -/
+theorem boundsFastContinuation_fields
+    {lang : TargetLang} {m n : TargetMachine} {f g : TargetFrame}
+    {definition : ObjRef} {helper : TargetClosure} {b c : Int}
+    (h : boundsFastFields (m, f) (n, g)) :
+    boundsFastFields (resetBoundsPairEntry lang m f definition)
+        (resetBoundsPairEntry lang n g definition) ∧
+    boundsFastFields (resetBoundsValueEntry lang m f definition b)
+        (resetBoundsValueEntry lang n g definition c) ∧
+    boundsFastFields
+        (resetBoundsFinal lang m f definition helper b,
+          (resetBoundsValueEntry lang m f definition b).2)
+        (resetBoundsFinal lang n g definition helper c,
+          (resetBoundsValueEntry lang n g definition c).2) ∧
+    boundsFastFields
+        (resetPythonSafeCallEntry (resetBoundsValueEntry lang m f definition b).1 helper b)
+        (resetPythonSafeCallEntry (resetBoundsValueEntry lang n g definition c).1 helper c) := by
+  obtain ⟨hf, hg, hk, hp, ho, hn⟩ := h
+  simp only [Prod.fst, Prod.snd] at hf hg hk hp ho hn
+  cases lang <;>
+    simp only [boundsFastFields, resetBoundsFinal, resetBoundsValueEntry,
+      resetBoundsPairEntry, namedForPairBound, snapshotBound,
+      resetPythonSafeCallEntry, resetSafeTupleMachine, resetSafeTupleStage,
+      oneEntryMachine, allocCell, allocObject, Prod.fst, Prod.snd,
+      beq_self_eq_true, show (TargetLang.python == .ts) = false from rfl,
+      Bool.false_eq_true, if_true, if_false, hf, hg, hk, hp, ho, hn]
+  all_goals repeat' constructor
+
+/- The post-overlay tail starts at the descriptor result (TS) or middle
+    result (Python). Its counters and selected cells have tiny equations. -/
+def boundsFastOverlayTail (lang : TargetLang) (m : TargetMachine)
+    (f : TargetFrame) (b : Int) : TargetMachine :=
+  let pair := resetOverlayPairBinding lang (resetIterableMachine lang m b)
+    f (integerValue lang b)
+  match lang with
+  | .ts => balanceOverlayUpdated .ts pair.1 23 b
+  | .python => balanceOverlayUpdated .python
+      (resetSafeTupleMachine (resetPythonSafeCallEntry
+        (resetPythonOverlayTypedMachine pair.1) balancePythonSafeIntegerClosure b).1) 79 b
+
+def boundsFastOverlayBase (lang : TargetLang) (b : Int) : TargetMachine × TargetFrame :=
+  match lang with
+  | .ts => balanceResetTsDescriptorEntry b
+  | .python => balanceResetMiddleEntry .python b
+
+theorem boundsFastPost_model (lang b) :
+    (balanceResetPostOverlay lang b).1 =
+      boundsFastOverlayTail lang (boundsFastOverlayBase lang b).1
+        (boundsFastOverlayBase lang b).2 b := by
+  cases lang <;>
+    simp only [balanceResetPostOverlay, boundsFastOverlayTail, boundsFastOverlayBase,
+      balanceResetTsOverlayBound, balanceResetPythonOverlayAfterHelper,
+      balanceResetPythonOverlayBound]
+  all_goals rfl
+
+theorem boundsFastOverlayTail_nextObject (lang m f b) :
+    (boundsFastOverlayTail lang m f b).nextObject =
+      m.nextObject + (if lang == .ts then 2 else 5) := by
+  cases lang <;> rfl
+
+theorem boundsFastOverlayTail_nextCell (lang m f b) :
+    (boundsFastOverlayTail lang m f b).nextCell =
+      m.nextCell + (if lang == .ts then 2 else 3) := by
+  cases lang <;> rfl
+
+theorem boundsFastMiddle_nextObject (lang stage seed) :
+    (resetCandidateMiddleModel lang stage seed).1.nextObject = stage.1.nextObject + 1 := by
+  cases lang <;> rfl
+
+theorem boundsFastBase_cells (lang b) :
+    (boundsFastOverlayBase lang b).1.cells = (boundsFastOverlayBase lang 0).1.cells := by
+  cases lang with
+  | ts =>
+    exact (balanceResetTsDescriptorEntry_fields b).2.1
+  | python =>
+    exact balanceResetMiddleEntry_cells .python b
+
+theorem boundsFastBase_nextCell (lang b) :
+    (boundsFastOverlayBase lang b).1.nextCell = (boundsFastOverlayBase lang 0).1.nextCell := by
+  cases lang with
+  | ts =>
+    exact (balanceResetTsDescriptorEntry_fields b).2.2.2.1
+  | python =>
+    exact balanceResetMiddleEntry_nextCell .python b
+
+theorem boundsFastBase_nextObject (lang b) :
+    (boundsFastOverlayBase lang b).1.nextObject = (boundsFastOverlayBase lang 0).1.nextObject := by
+  cases lang with
+  | ts =>
+    exact (balanceResetTsDescriptorEntry_fields b).2.2.2.2.1
+  | python =>
+    change (balanceResetMiddleEntry .python b).1.nextObject =
+      (balanceResetMiddleEntry .python 0).1.nextObject
+    rw [balanceResetMiddleEntry_model, balanceResetMiddleEntry_model,
+      boundsFastMiddle_nextObject, boundsFastMiddle_nextObject,
+      (balanceCanonicalResetStage_footprint .python b 3 (by decide)).2.2.2.2.1]
+
+theorem boundsFastPost_nextObject (lang b) :
+    (balanceResetPostOverlay lang b).1.nextObject =
+      (balanceResetPostOverlay lang 0).1.nextObject := by
+  rw [boundsFastPost_model, boundsFastPost_model,
+    boundsFastOverlayTail_nextObject, boundsFastOverlayTail_nextObject,
+    boundsFastBase_nextObject]
+
+theorem boundsFastPost_nextCell (lang b) :
+    (balanceResetPostOverlay lang b).1.nextCell =
+      (balanceResetPostOverlay lang 0).1.nextCell := by
+  rw [boundsFastPost_model, boundsFastPost_model,
+    boundsFastOverlayTail_nextCell, boundsFastOverlayTail_nextCell,
+    boundsFastBase_nextCell]
+
+theorem boundsFastPost_prototype (lang b) :
+    (balanceResetPostOverlay lang b).1.objectPrototype =
+      (balanceResetPostOverlay lang 0).1.objectPrototype := by
+  have eb := congrArg BoundsStable.objectPrototype (balanceResetPostOverlay_stable lang b)
+  have ez := congrArg BoundsStable.objectPrototype (balanceResetPostOverlay_stable lang 0)
+  exact eb.trans ((balanceCanonicalResetStage_footprint lang b 3 (by decide)).2.2.2.2.2.1.trans ez.symm)
+
+/- Six fixed projections, proved once on abstract allocation operations. -/
+theorem balanceBoundsPhase_fields (lang : TargetLang) (b : Int)
+    (phase : BalanceBoundsPhase) :
+    let e := balanceBoundsPhase lang b phase
+    let z := balanceBoundsPhase lang 0 phase
+    e.2 = z.2 ∧ e.1.globals = z.1.globals ∧
+      e.1.checkerRef = z.1.checkerRef ∧
+      e.1.objectPrototype = z.1.objectPrototype ∧
+      e.1.nextObject = z.1.nextObject ∧ e.1.nextCell = z.1.nextCell := by
+  have post := postOverlay_footprint lang b
+  have entry := boundsFastBody_fields
+    (m := (balanceResetPostOverlay lang b).1)
+    (n := (balanceResetPostOverlay lang 0).1)
+    (method := (balanceStoredBounds lang).2) (candidate := balanceBoundsCandidate lang)
+    post.2.1 post.2.2.1 (boundsFastPost_prototype lang b)
+    (boundsFastPost_nextObject lang b) (boundsFastPost_nextCell lang b)
+  have rest := boundsFastContinuation_fields
+    (m := (balanceBoundsEntry lang b).1) (n := (balanceBoundsEntry lang 0).1)
+    (f := (balanceBoundsEntry lang b).2) (g := (balanceBoundsEntry lang 0).2)
+    (lang := lang) (definition := balanceBoundsDefinition lang)
+    (helper := balancePythonSafeIntegerClosure) (b := b) (c := 0) entry
+  change boundsFastFields (balanceBoundsPhase lang b phase) (balanceBoundsPhase lang 0 phase)
+  rw [balanceBoundsPhase_model, balanceBoundsPhase_model]
+  cases phase with
+  | entry =>
+    exact entry
+  | pair =>
+    exact rest.1
+  | value =>
+    exact rest.2.1
+  | final =>
+    exact rest.2.2.1
+  | helper =>
+    exact rest.2.2.2
+
+def balanceBoundsOldRefs (lang : TargetLang) : List ObjRef :=
+  if lang == .ts then [3, 5, 10, 11] else [4, 41, 42, 63]
+
+def balanceBoundsTable (lang : TargetLang) (ref : ObjRef) : HeapObject :=
+  if lang == .ts then resetTsCanonicalTableObject ref
+  else resetPythonCanonicalTableObject ref
+
+/- Closed allocation and address facts, independent of source execution. -/
+def balanceBoundsAllocationCheck (lang : TargetLang) : Prop :=
+  let old := (balanceCanonicalResetStage lang 0 3).1
+  let post := (balanceResetPostOverlay lang 0).1
+  post.checkerRef = 1 ∧ post.objectPrototype = 0 ∧
+  balanceBoundsCandidate lang < post.nextObject ∧
+  (balanceBoundsOldRefs lang).all (fun ref => decide
+    (ref < old.nextObject ∧ ref ≠ (balancePreparation lang).1.nextObject ∧
+     ref ≠ balanceBoundsCandidate lang ∧ ref < post.nextObject ∧
+     objectAt old ref = .ok (balanceBoundsTable lang ref))) = true
+
+instance (lang : TargetLang) : Decidable (balanceBoundsAllocationCheck lang) := by
+  unfold balanceBoundsAllocationCheck
+  infer_instance
+
+/- This certificate checks only fixed allocation counters and heap entries. -/
+theorem balanceBoundsAllocationCheck_true (lang : TargetLang) :
+    balanceBoundsAllocationCheck lang := by
+  cases lang <;>
+    simp only [balanceBoundsAllocationCheck, balanceBoundsOldRefs,
+      balanceBoundsTable, balanceBoundsCandidate, balanceResetPostOverlay,
+      resetTsCanonicalTableObject, resetPythonCanonicalTableObject,
+      balanceResetTsOverlayBound, balanceResetTsDescriptorEntry,
+      balanceResetPythonOverlayAfterHelper, balanceResetPythonOverlayBound,
+      balanceResetMiddleEntry, balanceResetCandidateEntry,
+      balanceCanonicalResetStage, balanceCanonicalResetEntry,
+      balanceResetBodyEntry, balancePythonResetBodyEntry,
+      balanceConstructorBodyEntry, balanceConstructorBoundEntry,
+      balanceConstructorArgumentEntry, balanceStoredReset, balanceResetLookup,
+      balanceStoredConstructor, balanceConstructorLookup, balanceConstructorName,
+      balancePreparation_ts_eq, balancePreparation_python_eq]
+  all_goals decide +kernel
+
+theorem balanceOverlayUpdated_objectAt_other {lang m candidate b ref}
+    (hn : ref ≠ candidate) :
+    objectAt (balanceOverlayUpdated lang m candidate b) ref = objectAt m ref := by
+  unfold objectAt balanceOverlayUpdated
+  rw [lookup_replace_payload_other _ _ hn]
+
+theorem balanceBoundsPost_old_object (lang : TargetLang) (b : Int) {ref}
+    (hr : ref ∈ balanceBoundsOldRefs lang) :
+    objectAt (balanceResetPostOverlay lang b).1 ref =
+      .ok (balanceBoundsTable lang ref) := by
+  obtain ⟨_, _, _, checks⟩ := balanceBoundsAllocationCheck_true lang
+  have check := List.all_eq_true.mp checks ref hr
+  simp only [decide_eq_true_eq] at check
+  obtain ⟨hf, hs, hn, _, ho⟩ := check
+  cases lang with
+  | ts =>
+      change ref ≠ 23 at hn
+      change objectAt (balanceOverlayUpdated .ts
+        (balanceResetTsOverlayBound b).1 23 b) ref = _
+      rw [balanceOverlayUpdated_objectAt_other hn,
+        balanceResetTsOverlayBound_old_object b hf hs]
+      exact ho
+  | python =>
+      change ref ≠ 79 at hn
+      change objectAt (balanceOverlayUpdated .python
+        (balanceResetPythonOverlayAfterHelper b) 79 b) ref = _
+      rw [balanceOverlayUpdated_objectAt_other hn]
+      have hf' : ref < 79 := by
+        simpa only [resetPythonCanonicalTablesCheck_true.1] using hf
+      have hs' : ref ≠ 74 := by
+        simpa only [resetPythonCanonicalTablesCheck_true.2.2.2.1] using hs
+      exact (balanceResetPythonOverlayAfterHelper_old_object b ref hf' hs').trans ho
+
+theorem boundsFastPhase_objectAt
+    {lang : TargetLang} {m : TargetMachine} {method helper : TargetClosure}
+    {candidate definition : ObjRef} {b : Int} (phase : BalanceBoundsPhase) {ref : ObjRef}
+    (hf : ref < m.nextObject) :
+    objectAt (boundsFastPhase lang m method helper candidate definition b phase).1 ref =
+      objectAt m ref := by
+  let e := resetBoundsBodyEntry m method candidate
+  have pair : objectAt (resetBoundsPairEntry lang e.1 e.2 definition).1 ref =
+      objectAt m ref := by
+    change objectAt (oneEntryMachine lang e.1 "balance" (.object definition)) ref = _
+    rw [oneEntryMachine_objectAt_old (m := e.1) hf]
+    rfl
+  cases phase with
+  | entry => rfl
+  | pair =>
+    exact pair
+  | value =>
+    exact pair
+  | helper =>
+    exact pair
+  | final =>
+    cases lang with
+    | ts =>
+      exact pair
+    | python =>
+      change objectAt (resetSafeTupleMachine
+        (resetPythonSafeCallEntry (resetBoundsValueEntry .python e.1 e.2 definition b).1
+          helper b).1) ref = _
+      rw [resetSafeTupleMachine_objectAt_other]
+      · exact pair
+      · apply Nat.ne_of_lt
+        change ref < m.nextObject + 2
+        exact Nat.lt_of_lt_of_le hf (Nat.le_add_right _ _)
+
+/- Canonical heap preservation specializes the abstract allocation proof. -/
+theorem balanceBoundsPhase_objectAt (lang : TargetLang) (b : Int)
+    (phase : BalanceBoundsPhase) {ref : ObjRef}
+    (hf : ref < (balanceResetPostOverlay lang b).1.nextObject) :
+    objectAt (balanceBoundsPhase lang b phase).1 ref =
+      objectAt (balanceResetPostOverlay lang b).1 ref := by
+  rw [balanceBoundsPhase_model]
+  exact boundsFastPhase_objectAt
+    (m := (balanceResetPostOverlay lang b).1)
+    (method := (balanceStoredBounds lang).2) (helper := balancePythonSafeIntegerClosure)
+    (candidate := balanceBoundsCandidate lang) (definition := balanceBoundsDefinition lang)
+    (b := b) phase hf
+
+theorem balanceBoundsPair_objectAt {lang : TargetLang} {b : Int} {ref : ObjRef}
+    (hf : ref < (balanceResetPostOverlay lang b).1.nextObject) :
+    objectAt (balanceBoundsPair lang b).1 ref =
+      objectAt (balanceResetPostOverlay lang b).1 ref := by
+  exact balanceBoundsPhase_objectAt lang b .pair hf
+
+theorem boundsFastPhase_fixed (lang : TargetLang) (m : TargetMachine)
+    (method helper : TargetClosure) (candidate definition : ObjRef) (b : Int)
+    (phase : BalanceBoundsPhase) :
+    (boundsFastPhase lang m method helper candidate definition b phase).1.checkerRef = m.checkerRef ∧
+    (boundsFastPhase lang m method helper candidate definition b phase).1.objectPrototype = m.objectPrototype := by
+  have same : boundsIdentity (boundsFastPhase lang m method helper candidate definition b phase).1 =
+      boundsIdentity m := by
+    cases phase with
+    | entry =>
+      exact boundsIdentity_body m method candidate
+    | pair =>
+      exact (boundsIdentity_pair lang (resetBoundsBodyEntry m method candidate).1
+        (resetBoundsBodyEntry m method candidate).2 definition).trans (boundsIdentity_body m method candidate)
+    | value =>
+      exact (boundsIdentity_value lang (resetBoundsBodyEntry m method candidate).1
+        (resetBoundsBodyEntry m method candidate).2 definition b).trans (boundsIdentity_body m method candidate)
+    | final =>
+      exact (boundsIdentity_final lang (resetBoundsBodyEntry m method candidate).1
+        (resetBoundsBodyEntry m method candidate).2 definition helper b).trans (boundsIdentity_body m method candidate)
+    | helper =>
+      have hsafe := boundsIdentity_safe
+        (resetBoundsValueEntry lang (resetBoundsBodyEntry m method candidate).1
+          (resetBoundsBodyEntry m method candidate).2 definition b).1 helper b
+      have hvalue := boundsIdentity_value lang (resetBoundsBodyEntry m method candidate).1
+        (resetBoundsBodyEntry m method candidate).2 definition b
+      exact hsafe.trans (hvalue.trans (boundsIdentity_body m method candidate))
+  exact ⟨congrArg Prod.fst same,congrArg Prod.snd same⟩
+
+theorem balanceBoundsPhase_old_object (lang : TargetLang) (b : Int)
+    (phase : BalanceBoundsPhase) {ref : ObjRef}
+    (hr : ref ∈ balanceBoundsOldRefs lang) :
+    objectAt (balanceBoundsPhase lang b phase).1 ref =
+      .ok (balanceBoundsTable lang ref) := by
+  obtain ⟨_, _, _, checks⟩ := balanceBoundsAllocationCheck_true lang
+  have check := List.all_eq_true.mp checks ref hr
+  simp only [decide_eq_true_eq] at check
+  have hf : ref < (balanceResetPostOverlay lang b).1.nextObject := by
+    have h : (balanceResetPostOverlay lang b).1.nextObject =
+        (balanceResetPostOverlay lang 0).1.nextObject := boundsFastPost_nextObject lang b
+    rw [h]
+    exact check.2.2.2.1
+  exact (balanceBoundsPhase_objectAt lang b phase hf).trans
+    (balanceBoundsPost_old_object lang b hr)
+
+theorem balanceBoundsPhase_fixed (lang : TargetLang) (b : Int)
+    (phase : BalanceBoundsPhase) :
+    (balanceBoundsPhase lang b phase).1.checkerRef = 1 ∧
+    (balanceBoundsPhase lang b phase).1.objectPrototype = 0 := by
+  obtain ⟨hc, hp, _, _⟩ := balanceBoundsAllocationCheck_true lang
+  have postChecker : (balanceResetPostOverlay lang b).1.checkerRef = 1 := by
+    have h : (balanceResetPostOverlay lang b).1.checkerRef =
+        (balanceResetPostOverlay lang 0).1.checkerRef := (postOverlay_footprint lang b).2.2.1
+    exact h.trans hc
+  have postProto : (balanceResetPostOverlay lang b).1.objectPrototype = 0 := by
+    have h : (balanceResetPostOverlay lang b).1.objectPrototype =
+        (balanceResetPostOverlay lang 0).1.objectPrototype := boundsFastPost_prototype lang b
+    exact h.trans hp
+  simp only [balanceBoundsPhase_model]
+  have h := boundsFastPhase_fixed lang (balanceResetPostOverlay lang b).1
+    (balanceStoredBounds lang).2 balancePythonSafeIntegerClosure
+    (balanceBoundsCandidate lang) (balanceBoundsDefinition lang) b phase
+  exact ⟨h.1.trans postChecker, h.2.trans postProto⟩
+
+/- The definition tables are frozen in Python; the candidate remains a dict. -/
+def balanceBoundsTablesCheck (lang : TargetLang) : Prop :=
+  let table := balanceBoundsTable lang (balanceBoundsDefinitions lang)
+  let definition := balanceBoundsTable lang (balanceBoundsDefinition lang)
+  table.own = [("balance", ⟨some (.object (balanceBoundsDefinition lang)),
+    none, none, true, true, true⟩)] ∧
+  table.kind = (if lang == .ts then .jsOrdinary else .mappingProxy) ∧
+  definition.kind = (if lang == .ts then .jsOrdinary else .mappingProxy) ∧
+  (definition.own.lookup "min").isSome = true ∧
+  (definition.own.lookup "max").isSome = true
+
+instance (lang : TargetLang) : Decidable (balanceBoundsTablesCheck lang) := by
+  unfold balanceBoundsTablesCheck
+  infer_instance
+
+theorem balanceBoundsTablesCheck_true (lang : TargetLang) :
+    balanceBoundsTablesCheck lang := by
+  cases lang <;>
+    simp only [balanceBoundsTablesCheck, balanceBoundsTable,
+      balanceBoundsDefinition, balanceBoundsDefinitions,
+      resetTsCanonicalTableObject, resetPythonCanonicalTableObject,
+      balanceCanonicalResetStage, balanceCanonicalResetEntry,
+      balanceResetBodyEntry, balancePythonResetBodyEntry,
+      balanceConstructorBodyEntry, balanceConstructorBoundEntry,
+      balanceConstructorArgumentEntry, balanceStoredReset, balanceResetLookup,
+      balanceStoredConstructor, balanceConstructorLookup, balanceConstructorName,
+      balancePreparation_ts_eq, balancePreparation_python_eq]
+  all_goals decide +kernel
+
+def balanceBoundsProperties (lang : TargetLang) : List (ObjRef × String × TargetValue) :=
+  match lang with
+  | .ts => [(3, "entries", .builtin .objectEntries),
+      (5, "isSafeInteger", .builtin .jsIsSafeInteger),
+      (11, "type", .string "integer"),
+      (11, "min", integerValue .ts 0),
+      (11, "max", integerValue .ts 9007199254740991)]
+  | .python => [(63, "context", .object 42),
+      (41, "type", .string "integer"),
+      (41, "min", integerValue .python 0),
+      (41, "max", integerValue .python 9007199254740991),
+      (4, "isfinite", .builtin .isFinite)]
+
+def balanceBoundsPropertiesCheck (lang : TargetLang) : Bool :=
+  (balanceBoundsProperties lang).all fun entry => decide
+    (entry.1 ∈ balanceBoundsOldRefs lang ∧ entry.1 ≠ 1 ∧ entry.1 ≠ 0 ∧
+      entry.2.1 ≠ "get" ∧ entry.2.1 ≠ "items" ∧
+      (balanceBoundsTable lang entry.1).kind =
+        (if lang == .ts || entry.1 == 4 then .jsOrdinary else .mappingProxy) ∧
+      (balanceBoundsTable lang entry.1).own.lookup entry.2.1 =
+        some ⟨some entry.2.2, none, none, true, true, true⟩)
+
+theorem balanceBoundsPropertiesCheck_true (lang : TargetLang) :
+    balanceBoundsPropertiesCheck lang = true := by
+  cases lang <;>
+    simp only [balanceBoundsPropertiesCheck, balanceBoundsProperties,
+      balanceBoundsOldRefs, balanceBoundsTable,
+      resetTsCanonicalTableObject, resetPythonCanonicalTableObject,
+      balanceCanonicalResetStage, balanceCanonicalResetEntry,
+      balanceResetBodyEntry, balancePythonResetBodyEntry,
+      balanceConstructorBodyEntry, balanceConstructorBoundEntry,
+      balanceConstructorArgumentEntry, balanceStoredReset, balanceResetLookup,
+      balanceStoredConstructor, balanceConstructorLookup, balanceConstructorName,
+      balancePreparation_ts_eq, balancePreparation_python_eq]
+  all_goals decide +kernel
+
+theorem balanceBoundsPhase_property (lang : TargetLang) (b : Int)
+    (phase : BalanceBoundsPhase) {entry}
+    (he : entry ∈ balanceBoundsProperties lang) :
+    let m := (balanceBoundsPhase lang b phase).1
+    readPropertyValue lang m (.object entry.1) entry.2.1 =
+      .ok ⟨m, .ok entry.2.2⟩ := by
+  have check := List.all_eq_true.mp (balanceBoundsPropertiesCheck_true lang) entry he
+  simp only [balanceBoundsPropertiesCheck, decide_eq_true_eq] at check
+  obtain ⟨hr, hc, hp, hg, hi, hk, hv⟩ := check
+  have fixed := balanceBoundsPhase_fixed lang b phase
+  have object := balanceBoundsPhase_old_object lang b phase hr
+  have nonChecker : entry.1 ≠ (balanceBoundsPhase lang b phase).1.checkerRef := by
+    rw [fixed.1]; exact hc
+  have nonProto : entry.1 ≠ (balanceBoundsPhase lang b phase).1.objectPrototype := by
+    rw [fixed.2]; exact hp
+  cases lang with
+  | ts =>
+      have kind : (balanceBoundsTable .ts entry.1).kind = .jsOrdinary := by simpa using hk
+      exact resetTsOrdinaryTable_read nonChecker nonProto object kind hv
+  | python =>
+      by_cases h4 : entry.1 = 4
+      · have kind : (balanceBoundsTable .python entry.1).kind = .jsOrdinary := by
+          simpa [h4] using hk
+        exact resetPythonOrdinaryTable_read nonChecker nonProto object kind hv
+      · have kind : (balanceBoundsTable .python entry.1).kind = .mappingProxy := by
+          simpa [h4] using hk
+        exact resetPythonTable_read nonChecker nonProto ⟨hg, hi⟩ object kind hv
+
+/- Only names whose values are fixed appear here. In particular, neither the
+    overlay's value cell nor the new bounds value cell is compared with zero. -/
+def balanceBoundsBindings (lang : TargetLang) :
+    List (BalanceBoundsPhase × String × TargetValue) :=
+  match lang with
+  | .ts => [(.entry, "Object", .object 3),
+      (.entry, "contextDefinitions", .object 10),
+      (.value, "Number", .object 5),
+      (.pair, "values", .object 23),
+      (.value, "definition", .object 11),
+      (.final, "definition", .object 11)]
+  | .python => [(.entry, "_WORLD", .object 63),
+      (.value, "_safe_integer", .closure 4),
+      (.pair, "values", .object 79),
+      (.value, "definition", .object 41),
+      (.final, "definition", .object 41),
+      (.helper, "type", .builtin .type),
+      (.helper, "int", .builtin .int),
+      (.helper, "float", .builtin .float),
+      (.helper, "abs", .builtin .abs),
+      (.helper, "_MAX_INTEGER", integerValue .python 9007199254740991),
+      (.helper, "math", .object 4)]
+
+def balanceBoundsBindingsCheck (lang : TargetLang) : Bool :=
+  (balanceBoundsBindings lang).all fun entry =>
+    let e := balanceBoundsPhase lang 0 entry.1
+    decide (localValue e.1 e.2 entry.2.1 = .ok entry.2.2)
+
+theorem balanceBoundsBindingsCheck_true (lang : TargetLang) :
+    balanceBoundsBindingsCheck lang = true := by
+  cases lang <;>
+    simp only [balanceBoundsBindingsCheck, balanceBoundsBindings,
+      balanceBoundsPhase, balanceBoundsEntry, balanceBoundsPair,
+      balanceBoundsValue, balanceBoundsFinal, balanceBoundsHelper,
+      balanceBoundsCandidate, balanceBoundsDefinition, balanceResetPostOverlay,
+      balanceBoundsStored_eq_generic, storedBounds, balancePythonSafeIntegerClosure,
+      balanceResetTsOverlayBound, balanceResetTsDescriptorEntry,
+      balanceResetPythonOverlayAfterHelper, balanceResetPythonOverlayBound,
+      balanceResetMiddleEntry, balanceResetCandidateEntry,
+      balanceCanonicalResetStage, balanceCanonicalResetEntry,
+      balanceResetBodyEntry, balancePythonResetBodyEntry,
+      balanceConstructorBodyEntry, balanceConstructorBoundEntry,
+      balanceConstructorArgumentEntry, balanceStoredReset, balanceResetLookup,
+      balanceStoredConstructor, balanceConstructorLookup, balanceConstructorName,
+      balancePreparation_ts_eq, balancePreparation_python_eq]
+  all_goals decide +kernel
+
+/- Read one old cell through the overlay tail. The only exceptions are the
+    pair's balance cell and, in Python, the helper argument cell. -/
+theorem boundsFastOverlayTail_lookup_congr
+    {lang : TargetLang} {m n : TargetMachine} {f g : TargetFrame}
+    {b c : Int} {ref : CellRef}
+    (hc : m.cells = n.cells) (hn : m.nextCell = n.nextCell)
+    (h1 : ref ≠ n.nextCell + 1)
+    (h2 : lang = .python → ref ≠ n.nextCell + 2) :
+    (boundsFastOverlayTail lang m f b).cells.lookup ref =
+      (boundsFastOverlayTail lang n g c).cells.lookup ref := by
+  cases lang with
+  | ts =>
+    simp only [boundsFastOverlayTail, balanceOverlayUpdated,
+      resetOverlayPairBinding, forPairBound, resetIterableMachine,
+      oneEntryMachine, allocObject, allocCell, Prod.fst, Prod.snd,
+      beq_self_eq_true, if_true, hn, hc, List.lookup_cons,
+      beq_eq_false_iff_ne.mpr h1, if_false]
+  | python =>
+    have h2' := h2 rfl
+    simp only [boundsFastOverlayTail, balanceOverlayUpdated,
+      resetPythonOverlayTypedMachine, resetPythonSafeCallEntry,
+      resetSafeTupleMachine, resetSafeTupleStage,
+      resetOverlayPairBinding, forPairBound, resetIterableMachine,
+      oneEntryMachine, allocObject, allocCell, Prod.fst, Prod.snd,
+      show (TargetLang.python == .ts) = false from rfl,
+      Bool.false_eq_true, if_false, hn, hc, Nat.add_assoc,
+      List.lookup_cons, beq_eq_false_iff_ne.mpr h1,
+      beq_eq_false_iff_ne.mpr h2']
+
+/- The bounds allocations preserve a selected lookup, except at the two
+    value-dependent argument addresses. New fixed cells need no freshness
+    assumption: their equal payloads are compared before the old lookup. -/
+theorem boundsFastPhase_lookup_congr
+    {lang : TargetLang} {m n : TargetMachine} {method helper : TargetClosure}
+    {candidate definition : ObjRef} {b c : Int} {phase : BalanceBoundsPhase}
+    {ref : CellRef}
+    (hc : m.cells.lookup ref = n.cells.lookup ref)
+    (hn : m.nextCell = n.nextCell)
+    (h3 : ref ≠ n.nextCell + 3) (h4 : ref ≠ n.nextCell + 4) :
+    (boundsFastPhase lang m method helper candidate definition b phase).1.cells.lookup ref =
+      (boundsFastPhase lang n method helper candidate definition c phase).1.cells.lookup ref := by
+  cases lang <;> cases phase <;>
+    simp only [boundsFastPhase, resetBoundsBodyEntry, resetBoundsFinal,
+      resetBoundsValueEntry, resetBoundsPairEntry, namedForPairBound,
+      snapshotBound, resetPythonSafeCallEntry, resetSafeTupleMachine,
+      resetSafeTupleStage, oneEntryMachine, allocClosure, allocCell,
+      allocObject, Prod.fst, Prod.snd, beq_self_eq_true,
+      show (TargetLang.python == .ts) = false from rfl,
+      Bool.false_eq_true, if_true, if_false, hn, Nat.add_assoc,
+      List.lookup_cons, beq_eq_false_iff_ne.mpr h3,
+      beq_eq_false_iff_ne.mpr h4, hc]
+
+/- A closed address inventory only. It does not compare executions or
+    mutable cells. All addresses come from the actual zero-balance frames. -/
+
+def boundsFastPhaseEnv (lang : TargetLang) (cell : CellRef)
+    (captures helperCaptures globals : List (String × CellRef))
+    (phase : BalanceBoundsPhase) : BoundsEnv :=
+  match phase with
+  | .entry => ([("values",cell)],captures,globals)
+  | .pair => ([("definition",cell+2),(resetBoundsKey lang,cell+1),("values",cell)],captures,globals)
+  | .value | .final => ([("value",cell+3),("definition",cell+2),
+      (resetBoundsKey lang,cell+1),("values",cell)],captures,globals)
+  | .helper => ([("value",cell+4)],helperCaptures,globals)
+
+theorem boundsFastPhase_env (lang m method helper candidate definition b phase) :
+    boundsEnv (boundsFastPhase lang m method helper candidate definition b phase) =
+      boundsFastPhaseEnv lang m.nextCell method.captures helper.captures m.globals phase := by
+  have body := boundsEnv_body m method candidate
+  have hl : (resetBoundsBodyEntry m method candidate).2.locals = [("values",m.nextCell)] :=
+    congrArg Prod.fst body
+  have hc : (resetBoundsBodyEntry m method candidate).2.captures = method.captures :=
+    congrArg (fun e : BoundsEnv => e.2.1) body
+  have hg : (resetBoundsBodyEntry m method candidate).1.globals = m.globals :=
+    congrArg (fun e : BoundsEnv => e.2.2) body
+  cases phase with
+  | entry =>
+    exact body
+  | pair =>
+    change boundsEnv (resetBoundsPairEntry lang (resetBoundsBodyEntry m method candidate).1
+      (resetBoundsBodyEntry m method candidate).2 definition) = _
+    rw [boundsEnv_pair,boundsBody_nextCell,hl,hc,hg]
+    simp only [boundsFastPhaseEnv,Nat.add_assoc]
+  | value =>
+    change boundsEnv (resetBoundsValueEntry lang (resetBoundsBodyEntry m method candidate).1
+      (resetBoundsBodyEntry m method candidate).2 definition b) = _
+    rw [boundsEnv_value,boundsBody_nextCell,hl,hc,hg]
+    simp only [boundsFastPhaseEnv,Nat.add_assoc]
+  | final =>
+    change boundsEnv (resetBoundsFinal lang (resetBoundsBodyEntry m method candidate).1
+      (resetBoundsBodyEntry m method candidate).2 definition helper b,
+      (resetBoundsValueEntry lang (resetBoundsBodyEntry m method candidate).1
+        (resetBoundsBodyEntry m method candidate).2 definition b).2) = _
+    rw [boundsEnv_final,boundsBody_nextCell,hl,hc,hg]
+    simp only [boundsFastPhaseEnv,Nat.add_assoc]
+  | helper =>
+    change boundsEnv (resetPythonSafeCallEntry
+      (resetBoundsValueEntry lang (resetBoundsBodyEntry m method candidate).1
+        (resetBoundsBodyEntry m method candidate).2 definition b).1 helper b) = _
+    rw [boundsEnv_helper,boundsValue_nextCell,boundsBody_nextCell]
+    have gv := boundsGlobals_value lang (resetBoundsBodyEntry m method candidate).1
+      (resetBoundsBodyEntry m method candidate).2 definition b
+    unfold boundsGlobals at gv
+    rw [gv,hg]
+    simp only [boundsFastPhaseEnv,Nat.add_assoc]
+
+theorem boundsFastPhase_address (lang m method helper candidate definition b phase name) :
+    snapshotAddress (boundsFastPhase lang m method helper candidate definition b phase).1
+      (boundsFastPhase lang m method helper candidate definition b phase).2 name =
+      boundsAddressOfEnv (boundsFastPhaseEnv lang m.nextCell method.captures helper.captures m.globals phase) name := by
+  rw [boundsAddress_env (boundsFastPhase lang m method helper candidate definition b phase) name,
+    boundsFastPhase_env]
+
+def balanceBoundsFixedCaptures (lang : TargetLang) : List (String × CellRef) :=
+  if lang == .ts then [("sanitizeWorldPayload", 17), ("deepFreezeWorld", 16), ("evaluateWorld", 15), ("booleanWorld", 14), ("transitionDefinitions", 13), ("invariantDefinitions", 12), ("stateDefinitions", 11), ("contextDefinitions", 10), ("contextDefaults", 9), ("world", 8), ("nodeTypes", 7)]
+  else [("_bounds", 96), ("getContext", 95), ("get_context", 94), ("getState", 93), ("get_state", 92), ("rollback_last_step", 91), ("history", 90), ("context", 89), ("state", 88), ("__init__", 87), ("sanitize_world_payload", 86), ("evaluate_world", 85), ("_safe_integer", 84), ("_div", 83), ("_number", 82), ("_boolean", 81), ("_UNDEFINED", 80), ("_MAX_INTEGER", 79), ("_EFFECT", 78), ("_NAME", 77), ("_TOKEN", 76), ("_PRECEDENCE", 75), ("_DEFAULTS", 74), ("_INITIAL", 71), ("_WORLD", 69), ("_freeze", 26), ("IWorldChecker", 25), ("Any", 24), ("types", 23), ("re", 22), ("math", 21), ("json", 20), ("copy", 19)]
+
+def balanceBoundsFixedHelperCaptures : List (String × CellRef) :=
+  [("_safe_integer", 84), ("_div", 83), ("_number", 82), ("_boolean", 81), ("_UNDEFINED", 80), ("_MAX_INTEGER", 79), ("_EFFECT", 78), ("_NAME", 77), ("_TOKEN", 76), ("_PRECEDENCE", 75), ("_DEFAULTS", 74), ("_INITIAL", 71), ("_WORLD", 69), ("_freeze", 26), ("IWorldChecker", 25), ("Any", 24), ("types", 23), ("re", 22), ("math", 21), ("json", 20), ("copy", 19)]
+
+def balanceBoundsFixedGlobals (lang : TargetLang) : List (String × CellRef) :=
+  if lang == .ts then [("structuredClone", 6), ("Error", 5), ("Set", 4), ("Number", 3), ("Array", 2), ("Object", 1), ("JSON", 0)]
+  else [("OverflowError", 18), ("RuntimeError", 17), ("ValueError", 16), ("any", 15), ("abs", 14), ("object", 13), ("id", 12), ("isinstance", 11), ("next", 10), ("len", 9), ("bool", 8), ("str", 7), ("int", 6), ("float", 5), ("set", 4), ("tuple", 3), ("list", 2), ("dict", 1), ("type", 0)]
+
+def balanceBoundsLexicalCheck (lang : TargetLang) : Prop :=
+  (balanceResetPostOverlay lang 0).1.nextCell = (if lang == .ts then 33 else 113) ∧
+  (boundsFastOverlayBase lang 0).1.nextCell = (if lang == .ts then 31 else 110) ∧
+  (balanceResetPostOverlay lang 0).1.globals = balanceBoundsFixedGlobals lang ∧
+  (balanceStoredBounds lang).2.captures = balanceBoundsFixedCaptures lang ∧
+  balancePythonSafeIntegerClosure.captures = balanceBoundsFixedHelperCaptures
+instance (lang : TargetLang) : Decidable (balanceBoundsLexicalCheck lang) := by
+  unfold balanceBoundsLexicalCheck
+  infer_instance
+
+theorem balanceBoundsLexicalCheck_true (lang : TargetLang) : balanceBoundsLexicalCheck lang := by
+  cases lang <;>
+    simp only [balanceBoundsLexicalCheck,balanceBoundsFixedGlobals,balanceBoundsFixedCaptures,
+      balanceBoundsFixedHelperCaptures,boundsFastOverlayBase,balanceResetPostOverlay,
+      balanceBoundsStored_eq_generic,storedBounds,balancePythonSafeIntegerClosure,
+      balanceResetTsOverlayBound,balanceResetTsDescriptorEntry,
+      balanceResetPythonOverlayAfterHelper,balanceResetPythonOverlayBound,
+      balanceResetMiddleEntry,balanceResetCandidateEntry,
+      balanceCanonicalResetStage,balanceCanonicalResetEntry,
+      balanceResetBodyEntry,balancePythonResetBodyEntry,
+      balanceConstructorBodyEntry,balanceConstructorBoundEntry,
+      balanceConstructorArgumentEntry,balanceStoredReset,balanceResetLookup,
+      balanceStoredConstructor,balanceConstructorLookup,balanceConstructorName,
+      balancePreparation_ts_eq,balancePreparation_python_eq]
+  all_goals decide +kernel
+def balanceBoundsBindingAddressesCheck (lang : TargetLang) : Bool :=
+  (balanceBoundsBindings lang).all fun entry =>
+    let z := balanceBoundsPhase lang 0 entry.1
+    let ref := (snapshotAddress z.1 z.2 entry.2.1).getD 0
+    let post := (balanceResetPostOverlay lang 0).1
+    let base := (boundsFastOverlayBase lang 0).1
+    decide (entry.2.1 ≠ "this" ∧ entry.2.1 ≠ "self" ∧
+      snapshotAddress z.1 z.2 entry.2.1 = some ref ∧
+      ref ≠ post.nextCell + 3 ∧ ref ≠ post.nextCell + 4 ∧
+      ref ≠ base.nextCell + 1 ∧
+      (lang = .python → ref ≠ base.nextCell + 2))
+
+theorem balanceBoundsBindingAddressesCheck_true (lang : TargetLang) :
+    balanceBoundsBindingAddressesCheck lang = true := by
+  have lexical := balanceBoundsLexicalCheck_true lang
+  rcases lexical with ⟨hn,hb,hg,hc,hh⟩
+  simp only [balanceBoundsBindingAddressesCheck,balanceBoundsPhase_model,
+    boundsFastPhase_address,hn,hb,hg,hc,hh]
+  cases lang <;>
+    simp only [balanceBoundsBindings,boundsFastPhaseEnv,balanceBoundsFixedGlobals,
+      balanceBoundsFixedCaptures,balanceBoundsFixedHelperCaptures,resetBoundsKey,
+      boundsAddressOfEnv]
+  all_goals decide +kernel
+
+theorem balanceBoundsBinding_eq_zero (lang : TargetLang) (b : Int) {entry}
+    (he : entry ∈ balanceBoundsBindings lang) :
+    let e := balanceBoundsPhase lang b entry.1
+    let z := balanceBoundsPhase lang 0 entry.1
+    localValue e.1 e.2 entry.2.1 = localValue z.1 z.2 entry.2.1 := by
+  have checks := List.all_eq_true.mp (balanceBoundsBindingAddressesCheck_true lang) entry he
+  simp only [balanceBoundsBindingAddressesCheck, decide_eq_true_eq] at checks
+  obtain ⟨ht, hs, ha, h3, h4, h1, h2⟩ := checks
+  let ref := (snapshotAddress (balanceBoundsPhase lang 0 entry.1).1
+    (balanceBoundsPhase lang 0 entry.1).2 entry.2.1).getD 0
+  have fields := balanceBoundsPhase_fields lang b entry.1
+  have address : snapshotAddress (balanceBoundsPhase lang b entry.1).1
+      (balanceBoundsPhase lang b entry.1).2 entry.2.1 = some ref := by
+    rw [snapshotAddress_fields_congr
+      (m := (balanceBoundsPhase lang b entry.1).1)
+      (n := (balanceBoundsPhase lang 0 entry.1).1)
+      (f := (balanceBoundsPhase lang b entry.1).2)
+      (g := (balanceBoundsPhase lang 0 entry.1).2) fields.1 fields.2.1]
+    exact ha
+  have post : (balanceResetPostOverlay lang b).1.cells.lookup ref =
+      (balanceResetPostOverlay lang 0).1.cells.lookup ref := by
+    rw [boundsFastPost_model, boundsFastPost_model]
+    exact boundsFastOverlayTail_lookup_congr
+      (lang := lang)
+      (m := (boundsFastOverlayBase lang b).1) (n := (boundsFastOverlayBase lang 0).1)
+      (f := (boundsFastOverlayBase lang b).2) (g := (boundsFastOverlayBase lang 0).2)
+      (b := b) (c := 0) (ref := ref)
+      (boundsFastBase_cells lang b) (boundsFastBase_nextCell lang b) h1 h2
+  have selected : (balanceBoundsPhase lang b entry.1).1.cells.lookup ref =
+      (balanceBoundsPhase lang 0 entry.1).1.cells.lookup ref := by
+    rw [balanceBoundsPhase_model, balanceBoundsPhase_model]
+    exact boundsFastPhase_lookup_congr
+      (lang := lang) (m := (balanceResetPostOverlay lang b).1)
+      (n := (balanceResetPostOverlay lang 0).1)
+      (method := (balanceStoredBounds lang).2) (helper := balancePythonSafeIntegerClosure)
+      (candidate := balanceBoundsCandidate lang) (definition := balanceBoundsDefinition lang)
+      (b := b) (c := 0) (phase := entry.1) (ref := ref)
+      post (boundsFastPost_nextCell lang b) h3 h4
+  dsimp only
+  rw [localValue_of_snapshotAddress
+      (m := (balanceBoundsPhase lang b entry.1).1)
+      (f := (balanceBoundsPhase lang b entry.1).2) ⟨ht, hs⟩ address,
+    localValue_of_snapshotAddress
+      (m := (balanceBoundsPhase lang 0 entry.1).1)
+      (f := (balanceBoundsPhase lang 0 entry.1).2) ⟨ht, hs⟩ ha]
+  unfold readCell
+  rw [selected]
+
+theorem balanceBoundsBinding_read (lang : TargetLang) (b : Int) {entry}
+    (he : entry ∈ balanceBoundsBindings lang) :
+    let e := balanceBoundsPhase lang b entry.1
+    localValue e.1 e.2 entry.2.1 = .ok entry.2.2 := by
+  have check := List.all_eq_true.mp (balanceBoundsBindingsCheck_true lang) entry he
+  simp only [balanceBoundsBindingsCheck, decide_eq_true_eq] at check
+  exact (balanceBoundsBinding_eq_zero lang b he).trans check
+
+/- Shape and freshness checks do not execute the bounds body. The closure
+    lookup is in the actual post-dispatch machine, including its new closure. -/
+def balanceBoundsDispatchCheck (lang : TargetLang) : Prop :=
+  (balanceStoredBounds lang).2.body = resetBoundsBodyAst lang ∧
+  (lang = .python →
+    snapshotAddress (balanceBoundsPair lang 0).1
+      (balanceBoundsPair lang 0).2 "value" = none ∧
+    closureAt (balanceBoundsValue lang 0).1 4 = .ok balancePythonSafeIntegerClosure ∧
+    balancePythonSafeIntegerClosure.params = [⟨"value", none⟩] ∧
+    snapshotAddress (balanceResetPostOverlay lang 0).1
+      (balanceResetPostOverlay lang 0).2 "invalid" = none)
+
+instance (lang : TargetLang) : Decidable (balanceBoundsDispatchCheck lang) := by
+  unfold balanceBoundsDispatchCheck
+  infer_instance
+
+theorem balanceBoundsDispatchCheck_true (lang : TargetLang) :
+    balanceBoundsDispatchCheck lang := by
+  cases lang <;>
+    simp only [balanceBoundsDispatchCheck, balanceBoundsPair,
+      balanceBoundsValue, balanceBoundsEntry, balanceBoundsCandidate,
+      balanceBoundsDefinition, balanceResetPostOverlay,
+      balanceBoundsStored_eq_generic, storedBounds,
+      balancePythonSafeIntegerClosure,
+      balanceResetTsOverlayBound, balanceResetTsDescriptorEntry,
+      balanceResetPythonOverlayAfterHelper, balanceResetPythonOverlayBound,
+      balanceResetMiddleEntry, balanceResetCandidateEntry,
+      balanceCanonicalResetStage, balanceCanonicalResetEntry,
+      balanceResetBodyEntry, balancePythonResetBodyEntry,
+      balanceConstructorBodyEntry, balanceConstructorBoundEntry,
+      balanceConstructorArgumentEntry, balanceStoredReset, balanceResetLookup,
+      balanceStoredConstructor, balanceConstructorLookup, balanceConstructorName,
+      balancePreparation_ts_eq, balancePreparation_python_eq]
+  all_goals decide +kernel
+
+theorem balanceStoredBounds_body_shape (lang : TargetLang) :
+    (balanceStoredBounds lang).2.body = resetBoundsBodyAst lang :=
+  (balanceBoundsDispatchCheck_true lang).1
+
+/- Physical dispatch freshness; no bounds-execution premise is involved. -/
+theorem balanceBounds_python_invalid_fresh (b : Int) :
+    snapshotAddress (balanceResetPostOverlay .python b).1
+      (balanceResetPostOverlay .python b).2 "invalid" = none := by
+  exact balanceResetPostOverlay_python_invalid_fresh b
+
+theorem balanceBounds_value_fresh (b : Int) :
+    snapshotAddress (balanceBoundsPair .python b).1
+      (balanceBoundsPair .python b).2 "value" = none := by
+  have fields := balanceBoundsPhase_fields .python b .pair
+  rw [snapshotAddress_fields_congr
+    (m := (balanceBoundsPair .python b).1) (n := (balanceBoundsPair .python 0).1)
+    (f := (balanceBoundsPair .python b).2) (g := (balanceBoundsPair .python 0).2)
+    fields.1 fields.2.1]
+  exact ((balanceBoundsDispatchCheck_true .python).2 rfl).1
+
+theorem boundsFastSnapshots_nextClosure (lang m f) :
+    (resetSnapshotsInstalled lang m f).1.nextClosure = m.nextClosure + 1 := by
+  unfold resetSnapshotsInstalled snapshotRollbackInstalled
+  have step (n : TargetMachine) (g : TargetFrame) (name : String) (body : TargetStmt) :
+      (functionInstalled lang n g name body).1.nextClosure = n.nextClosure + 1 := by
+    cases lang <;> rfl
+  rw [step, resetSnapshotHistory_nextClosure]
+
+theorem boundsFastPost_python_nextClosure (b : Int) :
+    (balanceResetPostOverlay .python b).1.nextClosure =
+      (balancePreparation .python).1.nextClosure + 1 + 1 + 1 := by
+  have hs : (balanceResetPostOverlay .python b).1.nextClosure =
+      (balanceCanonicalResetStage .python b 3).1.nextClosure :=
+    congrArg BoundsStable.nextClosure (balanceResetPostOverlay_stable .python b)
+  rw [hs, balanceCanonicalResetStage_python3_eq, boundsFastSnapshots_nextClosure,
+    balanceCanonicalResetEntry_python_eq, balanceSetBusy_nextClosure,
+    balancePythonResetBodyEntry_nextClosure]
+
+/- Only the fresh bound-method closure is added by the bounds prefix. -/
+theorem boundsFastValue_closureAt {lang : TargetLang} {m : TargetMachine}
+    {method : TargetClosure} {candidate definition : ObjRef} {b : Int} {ref : ClosureRef}
+    (hn : ref ≠ m.nextClosure) :
+    closureAt (resetBoundsValueEntry lang
+      (resetBoundsBodyEntry m method candidate).1
+      (resetBoundsBodyEntry m method candidate).2 definition b).1 ref =
+      closureAt m ref := by
+  simp only [resetBoundsValueEntry, resetBoundsPairEntry, resetBoundsBodyEntry,
+    namedForPairBound, snapshotBound, oneEntryMachine, allocObject, allocCell,
+    allocClosure, Prod.fst, Prod.snd, closureAt, List.lookup_cons,
+    beq_eq_false_iff_ne.mpr hn, if_false]
+
+theorem balanceBounds_safe_fresh (b : Int) :
+    4 < (balanceResetPostOverlay .python b).1.nextClosure := by
+  rw [boundsFastPost_python_nextClosure b,balancePreparation_python_eq]
+  decide +kernel
+
+theorem balanceBounds_safe_closure (b : Int) :
+    closureAt (balanceBoundsValue .python b).1 4 =
+      .ok balancePythonSafeIntegerClosure := by
+  unfold balanceBoundsValue balanceBoundsEntry
+  rw [boundsFastValue_closureAt (lang := .python)
+    (m := (balanceResetPostOverlay .python b).1) (method := (balanceStoredBounds .python).2)
+    (candidate := balanceBoundsCandidate .python) (definition := balanceBoundsDefinition .python)
+    (b := b) (ref := 4) (Nat.ne_of_lt (balanceBounds_safe_fresh b))]
+  exact (postOverlay_closureAt_preparation .python b 4
+    balancePythonSafeInteger_fresh_closures).trans balancePythonSafeInteger_preparation_closure
+
+theorem boundsFastPhase_heapObject (lang : TargetLang) (m : TargetMachine)
+    (method helper : TargetClosure) (candidate definition : ObjRef) (b : Int)
+    (phase : BalanceBoundsPhase) :
+    balanceHeapObject lang
+      (boundsFastPhase lang m method helper candidate definition b phase).1 b =
+      balanceHeapObject lang m b := by
+  unfold balanceHeapObject
+  rw [(boundsFastPhase_fixed lang m method helper candidate definition b phase).2]
+
+theorem boundsFastOverlay_heapObject (lang m ref b) :
+    balanceHeapObject lang (balanceOverlayUpdated lang m ref b) b =
+      balanceHeapObject lang m b := rfl
+
+/- The candidate is the live, updated object. It is not one of the frozen
+    definition tables, and its descriptor retains the universally quantified b. -/
+theorem balanceBounds_candidate_object (lang : TargetLang) (b : Int) :
+    objectAt (balanceBoundsPair lang b).1 (balanceBoundsCandidate lang) =
+      .ok (balanceHeapObject lang (balanceBoundsPair lang b).1 b) := by
+  have fresh : balanceBoundsCandidate lang < (balanceResetPostOverlay lang b).1.nextObject := by
+    have h : (balanceResetPostOverlay lang b).1.nextObject =
+        (balanceResetPostOverlay lang 0).1.nextObject := boundsFastPost_nextObject lang b
+    rw [h]
+    exact (balanceBoundsAllocationCheck_true lang).2.2.1
+  have shape : balanceHeapObject lang (balanceBoundsPair lang b).1 b =
+      balanceHeapObject lang (balanceResetPostOverlay lang b).1 b := by
+    change balanceHeapObject lang (balanceBoundsPhase lang b .pair).1 b = _
+    rw [balanceBoundsPhase_model]
+    exact boundsFastPhase_heapObject lang (balanceResetPostOverlay lang b).1
+      (balanceStoredBounds lang).2 balancePythonSafeIntegerClosure
+      (balanceBoundsCandidate lang) (balanceBoundsDefinition lang) b .pair
+  rw [balanceBoundsPair_objectAt fresh, shape]
+  cases lang with
+  | ts =>
+    rw [balanceResetPostOverlay, boundsFastOverlay_heapObject]
+    exact balanceOverlayUpdated_objectAt (balanceResetTsOverlayBound_candidate b).2
+  | python =>
+    rw [balanceResetPostOverlay, boundsFastOverlay_heapObject]
+    exact balanceOverlayUpdated_objectAt (balanceReset_python_canonical_post_candidate b).2
+
+theorem boundsFastSnapshot_value (lang : TargetLang) (m : TargetMachine)
+    (f : TargetFrame) (value : TargetValue) :
+    localValue (snapshotBound lang m f "value" value).1
+      (snapshotBound lang m f "value" value).2 "value" = .ok value := by
+  simp only [snapshotBound, localValue, readCell, allocCell, Prod.fst, Prod.snd,
+    List.lookup_cons, beq_self_eq_true, if_true]
+  all_goals rfl
+
+theorem boundsFastSnapshot_address (lang : TargetLang) (m : TargetMachine)
+    (f : TargetFrame) (value : TargetValue) :
+    snapshotAddress (snapshotBound lang m f "value" value).1
+      (snapshotBound lang m f "value" value).2 "value" = some m.nextCell := by
+  simp only [snapshotBound, snapshotAddress, allocCell, Prod.fst, Prod.snd,
+    List.lookup_cons, beq_self_eq_true, if_true, Option.orElse]
+
+theorem balanceBounds_value_read (lang : TargetLang) (b : Int) :
+    localValue (balanceBoundsValue lang b).1 (balanceBoundsValue lang b).2 "value" =
+      .ok (integerValue lang b) := by
+  exact boundsFastSnapshot_value lang (balanceBoundsPair lang b).1
+    (balanceBoundsPair lang b).2 (integerValue lang b)
+
+theorem boundsFastFinal_value (lang : TargetLang) (m : TargetMachine)
+    (f : TargetFrame) (definition : ObjRef) (helper : TargetClosure) (b : Int) :
+    localValue (resetBoundsFinal lang m f definition helper b)
+      (resetBoundsValueEntry lang m f definition b).2 "value" =
+        .ok (integerValue lang b) := by
+  let p := resetBoundsPairEntry lang m f definition
+  let v := resetBoundsValueEntry lang m f definition b
+  have value : localValue v.1 v.2 "value" = .ok (integerValue lang b) :=
+    boundsFastSnapshot_value lang p.1 p.2 (integerValue lang b)
+  cases lang with
+  | ts =>
+    exact value
+  | python =>
+    have address : snapshotAddress v.1 v.2 "value" = some p.1.nextCell :=
+      boundsFastSnapshot_address .python p.1 p.2 (integerValue .python b)
+    have fresh : p.1.nextCell < v.1.nextCell := Nat.lt_succ_self _
+    have preserved := localValue_allocCell_preserved
+      (m := v.1) (f := v.2) (name := "value")
+      (value := integerValue .python b) (by decide) address fresh
+    exact preserved.trans value
+
+theorem balanceBounds_final_value_read (lang : TargetLang) (b : Int) :
+    localValue (balanceBoundsFinal lang b) (balanceBoundsValue lang b).2 "value" =
+      .ok (integerValue lang b) := by
+  exact boundsFastFinal_value lang (balanceBoundsEntry lang b).1
+    (balanceBoundsEntry lang b).2 (balanceBoundsDefinition lang)
+    balancePythonSafeIntegerClosure b
+
+/- The helper runs in its own frame; finiteRead is on the tuple-extended heap. -/
+def balanceBounds_safe_physical (b : Int) :
+    ResetPythonSafePhysical (balanceBoundsHelper .python b).1
+      (balanceBoundsHelper .python b).2 b := by
+  refine ⟨4, resetPythonSafeCallEntry_value _ _ _, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  · exact balanceBoundsBinding_read .python b
+      (entry := (.helper, "type", .builtin .type)) (by decide)
+  · exact balanceBoundsBinding_read .python b
+      (entry := (.helper, "int", .builtin .int)) (by decide)
+  · exact balanceBoundsBinding_read .python b
+      (entry := (.helper, "float", .builtin .float)) (by decide)
+  · exact balanceBoundsBinding_read .python b
+      (entry := (.helper, "abs", .builtin .abs)) (by decide)
+  · exact balanceBoundsBinding_read .python b
+      (entry := (.helper, "_MAX_INTEGER", integerValue .python 9007199254740991)) (by decide)
+  · exact balanceBoundsBinding_read .python b
+      (entry := (.helper, "math", .object 4)) (by decide)
+  · exact balanceBoundsPhase_property .python b .final
+      (entry := (4, "isfinite", .builtin .isFinite)) (by decide)
+
+theorem boundsFastPython_items {m : TargetMachine} {ref : ObjRef} {object : HeapObject}
+    (hc : ref ≠ m.checkerRef) (hp : ref ≠ m.objectPrototype)
+    (ho : objectAt m ref = .ok object) (hk : object.kind = .mappingProxy) :
+    readPropertyValue .python m (.object ref) "items" =
+      .ok ⟨m, .ok (.boundBuiltin .dictItems (.object ref))⟩ := by
+  simp only [readPropertyValue, beq_eq_false_iff_ne.mpr hc,
+    beq_eq_false_iff_ne.mpr hp, ho, hk, Bind.bind, Except.bind,
+    Pure.pure, Except.pure, Bool.false_eq_true, if_false]
+  all_goals rfl
+
+theorem boundsFastPython_get {m : TargetMachine} {ref : ObjRef} {b : Int}
+    (hc : ref ≠ m.checkerRef) (hp : ref ≠ m.objectPrototype)
+    (ho : objectAt m ref = .ok (balanceHeapObject .python m b)) :
+    readPropertyValue .python m (.object ref) "get" =
+      .ok ⟨m, .ok (.boundBuiltin .dictGet (.object ref))⟩ := by
+  simp only [readPropertyValue, beq_eq_false_iff_ne.mpr hc,
+    beq_eq_false_iff_ne.mpr hp, ho, balanceHeapObject, Bind.bind, Except.bind,
+    Pure.pure, Except.pure, Bool.false_eq_true, if_false]
+  all_goals rfl
+
+theorem boundsFastCandidate_readOwn {lang : TargetLang} {m : TargetMachine}
+    {ref : ObjRef} {b : Int}
+    (ho : objectAt m ref = .ok (balanceHeapObject lang m b)) :
+    readOwn m ref "balance" = .ok (some (balanceDataDescriptor lang b)) := by
+  simp only [readOwn, ho, balanceHeapObject, Bind.bind, Except.bind,
+    Pure.pure, Except.pure, List.lookup_cons, beq_self_eq_true, if_true]
+
+/- The real iterable reads: Object.entries in TS and the frozen table's bound
+    items method in Python. No dict/list surrogate is substituted. -/
+def balanceBounds_iterable_physical (lang : TargetLang) (b : Int) :
+    ResetBoundsIterablePhysical lang (balanceBoundsEntry lang b).1
+      (balanceBoundsEntry lang b).2 (balanceBoundsDefinition lang) := by
+  refine {
+    definitions := balanceBoundsDefinitions lang
+    table := balanceBoundsTable lang (balanceBoundsDefinitions lang)
+    tableRead := balanceBoundsPhase_old_object lang b .entry
+      (by cases lang <;> decide)
+    tableOwn := (balanceBoundsTablesCheck_true lang).1
+    tsReads := ?_
+    pythonReads := ?_ }
+  · intro hlang
+    subst lang
+    refine ⟨3, ?_, ?_, ?_⟩
+    · exact balanceBoundsBinding_read .ts b
+        (entry := (.entry, "Object", .object 3)) (by decide)
+    · exact balanceBoundsBinding_read .ts b
+        (entry := (.entry, "contextDefinitions", .object 10)) (by decide)
+    · exact balanceBoundsPhase_property .ts b .entry
+        (entry := (3, "entries", .builtin .objectEntries)) (by decide)
+  · intro hlang
+    subst lang
+    refine ⟨63, ?_, ?_, ?_⟩
+    · exact balanceBoundsBinding_read .python b
+        (entry := (.entry, "_WORLD", .object 63)) (by decide)
+    · exact balanceBoundsPhase_property .python b .entry
+        (entry := (63, "context", .object 42)) (by decide)
+    · have object := balanceBoundsPhase_old_object .python b .entry
+        (ref := 42) (by decide)
+      have kind := (balanceBoundsTablesCheck_true .python).2.1
+      have fixed := balanceBoundsPhase_fixed .python b .entry
+      change readPropertyValue .python (balanceBoundsPhase .python b .entry).1
+        (.object 42) "items" = _
+      exact boundsFastPython_items
+        (m := (balanceBoundsPhase .python b .entry).1)
+        (by rw [fixed.1]; decide) (by rw [fixed.2]; decide) object kind
+
+def balanceBounds_range_physical (lang : TargetLang) (b : Int) :
+    ResetBoundsRangePhysical lang (balanceBoundsFinal lang b)
+      (balanceBoundsValue lang b).2 (balanceBoundsDefinition lang) b := by
+  refine {
+    valueRead := balanceBounds_final_value_read lang b
+    definitionRead := ?_
+    object := balanceBoundsTable lang (balanceBoundsDefinition lang)
+    objectRead := balanceBoundsPhase_old_object lang b .final
+      (by cases lang <;> decide)
+    kind := (balanceBoundsTablesCheck_true lang).2.2.1
+    minPresent := (balanceBoundsTablesCheck_true lang).2.2.2.1
+    maxPresent := (balanceBoundsTablesCheck_true lang).2.2.2.2
+    minRead := ?_
+    maxRead := ?_ }
+  · cases lang with
+    | ts =>
+      exact balanceBoundsBinding_read .ts b
+        (entry := (.final, "definition", .object 11)) (by decide)
+    | python =>
+      exact balanceBoundsBinding_read .python b
+        (entry := (.final, "definition", .object 41)) (by decide)
+  · cases lang with
+    | ts =>
+      exact balanceBoundsPhase_property .ts b .final
+        (entry := (11, "min", integerValue .ts 0)) (by decide)
+    | python =>
+      exact balanceBoundsPhase_property .python b .final
+        (entry := (41, "min", integerValue .python 0)) (by decide)
+  · cases lang with
+    | ts =>
+      exact balanceBoundsPhase_property .ts b .final
+        (entry := (11, "max", integerValue .ts 9007199254740991)) (by decide)
+    | python =>
+      exact balanceBoundsPhase_property .python b .final
+        (entry := (41, "max", integerValue .python 9007199254740991)) (by decide)
+
+theorem boundsFastBody_local_fresh (m : TargetMachine) (method : TargetClosure)
+    (candidate : ObjRef) (name : String) (hn : name ≠ "values") :
+    (resetBoundsBodyEntry m method candidate).2.locals.lookup name = none := by
+  simp only [resetBoundsBodyEntry, Prod.snd, List.lookup_cons, List.lookup_nil,
+    beq_eq_false_iff_ne.mpr hn, if_false]
+
+/- Universal physical discharge at the actual canonical bounds body entry.
+    No arithmetic range hypothesis and no execution premise are needed here.
+
+    Generic-interface correction: safePython's final conjunct must be
+    Nonempty (ResetPythonSafePhysical ...), because that structure contains the
+    data field math : ObjRef. The witness is supplied explicitly below. -/
+def balanceResetBounds_physical (lang : TargetLang) (b : Int) :
+    ResetBoundsBodyPhysical lang (balanceBoundsEntry lang b).1
+      (balanceBoundsEntry lang b).2 (balanceBoundsDefinition lang)
+      (balanceBoundsCandidate lang) balancePythonSafeIntegerClosure b := by
+  refine {
+    iterable := balanceBounds_iterable_physical lang b
+    keyFresh := ?_
+    definitionFresh := ?_
+    valuesRead := ?_
+    candidateTs := ?_
+    candidatePython := ?_
+    valueFresh := ?_
+    definitionRead := ?_
+    typeRead := ?_
+    safeTs := ?_
+    safePython := ?_
+    range := balanceBounds_range_physical lang b }
+  · intro hlang; subst lang
+    exact boundsFastBody_local_fresh (balanceResetPostOverlay .python b).1
+      (balanceStoredBounds .python).2 (balanceBoundsCandidate .python)
+      (resetBoundsKey .python) (by decide)
+  · intro hlang; subst lang
+    exact boundsFastBody_local_fresh (balanceResetPostOverlay .python b).1
+      (balanceStoredBounds .python).2 (balanceBoundsCandidate .python)
+      "definition" (by decide)
+  · cases lang with
+    | ts =>
+      exact balanceBoundsBinding_read .ts b
+        (entry := (.pair, "values", .object 23)) (by decide)
+    | python =>
+      exact balanceBoundsBinding_read .python b
+        (entry := (.pair, "values", .object 79)) (by decide)
+  · intro hlang
+    subst lang
+    have fixed := balanceBoundsPhase_fixed .ts b .pair
+    change (balanceBoundsPair .ts b).1.checkerRef = 1 ∧
+      (balanceBoundsPair .ts b).1.objectPrototype = 0 at fixed
+    exact resetTsOrdinaryTable_read
+      (m := (balanceBoundsPair .ts b).1) (ref := 23)
+      (by rw [fixed.1]; decide) (by rw [fixed.2]; decide)
+      (balanceBounds_candidate_object .ts b) rfl rfl
+  · intro hlang
+    subst lang
+    have fixed := balanceBoundsPhase_fixed .python b .pair
+    change (balanceBoundsPair .python b).1.checkerRef = 1 ∧
+      (balanceBoundsPair .python b).1.objectPrototype = 0 at fixed
+    have object := balanceBounds_candidate_object .python b
+    constructor
+    · change readPropertyValue .python (balanceBoundsPair .python b).1
+        (.object 79) "get" = _
+      exact boundsFastPython_get (m := (balanceBoundsPair .python b).1)
+        (by rw [fixed.1]; decide) (by rw [fixed.2]; decide) object
+    · refine ⟨balanceDataDescriptor .python b, ?_, rfl⟩
+      exact boundsFastCandidate_readOwn (m := (balanceBoundsPair .python b).1) object
+  · intro hlang; subst lang; exact balanceBounds_value_fresh b
+  · cases lang with
+    | ts =>
+      exact balanceBoundsBinding_read .ts b
+        (entry := (.value, "definition", .object 11)) (by decide)
+    | python =>
+      exact balanceBoundsBinding_read .python b
+        (entry := (.value, "definition", .object 41)) (by decide)
+  · cases lang with
+    | ts =>
+      exact balanceBoundsPhase_property .ts b .value
+        (entry := (11, "type", .string "integer")) (by decide)
+    | python =>
+      exact balanceBoundsPhase_property .python b .value
+        (entry := (41, "type", .string "integer")) (by decide)
+  · intro hlang; subst lang
+    exact ⟨5,
+      balanceBoundsBinding_read .ts b
+        (entry := (.value, "Number", .object 5)) (by decide),
+      balanceBoundsPhase_property .ts b .value
+        (entry := (5, "isSafeInteger", .builtin .jsIsSafeInteger)) (by decide)⟩
+  · intro hlang; subst lang
+    refine ⟨4,
+      balanceBoundsBinding_read .python b
+        (entry := (.value, "_safe_integer", .closure 4)) (by decide),
+      balanceBounds_safe_closure b,
+      ((balanceBoundsDispatchCheck_true .python).2 rfl).2.2.1,
+      rfl, ?_⟩
+    exact ⟨balanceBounds_safe_physical b⟩
+
+/- Execute the actual stored body at every adequate fuel; all intermediate
+    iterator, binder, value, helper-argument and tuple allocations are retained. -/
+theorem balanceReset_bounds_body_execute (lang : TargetLang) (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ 9007199254740991) (k : Nat) :
+    execStmt (k + 23) (balanceProgram lang)
+      (balanceBoundsEntry lang b).1 (balanceBoundsEntry lang b).2
+      (balanceStoredBounds lang).2.body =
+      .ok ⟨balanceBoundsFinal lang b,
+        resetBoundsFinalFrame lang (balanceBoundsEntry lang b).1
+          (balanceBoundsEntry lang b).2 (balanceBoundsDefinition lang) b,
+        .returned (resetValidationResult lang)⟩ := by
+  rw [balanceStoredBounds_body_shape]
+  exact resetBounds_body_execute (k := k) (balanceResetBounds_physical lang b) hb
+
+/- Canonical successful bounds call with no remaining physical or call-success
+    premise. Its machine is the generic model's actual final machine. -/
+theorem balanceReset_bounds_call_execute (lang : TargetLang) (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ 9007199254740991) (k : Nat) :
+    evalExpr (k + 24) (balanceProgram lang)
+      (balanceResetPostOverlay lang b).1 (balanceResetPostOverlay lang b).2
+      (resetBoundsCall lang) =
+      .ok ⟨balanceBoundsFinal lang b, .ok (resetValidationResult lang)⟩ := by
+  rw [balanceResetPostOverlay_bounds_eq_body (lang := lang) (b := b) (k := k + 21)]
+  rw [show balanceBoundsCandidateRef lang = balanceBoundsCandidate lang from rfl]
+  have body := balanceReset_bounds_body_execute lang b hb k
+  unfold balanceBoundsEntry at body
+  have fuel : k + 21 + 2 = k + 23 := by rw [Nat.add_assoc]
+  rw [fuel,body]
+  rfl
+
+/- TS's existing join consumes the universal call theorem at k + 2. -/
+theorem balanceReset_ts_canonical_overlay_bounds_bind_complete (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ 9007199254740991) (k : Nat) :
+    let e := balanceResetMiddleEntry .ts b
+    let bound := snapshotBound .ts (balanceBoundsFinal .ts b)
+      (balanceResetTsDescriptorEntry b).2 "invalid" .undefined
+    execStmt (k + 28) (balanceProgram .ts) e.1 e.2
+      (.sequence (.sequence (balanceResetMiddleStmt .ts 2) (balanceResetOverlayLoop .ts))
+        (balanceResetMiddleStmt .ts 4)) = .ok ⟨bound.1, bound.2, .normal⟩ ∧
+    execStmt (k + 27) (balanceProgram .ts) bound.1 bound.2
+      (balanceResetMiddleStmt .ts 5) = .ok ⟨bound.1, bound.2, .normal⟩ := by
+  apply balanceReset_ts_canonical_overlay_bounds_bind b hb k
+  simpa only [Nat.add_assoc] using balanceReset_bounds_call_execute .ts b hb (k + 2)
+
+/- Python's join consumes k + 24 directly; its assignment freshness follows
+    from the physical dispatch inventory, independently of b and of execution. -/
+theorem balanceReset_python_canonical_overlay_bounds_bind_complete (b : Int)
+    (hb : 0 ≤ b ∧ b ≤ 9007199254740991) (k : Nat) :
+    let e := balanceResetMiddleEntry .python b
+    let bound := snapshotBound .python (balanceBoundsFinal .python b)
+      (balanceResetPythonOverlayBound b).2 "invalid" .null
+    execStmt (k + 26) (balanceProgram .python) e.1 e.2
+      (.sequence (balanceResetMiddleStmt .python 2) (balanceResetMiddleStmt .python 3)) =
+      .ok ⟨bound.1, bound.2, .normal⟩ ∧
+    execStmt (k + 25) (balanceProgram .python) bound.1 bound.2
+      (balanceResetMiddleStmt .python 4) = .ok ⟨bound.1, bound.2, .normal⟩ := by
+  exact balanceReset_python_canonical_overlay_bounds_bind b hb k
+    (balanceReset_bounds_call_execute .python b hb k)
+    (balanceBounds_python_invalid_fresh b)
+
+set_option maxRecDepth 65536
+set_option maxHeartbeats 10000000
+def resetInvariantParams (lang : TargetLang) : List ParamSpec :=
+  [⟨if lang == .ts then "atState" else "state", none⟩,
+   ⟨"values", none⟩,
+   ⟨"event", if lang == .ts then none else some .null⟩]
+
+def resetInvariantEventValue (lang : TargetLang) : TargetValue :=
+  if lang == .ts then .undefined else .null
+
+def resetInvariantBindOne
+    (m : TargetMachine) (f : TargetFrame)
+    (name : String) (value : TargetValue) :
+    TargetMachine × TargetFrame :=
+  ((allocCell m value true).1,
+   { f with locals := (name, m.nextCell) :: f.locals })
+
+def resetInvariantBindings
+    (lang : TargetLang) (m : TargetMachine) (f : TargetFrame)
+    (candidate : ObjRef) : TargetMachine × TargetFrame :=
+  let state := resetInvariantBindOne m f
+    (if lang == .ts then "atState" else "state") (.string "Ready")
+  let values := resetInvariantBindOne state.1 state.2
+    "values" (.object candidate)
+  resetInvariantBindOne values.1 values.2
+    "event" (resetInvariantEventValue lang)
+
+/-- Executes two provided arguments and the omitted event argument.
+    Python uses its stored default, rather than evaluating ParamSpec.null. -/
+theorem resetInvariant_bindCallParams
+    {lang m f candidate defaults k}
+    (hd : lang = .python →
+      defaults = [none, none, some TargetValue.null]) :
+    bindCallParams (k + 4) (balanceProgram lang) m f
+      (resetInvariantParams lang) defaults
+      [.string "Ready", .object candidate] =
+        .ok ⟨(resetInvariantBindings lang m f candidate).1,
+             (resetInvariantBindings lang m f candidate).2, .ok ()⟩ := by
+  cases lang with
+  | ts =>
+      simp only [resetInvariantParams, bindCallParams, balanceProgram_lang]
+      rfl
+  | python =>
+      rw [hd rfl]
+      simp only [resetInvariantParams, bindCallParams, balanceProgram_lang]
+      rfl
+
+def resetInvariantBodyEntry
+    (lang : TargetLang) (m : TargetMachine)
+    (method : TargetClosure) (candidate : ObjRef) :
+    TargetMachine × TargetFrame :=
+  let active := { method with receiver := some m.checkerRef }
+  let bound := (allocClosure m active).1
+  resetInvariantBindings lang bound (closureFrame active) candidate
+
+/-- Actual dispatch, two supplied arguments, and the missing event default.
+    The stored source body remains executable on the RHS. -/
+theorem resetInvariantCall_eq_body
+    {lang m f methodRef method candidate error k}
+    (hr : localValue m f (if lang == .ts then "this" else "self") =
+      .ok (.object m.checkerRef))
+    (hv : localValue m f "candidate" = .ok (.object candidate))
+    (hs : lang = .python →
+      localValue m f "_INITIAL" = .ok (.string "Ready"))
+    (hf : readCheckerField m
+      (if lang == .ts then "checkInvariants" else "_invariant") =
+        .error error)
+    (hm : m.classMethods.lookup
+      (if lang == .ts then "checkInvariants" else "_invariant") =
+        some methodRef)
+    (hc : closureAt m methodRef = .ok method)
+    (hp : method.params = resetInvariantParams lang)
+    (hd : lang = .python →
+      method.pythonDefaults = [none, none, some TargetValue.null]) :
+    evalExpr (k + 5) (balanceProgram lang) m f
+      (resetInvariantCall lang) = (do
+        let body ← execStmt (k + 4) (balanceProgram lang)
+          (resetInvariantBodyEntry lang m method candidate).1
+          (resetInvariantBodyEntry lang m method candidate).2
+          method.body
+        closureResult lang body) := by
+  let active := { method with receiver := some m.checkerRef }
+  let bound := (allocClosure m active).1
+  have stored : closureAt bound m.nextClosure = .ok active := by
+    simp [bound, closureAt, allocClosure, List.lookup]
+  have bindings :
+      bindCallParams (k + 4) (balanceProgram lang) bound
+        (closureFrame active) active.params active.pythonDefaults
+        [.string "Ready", .object candidate] =
+          .ok ⟨(resetInvariantBodyEntry lang m method candidate).1,
+               (resetInvariantBodyEntry lang m method candidate).2,
+               .ok ()⟩ := by
+    change bindCallParams (k + 4) (balanceProgram lang) bound
+      (closureFrame active) method.params method.pythonDefaults
+      [.string "Ready", .object candidate] = _
+    rw [hp]
+    exact resetInvariant_bindCallParams hd
+  rw [resetInvariantCall_eq_closure
+    (k := k + 1) hr hv hs hf hm hc]
+  change callClosure (k + 4) (balanceProgram lang) bound m.nextClosure
+    [.string "Ready", .object candidate] = _
+  unfold callClosure
+  rw [stored]
+  change (do
+    let bindings ← bindCallParams (k + 4) (balanceProgram lang)
+      bound (closureFrame active) active.params active.pythonDefaults
+      [.string "Ready", .object candidate]
+    match bindings.result with
+    | .error e => pure ⟨bindings.machine, .error e⟩
+    | .ok _ => do
+        let body ← execStmt (k + 4) (balanceProgram lang)
+          bindings.machine bindings.frame active.body
+        closureResult (balanceProgram lang).lang body :
+          Except TargetError ExprOutcome) = _
+  rw [bindings]
+  simp only [Bind.bind, Except.bind, Pure.pure, Except.pure,
+    balanceProgram_lang]
+  rfl
+
+theorem resetInvariant_ge_value
+    (lang : TargetLang) (m : TargetMachine)
+    (leftTag rightTag : NumberTag) (b : Int) :
+    binaryValue lang m .ge
+      (.number leftTag b) (.number rightTag 0) =
+        .ok (.ok (.bool (decide (0 ≤ b)))) := by
+  rfl
+
+theorem resetInvariant_ge_nonnegative_tags
+    {lang m leftTag rightTag b} (hb : 0 ≤ b) :
+    binaryValue lang m .ge
+      (.number leftTag b) (.number rightTag 0) =
+        .ok (.ok (.bool true)) := by
+  simp only [resetInvariant_ge_value, hb, decide_true]
+
+/-- The TS Pratt routine's actual env[token] read. -/
+theorem resetInvariant_ts_identifier_execute
+    {m f ref object b k}
+    (he : localValue m f "env" = .ok (.object ref))
+    (ht : localValue m f "token" = .ok (.string "balance"))
+    (hc : ref ≠ m.checkerRef)
+    (hp : ref ≠ m.objectPrototype)
+    (ho : objectAt m ref = .ok object)
+    (hk : object.kind = .jsOrdinary)
+    (hb : object.own.lookup "balance" =
+      some (balanceDataDescriptor .ts b)) :
+    evalExpr (k + 2) (balanceProgram .ts) m f
+      (.index (.local "env") (.local "token")) =
+        .ok ⟨m, .ok (integerValue .ts b)⟩ := by
+  have read :
+      readPropertyValue .ts m (.object ref) "balance" =
+        .ok ⟨m, .ok (integerValue .ts b)⟩ := by
+    simp [readPropertyValue, beq_eq_false_iff_ne.mpr hc,
+      beq_eq_false_iff_ne.mpr hp, ho, hk, readOwn, hb,
+      balanceDataDescriptor, Bind.bind, Except.bind,
+      Pure.pure, Except.pure] <;> rfl
+  rw [evalExpr,
+    evalExpr_adequate (.localRead he) (Nat.zero_lt_succ k)]
+  simp only [Bind.bind, Except.bind]
+  rw [evalExpr_adequate (.localRead ht) (Nat.zero_lt_succ k)]
+  simpa only [Bind.bind, Except.bind, balanceProgram_lang] using read
+
+/-- The Python Pratt routine's actual
+    environment.get(token, _UNDEFINED) call.
+    Its fallback is physically read but is not selected. -/
+theorem resetInvariant_python_identifier_execute
+    {m f ref object fallback b k}
+    (he : localValue m f "environment" = .ok (.object ref))
+    (ht : localValue m f "token" = .ok (.string "balance"))
+    (hu : localValue m f "_UNDEFINED" = .ok fallback)
+    (hc : ref ≠ m.checkerRef)
+    (hp : ref ≠ m.objectPrototype)
+    (ho : objectAt m ref = .ok object)
+    (hk : object.kind = .pythonDict)
+    (hb : object.own.lookup "balance" =
+      some (balanceDataDescriptor .python b)) :
+    evalExpr (k + 4) (balanceProgram .python) m f
+      (.call (.property (.local "environment") "get")
+        (.sequence (.local "token")
+          (.sequence (.local "_UNDEFINED") .empty))) =
+        .ok ⟨m, .ok (integerValue .python b)⟩ := by
+  have get :
+      readPropertyValue .python m (.object ref) "get" =
+        .ok ⟨m, .ok (.boundBuiltin .dictGet (.object ref))⟩ := by
+    simp [readPropertyValue, beq_eq_false_iff_ne.mpr hc,
+      beq_eq_false_iff_ne.mpr hp, ho, hk,
+      Bind.bind, Except.bind, Pure.pure, Except.pure] <;> rfl
+  have callee : DepthDerivesExpr (balanceProgram .python) m f
+      (.property (.local "environment") "get")
+      ⟨m, .ok (.boundBuiltin .dictGet (.object ref))⟩ 1 := by
+    apply DepthDerivesExpr.property (.localRead he)
+    simpa only [balanceProgram_lang] using get
+  have args : DepthDerivesArgs (balanceProgram .python) m f
+      (.sequence (.local "token")
+        (.sequence (.local "_UNDEFINED") .empty))
+      ⟨m, .ok [.string "balance", fallback]⟩ 2 :=
+    .cons (.localRead ht) (.cons (.localRead hu) .empty)
+  have host :
+      hostCall (balanceProgram .python).lang m .dictGet
+        (some (.object ref)) [.string "balance", fallback] =
+          .ok ⟨m, .ok (integerValue .python b)⟩ := by
+    rw [balanceProgram_lang]
+    delta hostCall
+    simp only [readOwn, ho, hb, balanceDataDescriptor,
+      Bind.bind, Except.bind, Pure.pure, Except.pure]
+    rfl
+  have deriv : DepthDerivesExpr (balanceProgram .python) m f
+      (.call (.property (.local "environment") "get")
+        (.sequence (.local "token")
+          (.sequence (.local "_UNDEFINED") .empty)))
+      ⟨m, .ok (integerValue .python b)⟩ 3 :=
+    .callBoundBuiltin callee args (by decide) host
+  exact evalExpr_adequate deriv
+    (Nat.lt_succ_of_le
+      (Nat.succ_le_succ
+        (Nat.succ_le_succ
+          (Nat.succ_le_succ (Nat.zero_le k)))))
+
+/-- Composes actual operand executions, retaining their machine effects.
+    Instantiate left/right with the emitted numeric(...) / _number(...)
+    calls when those helper executions have been discharged. -/
+theorem resetInvariant_ge_execute
+    {lang m middle final f left right leftTag rightTag b k}
+    (hl : evalExpr (k + 1) (balanceProgram lang) m f left =
+      .ok ⟨middle, .ok (.number leftTag b)⟩)
+    (hr : evalExpr (k + 1) (balanceProgram lang) middle f right =
+      .ok ⟨final, .ok (.number rightTag 0)⟩)
+    (hb : 0 ≤ b) :
+    evalExpr (k + 2) (balanceProgram lang) m f
+      (.binary .ge left right) =
+        .ok ⟨final, .ok (.bool true)⟩ := by
+  rw [evalExpr, hl]
+  simp only [Bind.bind, Except.bind]
+  rw [hr]
+  simp [Bind.bind, Except.bind, Pure.pure, Except.pure,
+    balanceProgram_lang, resetInvariant_ge_value, hb]
+
+/-- The invariant closure actually installed by the pinned module preparation. -/
+def balanceStoredInvariant (lang : TargetLang) : TargetClosure :=
+  ((do
+    let ref ← (balancePreparation lang).1.classMethods.lookup
+      (if lang == .ts then "checkInvariants" else "_invariant")
+    (closureAt (balancePreparation lang).1 ref).toOption) : Option TargetClosure).getD
+      ⟨"missing", [], [], .empty, [], none⟩
+
+/-- The emitted optional event has a stored Python null default and no TS
+    source default; the call-boundary proof executes those distinct paths. -/
+theorem balanceStoredInvariant_params (lang : TargetLang) :
+    (balanceStoredInvariant lang).params = resetInvariantParams lang ∧
+    (lang = .python → (balanceStoredInvariant lang).pythonDefaults =
+      [none, none, some TargetValue.null]) := by
+  cases lang <;> unfold balanceStoredInvariant
+  · simp only [balancePreparation_ts_eq]
+    decide +kernel
+  · simp only [balancePreparation_python_eq]
+    decide +kernel
+
+set_option maxRecDepth 65536
+set_option maxHeartbeats 10000000
+
+/-- The numeric operation reached by the fixed invariant accepts every
+    nonnegative integer, independently of the upper bounds check. -/
+theorem resetInvariant_ge_nonnegative (lang : TargetLang) (m : TargetMachine) {b : Int}
+    (hb : 0 ≤ b) :
+    binaryValue lang m .ge (integerValue lang b) (integerValue lang 0) =
+      .ok (.ok (.bool true)) := by
+  cases lang <;>
+    change Except.ok (Except.ok (TargetValue.bool (decide (0 ≤ b)))) = _ <;>
+    simp only [hb, decide_true]
+
+/-- The value-dependent comparison of the invariant, including its actual
+    values["balance"] read. The fixed tokenizer/parser validated is separate. -/
+theorem resetInvariant_balance_comparison_execute {lang m f candidate b k}
+    (hv : localValue m f "values" = .ok (.object candidate))
+    (hr : readPropertyValue lang m (.object candidate) "balance" =
+      .ok ⟨m, .ok (integerValue lang b)⟩)
+    (hb : 0 ≤ b) :
+    evalExpr (k + 3) (balanceProgram lang) m f
+      (.binary .ge (.index (.local "values") (.string "balance")) (.integer 0)) =
+      .ok ⟨m, .ok (.bool true)⟩ := by
+  have read : evalExpr (k + 2) (balanceProgram lang) m f
+      (.index (.local "values") (.string "balance")) =
+      .ok ⟨m, .ok (integerValue lang b)⟩ := by
+    rw [evalExpr, evalExpr_adequate (.localRead hv) (Nat.zero_lt_succ _)]
+    simp only [Bind.bind, Except.bind]
+    rw [evalExpr_adequate (.string "balance") (Nat.zero_lt_succ _)]
+    simpa only [balanceProgram_lang] using hr
+  rw [evalExpr, read]
+  simp only [Bind.bind, Except.bind]
+  rw [evalExpr_adequate (.integer 0) (Nat.zero_lt_succ _)]
+  simp only [balanceProgram_lang]
+  rw [resetInvariant_ge_nonnegative lang m hb]
+  cases lang <;> rfl
+
+/-- Publication and the actual finally cleanup retain their ordered allocations
+    and finish with the busy bit cleared. -/
+theorem balanceReset_publication_cleanup_execute {lang m f candidate k}
+    (hr : f.receiver = some m.checkerRef)
+    (hc : localValue m f "candidate" = .ok (.object candidate))
+    (hi : lang = .python → localValue m f "_INITIAL" = .ok (.string "Ready")) :
+    execStmt (k + 10) (balanceProgram lang) m f
+      (.sequence (resetPublication lang) (balanceResetProtected lang).cleanup) =
+      .ok ⟨balanceSetBusy (resetPublished lang m candidate) false, f, .normal⟩ := by
+  rw [execSequence_of_normal (balanceReset_publication_execute (k := k + 1) hr hc hi)]
+  exact balanceReset_cleanup_execute hr
+    (Nat.le_trans (by decide : 4 ≤ 9) (Nat.le_add_left 9 k))
+
+/-- The actual reset suffix begins with invariant binding and its rejection
+    guard, followed immediately by the source publication spine. -/
+theorem balanceReset_invariant_suffix_shape (lang : TargetLang) :
+    dropStmts (resetValidationIndex lang + 2) (balanceResetProtected lang).body =
+      .sequence (balanceResetMiddleStmt lang (resetValidationIndex lang + 2))
+        (.sequence (balanceResetMiddleStmt lang (resetValidationIndex lang + 3))
+          (resetPublication lang)) := by
+  cases lang <;> unfold resetValidationIndex balanceResetMiddleStmt resetPublication
+    balanceResetProtected balanceResetSnapshots balanceStoredReset balanceResetLookup
+  · simp only [balancePreparation_ts_eq]
+    decide +kernel
+  · simp only [balancePreparation_python_eq]
+    decide +kernel
+
+/-- Conditional only on the still-open invariant call and its returned-frame
+    physical reads; the remainder is the actual source suffix and cleanup. -/
+theorem balanceReset_invariant_publication_cleanup {lang m final f candidate k}
+    (he : evalExpr (k + 10) (balanceProgram lang) m f (resetInvariantCall lang) =
+      .ok ⟨final, .ok (resetValidationResult lang)⟩)
+    (hn : lang = .python → snapshotAddress m f "violated" = none)
+    (hr : let bound := snapshotBound lang final f "violated" (resetValidationResult lang)
+      bound.2.receiver = some bound.1.checkerRef)
+    (hc : let bound := snapshotBound lang final f "violated" (resetValidationResult lang)
+      localValue bound.1 bound.2 "candidate" = .ok (.object candidate))
+    (hi : let bound := snapshotBound lang final f "violated" (resetValidationResult lang)
+      lang = .python → localValue bound.1 bound.2 "_INITIAL" = .ok (.string "Ready")) :
+    let bound := snapshotBound lang final f "violated" (resetValidationResult lang)
+    execStmt (k + 13) (balanceProgram lang) m f
+      (.sequence
+        (dropStmts (resetValidationIndex lang + 2) (balanceResetProtected lang).body)
+        (balanceResetProtected lang).cleanup) =
+      .ok ⟨balanceSetBusy (resetPublished lang bound.1 candidate) false, bound.2, .normal⟩ := by
+  let bound := snapshotBound lang final f "violated" (resetValidationResult lang)
+  have validation := balanceReset_validation_bind_skip (lang := lang) (k := k + 8) true he hn
+  dsimp only at validation ⊢
+  simp only [if_true, Nat.add_assoc] at validation
+  have read : localValue bound.1 bound.2 "violated" = .ok (resetValidationResult lang) := by
+    cases lang <;> simp only [bound, snapshotBound, localValue, readCell, allocCell,
+      Prod.fst, Prod.snd, List.lookup_cons, String.reduceBEq, Bool.or_false,
+      Bool.false_eq_true, beq_self_eq_true, if_false, if_true]
+  have skipped : execStmt (k + 10) (balanceProgram lang) bound.1 bound.2
+      (balanceResetMiddleStmt lang (resetValidationIndex lang + 3)) =
+      .ok ⟨bound.1, bound.2, .normal⟩ := by
+    rw [(balanceReset_validation_shapes lang).2.2.2]
+    exact execStmt_adequate (.ifFalse (.localRead read)
+      (by cases lang <;> rfl) .empty)
+      (Nat.lt_of_lt_of_le (by decide : 1 < 10) (Nat.le_add_left 10 k))
+  have suffix : execStmt (k + 12) (balanceProgram lang) m f
+      (dropStmts (resetValidationIndex lang + 2) (balanceResetProtected lang).body) =
+      .ok ⟨resetPublished lang bound.1 candidate, bound.2, .normal⟩ := by
+    rw [balanceReset_invariant_suffix_shape, execSequence_of_normal validation.1,
+      execSequence_of_normal skipped]
+    exact balanceReset_publication_execute (k := k + 2) hr hc hi
+  rw [execSequence_of_normal suffix]
+  exact balanceReset_cleanup_execute hr
+    (Nat.le_trans (by decide : 4 ≤ 12) (Nat.le_add_left 12 k))
+
+end Batch15BoundsAndInvariant
+
 end CanonicalResetComposition
 
 end Harmonia.Applications.Kadmos.Generated
