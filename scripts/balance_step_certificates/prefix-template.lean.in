@@ -1,0 +1,28 @@
+import Harmonia.Applications.Kadmos.Generated.BalanceStepPythonPrefixEntry
+/-! Kernel-checked Python canonical prefix certificate. Private definition families
+keep each generated proof expression bounded in depth. The syntax decoder uses
+Init only; every emitted definition and the final theorem is kernel checked. -/
+{{PACKAGING_PRELUDE}}
+namespace Harmonia.Applications.Kadmos.Generated
+set_option maxRecDepth 200000
+set_option pp.maxSteps 1000
+set_option maxHeartbeats 10000000
+set_option smartUnfolding false
+set_option Elab.async false
+attribute [local irreducible] hostCall binaryValue
+
+{{PRIVATE_DECLARATIONS}}
+set_option Elab.async true in
+theorem balanceStep_py_prefix_execute (b n : Int) (hn : n.natAbs ≤ 9007199254740991) :
+    balanceStepPrefixRun .python b n =
+    .ok ⟨balanceStepPyPrefix b n, balanceStepPyPrefixFrame, .normal⟩ := by
+  have hfloat (m : TargetMachine) (tag : NumberTag) :
+      hostCall BalancePrograms.balancePyProgram.lang m .float none [.number tag n] =
+        .ok ⟨m, .ok (.number .pyFloat n)⟩ := host_float_exact_tag m tag n hn
+  rw [balanceStep_py_prefix_entry]
+  simp only [balanceStepPySnapshots, balanceStepPyPrefix, balanceStepPySnapshotsFrame, balanceStepPyPrefixFrame,
+    balanceCanonicalConstructed, balanceInvariantPyCopied, balanceInvariantPyReset, balanceInvariantPyBound, balanceInvariantPyFinal]
+  simp only [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]
+  with_unfolding_all exact {{CERTIFICATE_TERM}}
+
+end Harmonia.Applications.Kadmos.Generated

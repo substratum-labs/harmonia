@@ -1,0 +1,12 @@
+[
+  {
+    "name": "prefix",
+    "product": "Harmonia/Applications/Kadmos/Generated/BalanceStepPythonPrefix.lean",
+    "intern_names": false
+  },
+  {
+    "name": "guard",
+    "product": "Harmonia/Applications/Kadmos/Generated/BalanceStepPythonGuard.lean",
+    "intern_names": false
+  }
+]

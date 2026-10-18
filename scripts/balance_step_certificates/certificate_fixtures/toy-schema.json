@@ -1,0 +1,20 @@
+{
+  "certificate_sha256": "f9bb4ee05f816c4e989c642b9d19e5f005f2769f82658694ecf4f4d807200631",
+  "parameters": [
+    {
+      "name": "n",
+      "type": "Int",
+      "type_dependencies": []
+    },
+    {
+      "name": "h",
+      "type": "n = n",
+      "type_dependencies": [
+        "n"
+      ]
+    }
+  ],
+  "aux_prefix": "testAux",
+  "macro_name": "fixture_term",
+  "helper_prefix": "fixturePack"
+}

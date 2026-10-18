@@ -1,0 +1,30 @@
+{
+  "source_sha256": "df8d6439266f60e64167592afb472614b86c46808398069fa609107cef2d3f04",
+  "entries": 20783,
+  "nodes": 801940,
+  "global_identifiers_rewritten": 20783,
+  "intern_names": false,
+  "intern_kinds": false,
+  "kind_names": 17,
+  "mode": "private noncomputable def, inferred result types; all RHS syntax preserved",
+  "parameter_masks": {
+    "0": 7434,
+    "1": 102,
+    "2": 44,
+    "3": 13136,
+    "7": 2,
+    "11": 15,
+    "19": 14,
+    "23": 1,
+    "31": 35
+  },
+  "output_sha256": "62255531c15e42b966a1b501dfa65c71168b1e6432ebae28e286741f4ef71313",
+  "schema_sha256": "e609937664a8aadea3808ac340f9501cfa37ca85e8035e8502975e89b4aeea34",
+  "template_sha256": "f4279c4aa0c4f70a7913e378740f5863d50bbf3c96c278ed54be5351ab239add",
+  "bytes": 37456629,
+  "imports": [
+    "import Harmonia.Applications.Kadmos.Generated.BalanceStepPythonGuardStages",
+    "import Harmonia.Applications.Kadmos.Generated.BalanceStepLexemes"
+  ],
+  "status": "generated; normal Lean kernel check still required"
+}

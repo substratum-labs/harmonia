@@ -1,3 +1,4 @@
+import Harmonia.Applications.Kadmos.Generated.BalanceStepSimulation
 import HarmoniaTests.KadmosGeneratedK02BalanceStepProofTS
 import HarmoniaTests.KadmosGeneratedK02BalanceStepProofPython
 
@@ -1512,3 +1513,1868 @@ example (lang : TargetLang) :
 #print axioms targetConstruct_balance_rep
 
 end Batch16CanonicalContracts
+
+-- Batch 17: every new public canonical DEBIT contract, checked directly.
+
+example : (∀ (m : Harmonia.Applications.Kadmos.Generated.TargetMachine),
+  @Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.ExprOutcome)
+    (Harmonia.Applications.Kadmos.Generated.hostCall Harmonia.Applications.Kadmos.Generated.TargetLang.python m
+      Harmonia.Applications.Kadmos.Generated.BuiltinId.stringIsDigit
+      (@Option.some Harmonia.Applications.Kadmos.Generated.TargetValue
+        (Harmonia.Applications.Kadmos.Generated.TargetValue.string "e"))
+      (@List.nil Harmonia.Applications.Kadmos.Generated.TargetValue))
+    (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.ExprOutcome
+      (Harmonia.Applications.Kadmos.Generated.ExprOutcome.mk m
+        (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetValue
+          Harmonia.Applications.Kadmos.Generated.TargetValue
+          (Harmonia.Applications.Kadmos.Generated.TargetValue.bool Bool.false))))) :=
+  @Harmonia.Applications.Kadmos.Generated.BalanceStepLexemes.digitEvent
+
+example : (∀ (m : Harmonia.Applications.Kadmos.Generated.TargetMachine),
+  @Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.ExprOutcome)
+    (Harmonia.Applications.Kadmos.Generated.hostCall Harmonia.Applications.Kadmos.Generated.TargetLang.python m
+      Harmonia.Applications.Kadmos.Generated.BuiltinId.stringIsDigit
+      (@Option.some Harmonia.Applications.Kadmos.Generated.TargetValue
+        (Harmonia.Applications.Kadmos.Generated.TargetValue.string "0"))
+      (@List.nil Harmonia.Applications.Kadmos.Generated.TargetValue))
+    (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.ExprOutcome
+      (Harmonia.Applications.Kadmos.Generated.ExprOutcome.mk m
+        (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetValue
+          Harmonia.Applications.Kadmos.Generated.TargetValue
+          (Harmonia.Applications.Kadmos.Generated.TargetValue.bool Bool.true))))) :=
+  @Harmonia.Applications.Kadmos.Generated.BalanceStepLexemes.digitZero
+
+example : (∀ (m : Harmonia.Applications.Kadmos.Generated.TargetMachine),
+  @Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.ExprOutcome)
+    (Harmonia.Applications.Kadmos.Generated.hostCall Harmonia.Applications.Kadmos.Generated.TargetLang.python m
+      Harmonia.Applications.Kadmos.Generated.BuiltinId.float
+      (@Option.none Harmonia.Applications.Kadmos.Generated.TargetValue)
+      (@List.cons Harmonia.Applications.Kadmos.Generated.TargetValue
+        (Harmonia.Applications.Kadmos.Generated.TargetValue.string "0")
+        (@List.nil Harmonia.Applications.Kadmos.Generated.TargetValue)))
+    (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.ExprOutcome
+      (Harmonia.Applications.Kadmos.Generated.ExprOutcome.mk m
+        (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetValue
+          Harmonia.Applications.Kadmos.Generated.TargetValue
+          (Harmonia.Applications.Kadmos.Generated.TargetValue.number
+            Harmonia.Applications.Kadmos.Generated.NumberTag.pyFloat (@OfNat.ofNat Int 0 (@instOfNat 0))))))) :=
+  @Harmonia.Applications.Kadmos.Generated.BalanceStepLexemes.floatZero
+
+example : (@Eq Bool (Harmonia.Applications.Kadmos.Generated.identifierFullMatch "amount") Bool.true) :=
+  @Harmonia.Applications.Kadmos.Generated.BalanceStepLexemes.nameAmount
+
+example : (@Eq Bool (Harmonia.Applications.Kadmos.Generated.identifierFullMatch "event") Bool.true) :=
+  @Harmonia.Applications.Kadmos.Generated.BalanceStepLexemes.nameEvent
+
+example : (@Eq Bool (Harmonia.Applications.Kadmos.Generated.identifierFullMatch "0") Bool.false) :=
+  @Harmonia.Applications.Kadmos.Generated.BalanceStepLexemes.nameZero
+
+example : (∀ (m : Harmonia.Applications.Kadmos.Generated.TargetMachine),
+  @Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.ExprOutcome)
+    (Harmonia.Applications.Kadmos.Generated.hostCall Harmonia.Applications.Kadmos.Generated.TargetLang.python m
+      Harmonia.Applications.Kadmos.Generated.BuiltinId.stringIsSpace
+      (@Option.some Harmonia.Applications.Kadmos.Generated.TargetValue
+        (Harmonia.Applications.Kadmos.Generated.TargetValue.string "amount"))
+      (@List.nil Harmonia.Applications.Kadmos.Generated.TargetValue))
+    (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.ExprOutcome
+      (Harmonia.Applications.Kadmos.Generated.ExprOutcome.mk m
+        (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetValue
+          Harmonia.Applications.Kadmos.Generated.TargetValue
+          (Harmonia.Applications.Kadmos.Generated.TargetValue.bool Bool.false))))) :=
+  @Harmonia.Applications.Kadmos.Generated.BalanceStepLexemes.spaceAmount
+
+example : (∀ (m : Harmonia.Applications.Kadmos.Generated.TargetMachine),
+  @Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.ExprOutcome)
+    (Harmonia.Applications.Kadmos.Generated.hostCall Harmonia.Applications.Kadmos.Generated.TargetLang.python m
+      Harmonia.Applications.Kadmos.Generated.BuiltinId.stringIsSpace
+      (@Option.some Harmonia.Applications.Kadmos.Generated.TargetValue
+        (Harmonia.Applications.Kadmos.Generated.TargetValue.string "."))
+      (@List.nil Harmonia.Applications.Kadmos.Generated.TargetValue))
+    (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.ExprOutcome
+      (Harmonia.Applications.Kadmos.Generated.ExprOutcome.mk m
+        (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetValue
+          Harmonia.Applications.Kadmos.Generated.TargetValue
+          (Harmonia.Applications.Kadmos.Generated.TargetValue.bool Bool.false))))) :=
+  @Harmonia.Applications.Kadmos.Generated.BalanceStepLexemes.spaceDot
+
+example : (∀ (m : Harmonia.Applications.Kadmos.Generated.TargetMachine),
+  @Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.ExprOutcome)
+    (Harmonia.Applications.Kadmos.Generated.hostCall Harmonia.Applications.Kadmos.Generated.TargetLang.python m
+      Harmonia.Applications.Kadmos.Generated.BuiltinId.stringIsSpace
+      (@Option.some Harmonia.Applications.Kadmos.Generated.TargetValue
+        (Harmonia.Applications.Kadmos.Generated.TargetValue.string "event"))
+      (@List.nil Harmonia.Applications.Kadmos.Generated.TargetValue))
+    (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.ExprOutcome
+      (Harmonia.Applications.Kadmos.Generated.ExprOutcome.mk m
+        (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetValue
+          Harmonia.Applications.Kadmos.Generated.TargetValue
+          (Harmonia.Applications.Kadmos.Generated.TargetValue.bool Bool.false))))) :=
+  @Harmonia.Applications.Kadmos.Generated.BalanceStepLexemes.spaceEvent
+
+example : (∀ (m : Harmonia.Applications.Kadmos.Generated.TargetMachine),
+  @Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.ExprOutcome)
+    (Harmonia.Applications.Kadmos.Generated.hostCall Harmonia.Applications.Kadmos.Generated.TargetLang.python m
+      Harmonia.Applications.Kadmos.Generated.BuiltinId.stringIsSpace
+      (@Option.some Harmonia.Applications.Kadmos.Generated.TargetValue
+        (Harmonia.Applications.Kadmos.Generated.TargetValue.string ">"))
+      (@List.nil Harmonia.Applications.Kadmos.Generated.TargetValue))
+    (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.ExprOutcome
+      (Harmonia.Applications.Kadmos.Generated.ExprOutcome.mk m
+        (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetValue
+          Harmonia.Applications.Kadmos.Generated.TargetValue
+          (Harmonia.Applications.Kadmos.Generated.TargetValue.bool Bool.false))))) :=
+  @Harmonia.Applications.Kadmos.Generated.BalanceStepLexemes.spaceOperator
+
+example : (∀ (m : Harmonia.Applications.Kadmos.Generated.TargetMachine),
+  @Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.ExprOutcome)
+    (Harmonia.Applications.Kadmos.Generated.hostCall Harmonia.Applications.Kadmos.Generated.TargetLang.python m
+      Harmonia.Applications.Kadmos.Generated.BuiltinId.stringIsSpace
+      (@Option.some Harmonia.Applications.Kadmos.Generated.TargetValue
+        (Harmonia.Applications.Kadmos.Generated.TargetValue.string " "))
+      (@List.nil Harmonia.Applications.Kadmos.Generated.TargetValue))
+    (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.ExprOutcome
+      (Harmonia.Applications.Kadmos.Generated.ExprOutcome.mk m
+        (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetValue
+          Harmonia.Applications.Kadmos.Generated.TargetValue
+          (Harmonia.Applications.Kadmos.Generated.TargetValue.bool Bool.true))))) :=
+  @Harmonia.Applications.Kadmos.Generated.BalanceStepLexemes.spaceSpace
+
+example : (∀ (m : Harmonia.Applications.Kadmos.Generated.TargetMachine),
+  @Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.ExprOutcome)
+    (Harmonia.Applications.Kadmos.Generated.hostCall Harmonia.Applications.Kadmos.Generated.TargetLang.python m
+      Harmonia.Applications.Kadmos.Generated.BuiltinId.stringIsSpace
+      (@Option.some Harmonia.Applications.Kadmos.Generated.TargetValue
+        (Harmonia.Applications.Kadmos.Generated.TargetValue.string "0"))
+      (@List.nil Harmonia.Applications.Kadmos.Generated.TargetValue))
+    (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.ExprOutcome
+      (Harmonia.Applications.Kadmos.Generated.ExprOutcome.mk m
+        (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetValue
+          Harmonia.Applications.Kadmos.Generated.TargetValue
+          (Harmonia.Applications.Kadmos.Generated.TargetValue.bool Bool.false))))) :=
+  @Harmonia.Applications.Kadmos.Generated.BalanceStepLexemes.spaceZero
+
+example : (∀ (m : Harmonia.Applications.Kadmos.Generated.TargetMachine),
+  @Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.ExprOutcome)
+    (Harmonia.Applications.Kadmos.Generated.hostCall Harmonia.Applications.Kadmos.Generated.TargetLang.python m
+      Harmonia.Applications.Kadmos.Generated.BuiltinId.stringStartsWith
+      (@Option.some Harmonia.Applications.Kadmos.Generated.TargetValue
+        (Harmonia.Applications.Kadmos.Generated.TargetValue.string "event"))
+      (@List.cons Harmonia.Applications.Kadmos.Generated.TargetValue
+        (Harmonia.Applications.Kadmos.Generated.TargetValue.string "'")
+        (@List.nil Harmonia.Applications.Kadmos.Generated.TargetValue)))
+    (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.ExprOutcome
+      (Harmonia.Applications.Kadmos.Generated.ExprOutcome.mk m
+        (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetValue
+          Harmonia.Applications.Kadmos.Generated.TargetValue
+          (Harmonia.Applications.Kadmos.Generated.TargetValue.bool Bool.false))))) :=
+  @Harmonia.Applications.Kadmos.Generated.BalanceStepLexemes.startsEvent
+
+example : (∀ (m : Harmonia.Applications.Kadmos.Generated.TargetMachine),
+  @Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.ExprOutcome)
+    (Harmonia.Applications.Kadmos.Generated.hostCall Harmonia.Applications.Kadmos.Generated.TargetLang.python m
+      Harmonia.Applications.Kadmos.Generated.BuiltinId.stringStartsWith
+      (@Option.some Harmonia.Applications.Kadmos.Generated.TargetValue
+        (Harmonia.Applications.Kadmos.Generated.TargetValue.string "0"))
+      (@List.cons Harmonia.Applications.Kadmos.Generated.TargetValue
+        (Harmonia.Applications.Kadmos.Generated.TargetValue.string "'")
+        (@List.nil Harmonia.Applications.Kadmos.Generated.TargetValue)))
+    (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.ExprOutcome
+      (Harmonia.Applications.Kadmos.Generated.ExprOutcome.mk m
+        (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetValue
+          Harmonia.Applications.Kadmos.Generated.TargetValue
+          (Harmonia.Applications.Kadmos.Generated.TargetValue.bool Bool.false))))) :=
+  @Harmonia.Applications.Kadmos.Generated.BalanceStepLexemes.startsZero
+
+example : (@Eq (Option Harmonia.Applications.Kadmos.Generated.MatchValue)
+  (Harmonia.Applications.Kadmos.Generated.tokenMatchAt "event.amount > 0" (@OfNat.ofNat Nat 0 (instOfNatNat 0)))
+  (@Option.some Harmonia.Applications.Kadmos.Generated.MatchValue
+    (Harmonia.Applications.Kadmos.Generated.MatchValue.mk "event" (@OfNat.ofNat Nat 0 (instOfNatNat 0))
+      (@OfNat.ofNat Nat 5 (instOfNatNat 5)) (@List.nil (Option String))))) :=
+  @Harmonia.Applications.Kadmos.Generated.BalanceStepLexemes.token0
+
+example : (@Eq (Option Harmonia.Applications.Kadmos.Generated.MatchValue)
+  (Harmonia.Applications.Kadmos.Generated.tokenMatchAt "event.amount > 0" (@OfNat.ofNat Nat 12 (instOfNatNat 12)))
+  (@Option.some Harmonia.Applications.Kadmos.Generated.MatchValue
+    (Harmonia.Applications.Kadmos.Generated.MatchValue.mk " " (@OfNat.ofNat Nat 12 (instOfNatNat 12))
+      (@OfNat.ofNat Nat 13 (instOfNatNat 13)) (@List.nil (Option String))))) :=
+  @Harmonia.Applications.Kadmos.Generated.BalanceStepLexemes.token12
+
+example : (@Eq (Option Harmonia.Applications.Kadmos.Generated.MatchValue)
+  (Harmonia.Applications.Kadmos.Generated.tokenMatchAt "event.amount > 0" (@OfNat.ofNat Nat 13 (instOfNatNat 13)))
+  (@Option.some Harmonia.Applications.Kadmos.Generated.MatchValue
+    (Harmonia.Applications.Kadmos.Generated.MatchValue.mk ">" (@OfNat.ofNat Nat 13 (instOfNatNat 13))
+      (@OfNat.ofNat Nat 14 (instOfNatNat 14)) (@List.nil (Option String))))) :=
+  @Harmonia.Applications.Kadmos.Generated.BalanceStepLexemes.token13
+
+example : (@Eq (Option Harmonia.Applications.Kadmos.Generated.MatchValue)
+  (Harmonia.Applications.Kadmos.Generated.tokenMatchAt "event.amount > 0" (@OfNat.ofNat Nat 14 (instOfNatNat 14)))
+  (@Option.some Harmonia.Applications.Kadmos.Generated.MatchValue
+    (Harmonia.Applications.Kadmos.Generated.MatchValue.mk " " (@OfNat.ofNat Nat 14 (instOfNatNat 14))
+      (@OfNat.ofNat Nat 15 (instOfNatNat 15)) (@List.nil (Option String))))) :=
+  @Harmonia.Applications.Kadmos.Generated.BalanceStepLexemes.token14
+
+example : (@Eq (Option Harmonia.Applications.Kadmos.Generated.MatchValue)
+  (Harmonia.Applications.Kadmos.Generated.tokenMatchAt "event.amount > 0" (@OfNat.ofNat Nat 15 (instOfNatNat 15)))
+  (@Option.some Harmonia.Applications.Kadmos.Generated.MatchValue
+    (Harmonia.Applications.Kadmos.Generated.MatchValue.mk "0" (@OfNat.ofNat Nat 15 (instOfNatNat 15))
+      (@OfNat.ofNat Nat 16 (instOfNatNat 16)) (@List.nil (Option String))))) :=
+  @Harmonia.Applications.Kadmos.Generated.BalanceStepLexemes.token15
+
+example : (@Eq (Option Harmonia.Applications.Kadmos.Generated.MatchValue)
+  (Harmonia.Applications.Kadmos.Generated.tokenMatchAt "event.amount > 0" (@OfNat.ofNat Nat 5 (instOfNatNat 5)))
+  (@Option.some Harmonia.Applications.Kadmos.Generated.MatchValue
+    (Harmonia.Applications.Kadmos.Generated.MatchValue.mk "." (@OfNat.ofNat Nat 5 (instOfNatNat 5))
+      (@OfNat.ofNat Nat 6 (instOfNatNat 6)) (@List.nil (Option String))))) :=
+  @Harmonia.Applications.Kadmos.Generated.BalanceStepLexemes.token5
+
+example : (@Eq (Option Harmonia.Applications.Kadmos.Generated.MatchValue)
+  (Harmonia.Applications.Kadmos.Generated.tokenMatchAt "event.amount > 0" (@OfNat.ofNat Nat 6 (instOfNatNat 6)))
+  (@Option.some Harmonia.Applications.Kadmos.Generated.MatchValue
+    (Harmonia.Applications.Kadmos.Generated.MatchValue.mk "amount" (@OfNat.ofNat Nat 6 (instOfNatNat 6))
+      (@OfNat.ofNat Nat 12 (instOfNatNat 12)) (@List.nil (Option String))))) :=
+  @Harmonia.Applications.Kadmos.Generated.BalanceStepLexemes.token6
+
+example : (∀ (lang : Harmonia.Applications.Kadmos.Generated.TargetLang) (b : Int),
+  @Eq Harmonia.Applications.Kadmos.Generated.TargetStmt
+    (Harmonia.Applications.Kadmos.Generated.balanceStepCanonicalUnbound lang b).body
+    (Harmonia.Applications.Kadmos.Generated.balanceSourceBody
+      (Harmonia.Applications.Kadmos.Generated.balanceProgram lang) "WorldChecker.step")) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_canonical_body
+
+example : (∀ (lang : Harmonia.Applications.Kadmos.Generated.TargetLang) (b n : Int) (k : Nat),
+  @Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.ExprOutcome)
+    (Harmonia.Applications.Kadmos.Generated.evalExpr
+      (@HAdd.hAdd Nat Nat Nat (@instHAdd Nat instAddNat) k (@OfNat.ofNat Nat 5 (instOfNatNat 5)))
+      (Harmonia.Applications.Kadmos.Generated.balanceProgram lang)
+      (@Prod.fst Harmonia.Applications.Kadmos.Generated.TargetMachine Harmonia.Applications.Kadmos.Generated.TargetFrame
+        (Harmonia.Applications.Kadmos.Generated.debitCallEntry lang
+          (Harmonia.Applications.Kadmos.Generated.balanceCanonicalConstructed lang b) n))
+      (@Prod.snd Harmonia.Applications.Kadmos.Generated.TargetMachine Harmonia.Applications.Kadmos.Generated.TargetFrame
+        (Harmonia.Applications.Kadmos.Generated.debitCallEntry lang
+          (Harmonia.Applications.Kadmos.Generated.balanceCanonicalConstructed lang b) n))
+      (Harmonia.Applications.Kadmos.Generated.debitCallExpression lang))
+    (@Bind.bind (Except Harmonia.Applications.Kadmos.Generated.TargetError)
+      (@Monad.toBind (Except Harmonia.Applications.Kadmos.Generated.TargetError)
+        (@Except.instMonad Harmonia.Applications.Kadmos.Generated.TargetError))
+      Harmonia.Applications.Kadmos.Generated.StmtOutcome Harmonia.Applications.Kadmos.Generated.ExprOutcome
+      (Harmonia.Applications.Kadmos.Generated.execStmt
+        (@HAdd.hAdd Nat Nat Nat (@instHAdd Nat instAddNat) k (@OfNat.ofNat Nat 4 (instOfNatNat 4)))
+        (Harmonia.Applications.Kadmos.Generated.balanceProgram lang)
+        (@Prod.fst Harmonia.Applications.Kadmos.Generated.TargetMachine
+          Harmonia.Applications.Kadmos.Generated.TargetFrame
+          (Harmonia.Applications.Kadmos.Generated.balanceStepCanonicalBound lang b n))
+        (@Prod.snd Harmonia.Applications.Kadmos.Generated.TargetMachine
+          Harmonia.Applications.Kadmos.Generated.TargetFrame
+          (Harmonia.Applications.Kadmos.Generated.balanceStepCanonicalBound lang b n))
+        (Harmonia.Applications.Kadmos.Generated.balanceStepCanonicalUnbound lang b).body)
+      fun result => Harmonia.Applications.Kadmos.Generated.closureResult lang result)) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_canonical_call_open
+
+example : (∀ (lang : Harmonia.Applications.Kadmos.Generated.TargetLang) (b : Int),
+  @Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.TargetClosure)
+    (Harmonia.Applications.Kadmos.Generated.closureAt
+      (Harmonia.Applications.Kadmos.Generated.balanceCanonicalConstructed lang b)
+      (@ite Harmonia.Applications.Kadmos.Generated.ClosureRef
+        (@Eq Bool
+          (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+            (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+              Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+            lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+          Bool.true)
+        (instDecidableEqBool
+          (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+            (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+              Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+            lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+          Bool.true)
+        (@OfNat.ofNat Harmonia.Applications.Kadmos.Generated.ClosureRef 11 (instOfNatNat 11))
+        (@OfNat.ofNat Harmonia.Applications.Kadmos.Generated.ClosureRef 19 (instOfNatNat 19))))
+    (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.TargetClosure
+      (Harmonia.Applications.Kadmos.Generated.balanceStepCanonicalUnbound lang b))) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_canonical_closure
+
+example : (∀ (lang : Harmonia.Applications.Kadmos.Generated.TargetLang) (b n : Int),
+  And (@LE.le Int Int.instLEInt (@Neg.neg Int Int.instNegInt Harmonia.Applications.Kadmos.S) n)
+      (@LE.le Int Int.instLEInt n Harmonia.Applications.Kadmos.S) →
+    @LE.le Int Int.instLEInt n (@OfNat.ofNat Int 0 (@instOfNat 0)) →
+      @Eq
+        (Option
+          (Except Harmonia.Applications.Kadmos.Generated.TargetValue
+            Harmonia.Applications.Kadmos.Generated.TargetValue))
+        (@Option.map Harmonia.Applications.Kadmos.Generated.ExprOutcome
+          (Except Harmonia.Applications.Kadmos.Generated.TargetValue Harmonia.Applications.Kadmos.Generated.TargetValue)
+          Harmonia.Applications.Kadmos.Generated.ExprOutcome.result
+          (@Except.toOption Harmonia.Applications.Kadmos.Generated.TargetError
+            Harmonia.Applications.Kadmos.Generated.ExprOutcome
+            (Harmonia.Applications.Kadmos.Generated.balanceStepGuardRun lang b n)))
+        (@Option.some
+          (Except Harmonia.Applications.Kadmos.Generated.TargetValue Harmonia.Applications.Kadmos.Generated.TargetValue)
+          (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetValue
+            Harmonia.Applications.Kadmos.Generated.TargetValue
+            (Harmonia.Applications.Kadmos.Generated.TargetValue.bool Bool.false)))) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_canonical_guard_nonpositive
+
+example : (∀ (lang : Harmonia.Applications.Kadmos.Generated.TargetLang) (b n : Int),
+  And (@LE.le Int Int.instLEInt (@Neg.neg Int Int.instNegInt Harmonia.Applications.Kadmos.S) n)
+      (@LE.le Int Int.instLEInt n Harmonia.Applications.Kadmos.S) →
+    @Eq
+      (Option
+        (Except Harmonia.Applications.Kadmos.Generated.TargetValue Harmonia.Applications.Kadmos.Generated.TargetValue))
+      (@Option.map Harmonia.Applications.Kadmos.Generated.ExprOutcome
+        (Except Harmonia.Applications.Kadmos.Generated.TargetValue Harmonia.Applications.Kadmos.Generated.TargetValue)
+        Harmonia.Applications.Kadmos.Generated.ExprOutcome.result
+        (@Except.toOption Harmonia.Applications.Kadmos.Generated.TargetError
+          Harmonia.Applications.Kadmos.Generated.ExprOutcome
+          (Harmonia.Applications.Kadmos.Generated.balanceStepGuardRun lang b n)))
+      (@Option.some
+        (Except Harmonia.Applications.Kadmos.Generated.TargetValue Harmonia.Applications.Kadmos.Generated.TargetValue)
+        (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetValue
+          Harmonia.Applications.Kadmos.Generated.TargetValue
+          (Harmonia.Applications.Kadmos.Generated.TargetValue.bool
+            (@Decidable.decide (@LT.lt Int Int.instLTInt (@OfNat.ofNat Int 0 (@instOfNat 0)) n)
+              (Int.decLt (@OfNat.ofNat Int 0 (@instOfNat 0)) n)))))) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_canonical_guard_value
+
+example : (∀ (lang : Harmonia.Applications.Kadmos.Generated.TargetLang) (b : Int),
+  @Eq (Option Harmonia.Applications.Kadmos.Generated.ClosureRef)
+    (@List.lookup String Harmonia.Applications.Kadmos.Generated.ClosureRef
+      (@instBEqOfDecidableEq String instDecidableEqString) "step"
+      (Harmonia.Applications.Kadmos.Generated.balanceCanonicalConstructed lang b).classMethods)
+    (@Option.some Harmonia.Applications.Kadmos.Generated.ClosureRef
+      (@ite Harmonia.Applications.Kadmos.Generated.ClosureRef
+        (@Eq Bool
+          (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+            (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+              Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+            lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+          Bool.true)
+        (instDecidableEqBool
+          (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+            (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+              Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+            lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+          Bool.true)
+        (@OfNat.ofNat Harmonia.Applications.Kadmos.Generated.ClosureRef 11 (instOfNatNat 11))
+        (@OfNat.ofNat Harmonia.Applications.Kadmos.Generated.ClosureRef 19 (instOfNatNat 19))))) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_canonical_method
+
+example : (∀ (lang : Harmonia.Applications.Kadmos.Generated.TargetLang) (b n : Int),
+  And (@LE.le Int Int.instLEInt (@Neg.neg Int Int.instNegInt Harmonia.Applications.Kadmos.S) n)
+      (@LE.le Int Int.instLEInt n Harmonia.Applications.Kadmos.S) →
+    @Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.ExprOutcome)
+      (Harmonia.Applications.Kadmos.Generated.evalExpr (@OfNat.ofNat Nat 100 (instOfNatNat 100))
+        (Harmonia.Applications.Kadmos.Generated.balanceProgram lang)
+        (@Prod.fst Harmonia.Applications.Kadmos.Generated.TargetMachine
+          Harmonia.Applications.Kadmos.Generated.TargetFrame
+          (Harmonia.Applications.Kadmos.Generated.debitCallEntry lang
+            (Harmonia.Applications.Kadmos.Generated.balanceCanonicalConstructed lang b) n))
+        (@Prod.snd Harmonia.Applications.Kadmos.Generated.TargetMachine
+          Harmonia.Applications.Kadmos.Generated.TargetFrame
+          (Harmonia.Applications.Kadmos.Generated.debitCallEntry lang
+            (Harmonia.Applications.Kadmos.Generated.balanceCanonicalConstructed lang b) n))
+        (Harmonia.Applications.Kadmos.Generated.debitCallExpression lang))
+      (Harmonia.Applications.Kadmos.Generated.balanceStepPrefixContinuation lang b n)) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_canonical_prefix_continuation
+
+example : (∀ (lang : Harmonia.Applications.Kadmos.Generated.TargetLang) (b n : Int),
+  And (@LE.le Int Int.instLEInt (@Neg.neg Int Int.instNegInt Harmonia.Applications.Kadmos.S) n)
+      (@LE.le Int Int.instLEInt n Harmonia.Applications.Kadmos.S) →
+    And
+      (@Eq
+        (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.StmtOutcome)
+        (Harmonia.Applications.Kadmos.Generated.balanceStepPrefixRun lang b n)
+        (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError
+          Harmonia.Applications.Kadmos.Generated.StmtOutcome
+          (Harmonia.Applications.Kadmos.Generated.StmtOutcome.mk
+            (@Prod.fst Harmonia.Applications.Kadmos.Generated.TargetMachine
+              Harmonia.Applications.Kadmos.Generated.TargetFrame
+              (Harmonia.Applications.Kadmos.Generated.balanceStepCanonicalPrefix lang b n))
+            (@Prod.snd Harmonia.Applications.Kadmos.Generated.TargetMachine
+              Harmonia.Applications.Kadmos.Generated.TargetFrame
+              (Harmonia.Applications.Kadmos.Generated.balanceStepCanonicalPrefix lang b n))
+            Harmonia.Applications.Kadmos.Generated.ControlResult.normal)))
+      (And
+        (@Eq
+          (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.BalanceView)
+          (Harmonia.Applications.Kadmos.Generated.balanceView lang
+            (@Prod.fst Harmonia.Applications.Kadmos.Generated.TargetMachine
+              Harmonia.Applications.Kadmos.Generated.TargetFrame
+              (Harmonia.Applications.Kadmos.Generated.balanceStepCanonicalPrefix lang b n)))
+          (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError
+            Harmonia.Applications.Kadmos.Generated.BalanceView
+            (Harmonia.Applications.Kadmos.Generated.BalanceView.mk "Ready" b
+              (@List.nil Harmonia.Applications.Kadmos.Generated.BalanceRecord)
+              (@Option.none Harmonia.Applications.Kadmos.Generated.BalanceSaved) b Bool.true)))
+        (And
+          (@Eq
+            (Except Harmonia.Applications.Kadmos.Generated.TargetError
+              Harmonia.Applications.Kadmos.Generated.TargetValue)
+            (Harmonia.Applications.Kadmos.Generated.localValue
+              (@Prod.fst Harmonia.Applications.Kadmos.Generated.TargetMachine
+                Harmonia.Applications.Kadmos.Generated.TargetFrame
+                (Harmonia.Applications.Kadmos.Generated.balanceStepCanonicalPrefix lang b n))
+              (@Prod.snd Harmonia.Applications.Kadmos.Generated.TargetMachine
+                Harmonia.Applications.Kadmos.Generated.TargetFrame
+                (Harmonia.Applications.Kadmos.Generated.balanceStepCanonicalPrefix lang b n))
+              (@ite String
+                (@Eq Bool
+                  (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+                    (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                      Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+                    lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+                  Bool.true)
+                (instDecidableEqBool
+                  (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+                    (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                      Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+                    lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+                  Bool.true)
+                "safePayload" "payload"))
+            (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError
+              Harmonia.Applications.Kadmos.Generated.TargetValue
+              (Harmonia.Applications.Kadmos.Generated.TargetValue.object
+                (@ite Harmonia.Applications.Kadmos.Generated.ObjRef
+                  (@Eq Bool
+                    (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+                      (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                        Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+                      lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+                    Bool.true)
+                  (instDecidableEqBool
+                    (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+                      (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                        Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+                      lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+                    Bool.true)
+                  (@OfNat.ofNat Harmonia.Applications.Kadmos.Generated.ObjRef 53 (instOfNatNat 53))
+                  (@OfNat.ofNat Harmonia.Applications.Kadmos.Generated.ObjRef 114 (instOfNatNat 114))))))
+          (@Eq
+            (Except Harmonia.Applications.Kadmos.Generated.TargetError
+              (Option Harmonia.Applications.Kadmos.Generated.Descriptor))
+            (Harmonia.Applications.Kadmos.Generated.readOwn
+              (@Prod.fst Harmonia.Applications.Kadmos.Generated.TargetMachine
+                Harmonia.Applications.Kadmos.Generated.TargetFrame
+                (Harmonia.Applications.Kadmos.Generated.balanceStepCanonicalPrefix lang b n))
+              (@ite Harmonia.Applications.Kadmos.Generated.ObjRef
+                (@Eq Bool
+                  (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+                    (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                      Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+                    lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+                  Bool.true)
+                (instDecidableEqBool
+                  (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+                    (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                      Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+                    lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+                  Bool.true)
+                (@OfNat.ofNat Harmonia.Applications.Kadmos.Generated.ObjRef 53 (instOfNatNat 53))
+                (@OfNat.ofNat Harmonia.Applications.Kadmos.Generated.ObjRef 114 (instOfNatNat 114)))
+              "amount")
+            (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError
+              (Option Harmonia.Applications.Kadmos.Generated.Descriptor)
+              (@Option.some Harmonia.Applications.Kadmos.Generated.Descriptor
+                (Harmonia.Applications.Kadmos.Generated.Descriptor.mk
+                  (@Option.some Harmonia.Applications.Kadmos.Generated.TargetValue
+                    (Harmonia.Applications.Kadmos.Generated.TargetValue.number
+                      (@ite Harmonia.Applications.Kadmos.Generated.NumberTag
+                        (@Eq Bool
+                          (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+                            (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                              Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+                            lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+                          Bool.true)
+                        (instDecidableEqBool
+                          (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+                            (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                              Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+                            lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+                          Bool.true)
+                        Harmonia.Applications.Kadmos.Generated.NumberTag.jsNumber
+                        Harmonia.Applications.Kadmos.Generated.NumberTag.pyFloat)
+                      n))
+                  (@Option.none Harmonia.Applications.Kadmos.Generated.ClosureRef)
+                  (@Option.none Harmonia.Applications.Kadmos.Generated.ClosureRef) Bool.true Bool.true Bool.true))))))) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_canonical_prefix_contract
+
+example : (∀ (lang : Harmonia.Applications.Kadmos.Generated.TargetLang) (b n : Int),
+  And (@LE.le Int Int.instLEInt (@Neg.neg Int Int.instNegInt Harmonia.Applications.Kadmos.S) n)
+      (@LE.le Int Int.instLEInt n Harmonia.Applications.Kadmos.S) →
+    @Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.StmtOutcome)
+      (Harmonia.Applications.Kadmos.Generated.balanceStepPrefixRun lang b n)
+      (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.StmtOutcome
+        (Harmonia.Applications.Kadmos.Generated.StmtOutcome.mk
+          (@Prod.fst Harmonia.Applications.Kadmos.Generated.TargetMachine
+            Harmonia.Applications.Kadmos.Generated.TargetFrame
+            (Harmonia.Applications.Kadmos.Generated.balanceStepCanonicalPrefix lang b n))
+          (@Prod.snd Harmonia.Applications.Kadmos.Generated.TargetMachine
+            Harmonia.Applications.Kadmos.Generated.TargetFrame
+            (Harmonia.Applications.Kadmos.Generated.balanceStepCanonicalPrefix lang b n))
+          Harmonia.Applications.Kadmos.Generated.ControlResult.normal))) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_canonical_prefix_execute
+
+example : (∀ (lang : Harmonia.Applications.Kadmos.Generated.TargetLang) (b n : Int),
+  @Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.ExprOutcome)
+    (Harmonia.Applications.Kadmos.Generated.evalExpr (@OfNat.ofNat Nat 100 (instOfNatNat 100))
+      (Harmonia.Applications.Kadmos.Generated.balanceProgram lang)
+      (@Prod.fst Harmonia.Applications.Kadmos.Generated.TargetMachine Harmonia.Applications.Kadmos.Generated.TargetFrame
+        (Harmonia.Applications.Kadmos.Generated.debitCallEntry lang
+          (Harmonia.Applications.Kadmos.Generated.balanceCanonicalConstructed lang b) n))
+      (@Prod.snd Harmonia.Applications.Kadmos.Generated.TargetMachine Harmonia.Applications.Kadmos.Generated.TargetFrame
+        (Harmonia.Applications.Kadmos.Generated.debitCallEntry lang
+          (Harmonia.Applications.Kadmos.Generated.balanceCanonicalConstructed lang b) n))
+      (Harmonia.Applications.Kadmos.Generated.debitCallExpression lang))
+    (@Bind.bind (Except Harmonia.Applications.Kadmos.Generated.TargetError)
+      (@Monad.toBind (Except Harmonia.Applications.Kadmos.Generated.TargetError)
+        (@Except.instMonad Harmonia.Applications.Kadmos.Generated.TargetError))
+      Harmonia.Applications.Kadmos.Generated.StmtOutcome Harmonia.Applications.Kadmos.Generated.ExprOutcome
+      (Harmonia.Applications.Kadmos.Generated.execStmt
+        (@ite Nat
+          (@Eq Bool
+            (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+              (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+              lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+            Bool.true)
+          (instDecidableEqBool
+            (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+              (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+              lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+            Bool.true)
+          (@OfNat.ofNat Nat 93 (instOfNatNat 93)) (@OfNat.ofNat Nat 92 (instOfNatNat 92)))
+        (Harmonia.Applications.Kadmos.Generated.balanceProgram lang)
+        (@Prod.fst Harmonia.Applications.Kadmos.Generated.TargetMachine
+          Harmonia.Applications.Kadmos.Generated.TargetFrame
+          (Harmonia.Applications.Kadmos.Generated.balanceStepCanonicalSnapshots lang b n))
+        (@Prod.snd Harmonia.Applications.Kadmos.Generated.TargetMachine
+          Harmonia.Applications.Kadmos.Generated.TargetFrame
+          (Harmonia.Applications.Kadmos.Generated.balanceStepCanonicalSnapshots lang b n))
+        (Harmonia.Applications.Kadmos.Generated.dropStmts
+          (@ite Nat
+            (@Eq Bool
+              (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+                (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                  Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+                lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+              Bool.true)
+            (instDecidableEqBool
+              (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+                (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                  Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+                lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+              Bool.true)
+            (@OfNat.ofNat Nat 4 (instOfNatNat 4)) (@OfNat.ofNat Nat 5 (instOfNatNat 5)))
+          (Harmonia.Applications.Kadmos.Generated.balanceStepSnapshots lang)))
+      fun body => Harmonia.Applications.Kadmos.Generated.closureResult lang body)) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_canonical_snapshot_continuation
+
+example : (∀ (lang : Harmonia.Applications.Kadmos.Generated.TargetLang) (b n : Int),
+  @Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.ExprOutcome)
+    (Harmonia.Applications.Kadmos.Generated.evalExpr (@OfNat.ofNat Nat 100 (instOfNatNat 100))
+      (Harmonia.Applications.Kadmos.Generated.balanceProgram lang)
+      (@Prod.fst Harmonia.Applications.Kadmos.Generated.TargetMachine Harmonia.Applications.Kadmos.Generated.TargetFrame
+        (Harmonia.Applications.Kadmos.Generated.debitCallEntry lang
+          (Harmonia.Applications.Kadmos.Generated.balanceCanonicalConstructed lang b) n))
+      (@Prod.snd Harmonia.Applications.Kadmos.Generated.TargetMachine Harmonia.Applications.Kadmos.Generated.TargetFrame
+        (Harmonia.Applications.Kadmos.Generated.debitCallEntry lang
+          (Harmonia.Applications.Kadmos.Generated.balanceCanonicalConstructed lang b) n))
+      (Harmonia.Applications.Kadmos.Generated.debitCallExpression lang))
+    (@Bind.bind (Except Harmonia.Applications.Kadmos.Generated.TargetError)
+      (@Monad.toBind (Except Harmonia.Applications.Kadmos.Generated.TargetError)
+        (@Except.instMonad Harmonia.Applications.Kadmos.Generated.TargetError))
+      Harmonia.Applications.Kadmos.Generated.StmtOutcome Harmonia.Applications.Kadmos.Generated.ExprOutcome
+      (Harmonia.Applications.Kadmos.Generated.execStmt (@OfNat.ofNat Nat 97 (instOfNatNat 97))
+        (Harmonia.Applications.Kadmos.Generated.balanceProgram lang)
+        (@Prod.fst Harmonia.Applications.Kadmos.Generated.TargetMachine
+          Harmonia.Applications.Kadmos.Generated.TargetFrame
+          (Harmonia.Applications.Kadmos.Generated.balanceStepSnapshotStart lang b n))
+        (@Prod.snd Harmonia.Applications.Kadmos.Generated.TargetMachine
+          Harmonia.Applications.Kadmos.Generated.TargetFrame
+          (Harmonia.Applications.Kadmos.Generated.balanceStepSnapshotStart lang b n))
+        (Harmonia.Applications.Kadmos.Generated.balanceStepSnapshots lang))
+      fun body => Harmonia.Applications.Kadmos.Generated.closureResult lang body)) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_canonical_snapshots_entry
+
+example : (∀ (lang : Harmonia.Applications.Kadmos.Generated.TargetLang) (b n : Int),
+  @Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.StmtOutcome)
+    (Harmonia.Applications.Kadmos.Generated.balanceStepSnapshotRun lang b n)
+    (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.StmtOutcome
+      (Harmonia.Applications.Kadmos.Generated.StmtOutcome.mk
+        (@Prod.fst Harmonia.Applications.Kadmos.Generated.TargetMachine
+          Harmonia.Applications.Kadmos.Generated.TargetFrame
+          (Harmonia.Applications.Kadmos.Generated.balanceStepCanonicalSnapshots lang b n))
+        (@Prod.snd Harmonia.Applications.Kadmos.Generated.TargetMachine
+          Harmonia.Applications.Kadmos.Generated.TargetFrame
+          (Harmonia.Applications.Kadmos.Generated.balanceStepCanonicalSnapshots lang b n))
+        Harmonia.Applications.Kadmos.Generated.ControlResult.normal))) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_canonical_snapshots_execute
+
+example : (∀ (lang : Harmonia.Applications.Kadmos.Generated.TargetLang) (b : Int),
+  @Eq Harmonia.Applications.Kadmos.Generated.TargetStmt
+    (Harmonia.Applications.Kadmos.Generated.balanceStepCanonicalUnbound lang b).body
+    (@Prod.snd Harmonia.Applications.Kadmos.Generated.ClosureRef Harmonia.Applications.Kadmos.Generated.TargetClosure
+        (Harmonia.Applications.Kadmos.Generated.balanceStoredStep lang)).body) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_canonical_stored
+
+example : (∀ (lang : Harmonia.Applications.Kadmos.Generated.TargetLang),
+  @Eq Harmonia.Applications.Kadmos.Generated.TargetStmt
+    (Harmonia.Applications.Kadmos.Generated.balanceStepProtected lang).cleanup
+    ((Harmonia.Applications.Kadmos.Generated.TargetStmt.assign
+          (Harmonia.Applications.Kadmos.Generated.AssignTarget.property
+            (Harmonia.Applications.Kadmos.Generated.resetReceiver lang)
+            (@ite String
+              (@Eq Bool
+                (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+                  (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                    Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+                  lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+                Bool.true)
+              (instDecidableEqBool
+                (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+                  (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                    Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+                  lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+                Bool.true)
+              "#busy" "_busy"))
+          (Harmonia.Applications.Kadmos.Generated.TargetExpr.bool Bool.false)).sequence
+      Harmonia.Applications.Kadmos.Generated.TargetStmt.empty)) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_cleanup_shape
+
+example : (∀ (lang : Harmonia.Applications.Kadmos.Generated.TargetLang) (b n : Int),
+  Harmonia.Applications.Kadmos.Generated.HeapWF lang
+    (Harmonia.Applications.Kadmos.Generated.balanceStepGuardRejected lang b n).machine) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_guardRejected_WF
+
+example : (∀ (lang : Harmonia.Applications.Kadmos.Generated.TargetLang) (b n : Int),
+  @Eq Bool
+    (Harmonia.Applications.Kadmos.Generated.heapWFCheck lang
+      (Harmonia.Applications.Kadmos.Generated.balanceStepGuardRejected lang b n).machine)
+    (Harmonia.Applications.Kadmos.Generated.heapWFCheck lang
+      (Harmonia.Applications.Kadmos.Generated.balanceStepGuardRejected lang (@OfNat.ofNat Int 0 (@instOfNat 0))
+          (@OfNat.ofNat Int 0 (@instOfNat 0))).machine)) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_guardRejected_WF_footprint
+
+example : (∀ (lang : Harmonia.Applications.Kadmos.Generated.TargetLang),
+  Harmonia.Applications.Kadmos.Generated.HeapWF lang
+    (Harmonia.Applications.Kadmos.Generated.balanceStepGuardRejected lang (@OfNat.ofNat Int 0 (@instOfNat 0))
+        (@OfNat.ofNat Int 0 (@instOfNat 0))).machine) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_guardRejected_WF_zero
+
+example : (∀ (lang : Harmonia.Applications.Kadmos.Generated.TargetLang) (b n : Int),
+  @Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError (Option String))
+    (Harmonia.Applications.Kadmos.Generated.targetViolationCode
+      (Harmonia.Applications.Kadmos.Generated.balanceStepGuardRejected lang b n))
+    (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError (Option String) (@Option.some String "GUARD_FAILED"))) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_guardRejected_code
+
+example : (∀ (lang : Harmonia.Applications.Kadmos.Generated.TargetLang) (b n : Int),
+  @Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.BalanceView)
+    (Harmonia.Applications.Kadmos.Generated.balanceView lang
+      (Harmonia.Applications.Kadmos.Generated.balanceStepGuardRejected lang b n).machine)
+    (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.BalanceView
+      (Harmonia.Applications.Kadmos.Generated.BalanceView.mk "Ready" b
+        (@List.nil Harmonia.Applications.Kadmos.Generated.BalanceRecord)
+        (@Option.none Harmonia.Applications.Kadmos.Generated.BalanceSaved) b Bool.false))) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_guardRejected_frame
+
+example : (∀ (lang : Harmonia.Applications.Kadmos.Generated.TargetLang) (b n : Int),
+  @Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.BalanceView)
+    (Harmonia.Applications.Kadmos.Generated.balanceView lang
+      (Harmonia.Applications.Kadmos.Generated.balanceStepGuardRejected lang b n).machine)
+    (Harmonia.Applications.Kadmos.Generated.balanceView lang
+      (Harmonia.Applications.Kadmos.Generated.balanceCanonicalConstructed lang b))) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_guardRejected_preserves_view
+
+example : (∀ (lang : Harmonia.Applications.Kadmos.Generated.TargetLang) (b n : Int),
+  @Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.Normalized)
+    (Harmonia.Applications.Kadmos.Generated.targetProjection lang
+      (Harmonia.Applications.Kadmos.Generated.balanceStepGuardRejected lang b n))
+    (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.Normalized
+      (Harmonia.Applications.Kadmos.Generated.Normalized.mk Bool.false "Ready"
+        (@List.cons (Prod String Int) (@Prod.mk String Int "balance" b) (@List.nil (Prod String Int)))
+        (@Option.none String)))) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_guardRejected_projection
+
+example : (∀ (lang : Harmonia.Applications.Kadmos.Generated.TargetLang) (b n : Int),
+  let p := Harmonia.Applications.Kadmos.Generated.balanceStepCanonicalPrefix lang b n;
+  @Eq
+    (Except Harmonia.Applications.Kadmos.Generated.TargetError
+      (Option Harmonia.Applications.Kadmos.Generated.Descriptor))
+    (Harmonia.Applications.Kadmos.Generated.readOwn
+      (@Prod.fst Harmonia.Applications.Kadmos.Generated.TargetMachine Harmonia.Applications.Kadmos.Generated.TargetFrame
+        p)
+      (@ite Harmonia.Applications.Kadmos.Generated.ObjRef
+        (@Eq Bool
+          (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+            (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+              Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+            lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+          Bool.true)
+        (instDecidableEqBool
+          (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+            (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+              Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+            lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+          Bool.true)
+        (@OfNat.ofNat Harmonia.Applications.Kadmos.Generated.ObjRef 53 (instOfNatNat 53))
+        (@OfNat.ofNat Harmonia.Applications.Kadmos.Generated.ObjRef 114 (instOfNatNat 114)))
+      "amount")
+    (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError
+      (Option Harmonia.Applications.Kadmos.Generated.Descriptor)
+      (@Option.some Harmonia.Applications.Kadmos.Generated.Descriptor
+        (Harmonia.Applications.Kadmos.Generated.Descriptor.mk
+          (@Option.some Harmonia.Applications.Kadmos.Generated.TargetValue
+            (Harmonia.Applications.Kadmos.Generated.TargetValue.number
+              (@ite Harmonia.Applications.Kadmos.Generated.NumberTag
+                (@Eq Bool
+                  (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+                    (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                      Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+                    lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+                  Bool.true)
+                (instDecidableEqBool
+                  (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+                    (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                      Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+                    lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+                  Bool.true)
+                Harmonia.Applications.Kadmos.Generated.NumberTag.jsNumber
+                Harmonia.Applications.Kadmos.Generated.NumberTag.pyFloat)
+              n))
+          (@Option.none Harmonia.Applications.Kadmos.Generated.ClosureRef)
+          (@Option.none Harmonia.Applications.Kadmos.Generated.ClosureRef) Bool.true Bool.true Bool.true)))) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_payload_amount
+
+example : (∀ (lang : Harmonia.Applications.Kadmos.Generated.TargetLang) (b n : Int),
+  let p := Harmonia.Applications.Kadmos.Generated.balanceStepCanonicalPrefix lang b n;
+  @Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.TargetValue)
+    (Harmonia.Applications.Kadmos.Generated.localValue
+      (@Prod.fst Harmonia.Applications.Kadmos.Generated.TargetMachine Harmonia.Applications.Kadmos.Generated.TargetFrame
+        p)
+      (@Prod.snd Harmonia.Applications.Kadmos.Generated.TargetMachine Harmonia.Applications.Kadmos.Generated.TargetFrame
+        p)
+      (@ite String
+        (@Eq Bool
+          (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+            (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+              Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+            lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+          Bool.true)
+        (instDecidableEqBool
+          (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+            (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+              Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+            lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+          Bool.true)
+        "safePayload" "payload"))
+    (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.TargetValue
+      (Harmonia.Applications.Kadmos.Generated.TargetValue.object
+        (@ite Harmonia.Applications.Kadmos.Generated.ObjRef
+          (@Eq Bool
+            (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+              (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+              lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+            Bool.true)
+          (instDecidableEqBool
+            (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+              (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+              lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+            Bool.true)
+          (@OfNat.ofNat Harmonia.Applications.Kadmos.Generated.ObjRef 53 (instOfNatNat 53))
+          (@OfNat.ofNat Harmonia.Applications.Kadmos.Generated.ObjRef 114 (instOfNatNat 114)))))) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_payload_local
+
+example : (∀ (lang : Harmonia.Applications.Kadmos.Generated.TargetLang) (b n : Int),
+  let p := Harmonia.Applications.Kadmos.Generated.balanceStepCanonicalPrefix lang b n;
+  And
+    (@Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.TargetValue)
+      (Harmonia.Applications.Kadmos.Generated.localValue
+        (@Prod.fst Harmonia.Applications.Kadmos.Generated.TargetMachine
+          Harmonia.Applications.Kadmos.Generated.TargetFrame p)
+        (@Prod.snd Harmonia.Applications.Kadmos.Generated.TargetMachine
+          Harmonia.Applications.Kadmos.Generated.TargetFrame p)
+        (@ite String
+          (@Eq Bool
+            (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+              (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+              lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+            Bool.true)
+          (instDecidableEqBool
+            (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+              (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+              lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+            Bool.true)
+          "snapshotState" "previous"))
+      (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.TargetValue
+        (Harmonia.Applications.Kadmos.Generated.TargetValue.string "Ready")))
+    (And
+      (@Eq
+        (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.TargetValue)
+        (Harmonia.Applications.Kadmos.Generated.localValue
+          (@Prod.fst Harmonia.Applications.Kadmos.Generated.TargetMachine
+            Harmonia.Applications.Kadmos.Generated.TargetFrame p)
+          (@Prod.snd Harmonia.Applications.Kadmos.Generated.TargetMachine
+            Harmonia.Applications.Kadmos.Generated.TargetFrame p)
+          (@ite String
+            (@Eq Bool
+              (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+                (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                  Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+                lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+              Bool.true)
+            (instDecidableEqBool
+              (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+                (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                  Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+                lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+              Bool.true)
+            "snapshotAction" "action"))
+        (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError
+          Harmonia.Applications.Kadmos.Generated.TargetValue
+          (Harmonia.Applications.Kadmos.Generated.TargetValue.string "DEBIT")))
+      (And
+        (@Eq
+          (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.TargetValue)
+          (Harmonia.Applications.Kadmos.Generated.localValue
+            (@Prod.fst Harmonia.Applications.Kadmos.Generated.TargetMachine
+              Harmonia.Applications.Kadmos.Generated.TargetFrame p)
+            (@Prod.snd Harmonia.Applications.Kadmos.Generated.TargetMachine
+              Harmonia.Applications.Kadmos.Generated.TargetFrame p)
+            (@ite String
+              (@Eq Bool
+                (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+                  (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                    Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+                  lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+                Bool.true)
+              (instDecidableEqBool
+                (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+                  (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                    Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+                  lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+                Bool.true)
+              "snapshotDirective" "proposed"))
+          (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError
+            Harmonia.Applications.Kadmos.Generated.TargetValue Harmonia.Applications.Kadmos.Generated.TargetValue.null))
+        (And
+          (@Eq
+            (Except Harmonia.Applications.Kadmos.Generated.TargetError
+              Harmonia.Applications.Kadmos.Generated.TargetValue)
+            (Harmonia.Applications.Kadmos.Generated.localValue
+              (@Prod.fst Harmonia.Applications.Kadmos.Generated.TargetMachine
+                Harmonia.Applications.Kadmos.Generated.TargetFrame p)
+              (@Prod.snd Harmonia.Applications.Kadmos.Generated.TargetMachine
+                Harmonia.Applications.Kadmos.Generated.TargetFrame p)
+              (@ite String
+                (@Eq Bool
+                  (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+                    (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                      Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+                    lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+                  Bool.true)
+                (instDecidableEqBool
+                  (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+                    (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                      Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+                    lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+                  Bool.true)
+                "descDirective" "has_proposed"))
+            (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError
+              Harmonia.Applications.Kadmos.Generated.TargetValue
+              (@ite Harmonia.Applications.Kadmos.Generated.TargetValue
+                (@Eq Bool
+                  (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+                    (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                      Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+                    lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+                  Bool.true)
+                (instDecidableEqBool
+                  (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+                    (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                      Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+                    lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+                  Bool.true)
+                Harmonia.Applications.Kadmos.Generated.TargetValue.undefined
+                (Harmonia.Applications.Kadmos.Generated.TargetValue.bool Bool.false))))
+          (And
+            (@Eq
+              (Except Harmonia.Applications.Kadmos.Generated.TargetError
+                Harmonia.Applications.Kadmos.Generated.TargetValue)
+              (Harmonia.Applications.Kadmos.Generated.localValue
+                (@Prod.fst Harmonia.Applications.Kadmos.Generated.TargetMachine
+                  Harmonia.Applications.Kadmos.Generated.TargetFrame p)
+                (@Prod.snd Harmonia.Applications.Kadmos.Generated.TargetMachine
+                  Harmonia.Applications.Kadmos.Generated.TargetFrame p)
+                "rollback")
+              (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError
+                Harmonia.Applications.Kadmos.Generated.TargetValue
+                (Harmonia.Applications.Kadmos.Generated.TargetValue.closure
+                  (@ite Harmonia.Applications.Kadmos.Generated.ClosureRef
+                    (@Eq Bool
+                      (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+                        (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                          Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+                        lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+                      Bool.true)
+                    (instDecidableEqBool
+                      (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+                        (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                          Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+                        lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+                      Bool.true)
+                    (@OfNat.ofNat Harmonia.Applications.Kadmos.Generated.ClosureRef 20 (instOfNatNat 20))
+                    (@OfNat.ofNat Harmonia.Applications.Kadmos.Generated.ClosureRef 27 (instOfNatNat 27))))))
+            (And
+              (@Eq
+                (Except Harmonia.Applications.Kadmos.Generated.TargetError
+                  Harmonia.Applications.Kadmos.Generated.TargetValue)
+                (Harmonia.Applications.Kadmos.Generated.localValue
+                  (@Prod.fst Harmonia.Applications.Kadmos.Generated.TargetMachine
+                    Harmonia.Applications.Kadmos.Generated.TargetFrame p)
+                  (@Prod.snd Harmonia.Applications.Kadmos.Generated.TargetMachine
+                    Harmonia.Applications.Kadmos.Generated.TargetFrame p)
+                  (@ite String
+                    (@Eq Bool
+                      (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+                        (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                          Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+                        lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+                      Bool.true)
+                    (instDecidableEqBool
+                      (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+                        (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                          Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+                        lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+                      Bool.true)
+                    "rejectRequest" "security_reject"))
+                (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError
+                  Harmonia.Applications.Kadmos.Generated.TargetValue
+                  (Harmonia.Applications.Kadmos.Generated.TargetValue.closure
+                    (@ite Harmonia.Applications.Kadmos.Generated.ClosureRef
+                      (@Eq Bool
+                        (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+                          (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                            Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+                          lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+                        Bool.true)
+                      (instDecidableEqBool
+                        (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+                          (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                            Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+                          lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+                        Bool.true)
+                      (@OfNat.ofNat Harmonia.Applications.Kadmos.Generated.ClosureRef 21 (instOfNatNat 21))
+                      (@OfNat.ofNat Harmonia.Applications.Kadmos.Generated.ClosureRef 28 (instOfNatNat 28))))))
+              (And
+                (@Eq
+                  (Except Harmonia.Applications.Kadmos.Generated.TargetError
+                    Harmonia.Applications.Kadmos.Generated.TargetValue)
+                  (Harmonia.Applications.Kadmos.Generated.localValue
+                    (@Prod.fst Harmonia.Applications.Kadmos.Generated.TargetMachine
+                      Harmonia.Applications.Kadmos.Generated.TargetFrame p)
+                    (@Prod.snd Harmonia.Applications.Kadmos.Generated.TargetMachine
+                      Harmonia.Applications.Kadmos.Generated.TargetFrame p)
+                    "reject")
+                  (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError
+                    Harmonia.Applications.Kadmos.Generated.TargetValue
+                    (Harmonia.Applications.Kadmos.Generated.TargetValue.closure
+                      (@ite Harmonia.Applications.Kadmos.Generated.ClosureRef
+                        (@Eq Bool
+                          (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+                            (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                              Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+                            lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+                          Bool.true)
+                        (instDecidableEqBool
+                          (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+                            (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                              Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+                            lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+                          Bool.true)
+                        (@OfNat.ofNat Harmonia.Applications.Kadmos.Generated.ClosureRef 22 (instOfNatNat 22))
+                        (@OfNat.ofNat Harmonia.Applications.Kadmos.Generated.ClosureRef 30 (instOfNatNat 30))))))
+                (And
+                  (@Eq
+                    (Except Harmonia.Applications.Kadmos.Generated.TargetError
+                      Harmonia.Applications.Kadmos.Generated.TargetValue)
+                    (Harmonia.Applications.Kadmos.Generated.localValue
+                      (@Prod.fst Harmonia.Applications.Kadmos.Generated.TargetMachine
+                        Harmonia.Applications.Kadmos.Generated.TargetFrame p)
+                      (@Prod.snd Harmonia.Applications.Kadmos.Generated.TargetMachine
+                        Harmonia.Applications.Kadmos.Generated.TargetFrame p)
+                      "transition")
+                    (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError
+                      Harmonia.Applications.Kadmos.Generated.TargetValue
+                      (Harmonia.Applications.Kadmos.Generated.TargetValue.object
+                        (@ite Harmonia.Applications.Kadmos.Generated.ObjRef
+                          (@Eq Bool
+                            (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+                              (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                                Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+                              lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+                            Bool.true)
+                          (instDecidableEqBool
+                            (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+                              (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                                Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+                              lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+                            Bool.true)
+                          (@OfNat.ofNat Harmonia.Applications.Kadmos.Generated.ObjRef 14 (instOfNatNat 14))
+                          (@OfNat.ofNat Harmonia.Applications.Kadmos.Generated.ObjRef 61 (instOfNatNat 61))))))
+                  (And
+                    (@Eq
+                      (Except Harmonia.Applications.Kadmos.Generated.TargetError
+                        Harmonia.Applications.Kadmos.Generated.TargetValue)
+                      (Harmonia.Applications.Kadmos.Generated.localValue
+                        (@Prod.fst Harmonia.Applications.Kadmos.Generated.TargetMachine
+                          Harmonia.Applications.Kadmos.Generated.TargetFrame p)
+                        (@Prod.snd Harmonia.Applications.Kadmos.Generated.TargetMachine
+                          Harmonia.Applications.Kadmos.Generated.TargetFrame p)
+                        (@ite String
+                          (@Eq Bool
+                            (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+                              (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                                Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+                              lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+                            Bool.true)
+                          (instDecidableEqBool
+                            (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+                              (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                                Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+                              lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+                            Bool.true)
+                          "env" "environment"))
+                      (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError
+                        Harmonia.Applications.Kadmos.Generated.TargetValue
+                        (Harmonia.Applications.Kadmos.Generated.TargetValue.closure
+                          (@ite Harmonia.Applications.Kadmos.Generated.ClosureRef
+                            (@Eq Bool
+                              (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+                                (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                                  Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+                                lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+                              Bool.true)
+                            (instDecidableEqBool
+                              (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+                                (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                                  Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+                                lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+                              Bool.true)
+                            (@OfNat.ofNat Harmonia.Applications.Kadmos.Generated.ClosureRef 24 (instOfNatNat 24))
+                            (@OfNat.ofNat Harmonia.Applications.Kadmos.Generated.ClosureRef 31 (instOfNatNat 31))))))
+                    (And
+                      (@Eq
+                        (Except Harmonia.Applications.Kadmos.Generated.TargetError
+                          (Option Harmonia.Applications.Kadmos.Generated.Descriptor))
+                        (Harmonia.Applications.Kadmos.Generated.readOwn
+                          (@Prod.fst Harmonia.Applications.Kadmos.Generated.TargetMachine
+                            Harmonia.Applications.Kadmos.Generated.TargetFrame p)
+                          (@ite Harmonia.Applications.Kadmos.Generated.ObjRef
+                            (@Eq Bool
+                              (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+                                (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                                  Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+                                lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+                              Bool.true)
+                            (instDecidableEqBool
+                              (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+                                (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                                  Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+                                lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+                              Bool.true)
+                            (@OfNat.ofNat Harmonia.Applications.Kadmos.Generated.ObjRef 57 (instOfNatNat 57))
+                            (@OfNat.ofNat Harmonia.Applications.Kadmos.Generated.ObjRef 122 (instOfNatNat 122)))
+                          "proposedDirective")
+                        (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError
+                          (Option Harmonia.Applications.Kadmos.Generated.Descriptor)
+                          (@Option.none Harmonia.Applications.Kadmos.Generated.Descriptor)))
+                      (@Eq
+                        (Except Harmonia.Applications.Kadmos.Generated.TargetError
+                          (Option Harmonia.Applications.Kadmos.Generated.Descriptor))
+                        (Harmonia.Applications.Kadmos.Generated.readOwn
+                          (@Prod.fst Harmonia.Applications.Kadmos.Generated.TargetMachine
+                            Harmonia.Applications.Kadmos.Generated.TargetFrame p)
+                          (@ite Harmonia.Applications.Kadmos.Generated.ObjRef
+                            (@Eq Bool
+                              (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+                                (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                                  Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+                                lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+                              Bool.true)
+                            (instDecidableEqBool
+                              (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+                                (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                                  Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+                                lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+                              Bool.true)
+                            (@OfNat.ofNat Harmonia.Applications.Kadmos.Generated.ObjRef 57 (instOfNatNat 57))
+                            (@OfNat.ofNat Harmonia.Applications.Kadmos.Generated.ObjRef 122 (instOfNatNat 122)))
+                          "eventPayload")
+                        (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError
+                          (Option Harmonia.Applications.Kadmos.Generated.Descriptor)
+                          (@Option.some Harmonia.Applications.Kadmos.Generated.Descriptor
+                            (Harmonia.Applications.Kadmos.Generated.Descriptor.mk
+                              (@Option.some Harmonia.Applications.Kadmos.Generated.TargetValue
+                                (Harmonia.Applications.Kadmos.Generated.TargetValue.object
+                                  (@ite Harmonia.Applications.Kadmos.Generated.ObjRef
+                                    (@Eq Bool
+                                      (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+                                        (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                                          Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+                                        lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+                                      Bool.true)
+                                    (instDecidableEqBool
+                                      (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+                                        (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                                          Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+                                        lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+                                      Bool.true)
+                                    (@OfNat.ofNat Harmonia.Applications.Kadmos.Generated.ObjRef 53 (instOfNatNat 53))
+                                    (@OfNat.ofNat Harmonia.Applications.Kadmos.Generated.ObjRef 114
+                                      (instOfNatNat 114)))))
+                              (@Option.none Harmonia.Applications.Kadmos.Generated.ClosureRef)
+                              (@Option.none Harmonia.Applications.Kadmos.Generated.ClosureRef) Bool.true Bool.true
+                              Bool.true)))))))))))))) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_prefix_admitted
+
+example : (∀ (lang : Harmonia.Applications.Kadmos.Generated.TargetLang),
+  @Eq Bool
+    (Harmonia.Applications.Kadmos.Generated.stepPrefixShape
+      (@ite Nat
+        (@Eq Bool
+          (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+            (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+              Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+            lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+          Bool.true)
+        (instDecidableEqBool
+          (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+            (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+              Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+            lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+          Bool.true)
+        (@OfNat.ofNat Nat 18 (instOfNatNat 18)) (@OfNat.ofNat Nat 21 (instOfNatNat 21)))
+      (Harmonia.Applications.Kadmos.Generated.balanceStepProtected lang).body)
+    Bool.true) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_prefix_shape
+
+example : (∀ (lang : Harmonia.Applications.Kadmos.Generated.TargetLang) (b n : Int),
+  @Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.BalanceView)
+    (Harmonia.Applications.Kadmos.Generated.balanceView lang
+      (@Prod.fst Harmonia.Applications.Kadmos.Generated.TargetMachine Harmonia.Applications.Kadmos.Generated.TargetFrame
+        (Harmonia.Applications.Kadmos.Generated.balanceStepCanonicalPrefix lang b n)))
+    (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.BalanceView
+      (Harmonia.Applications.Kadmos.Generated.BalanceView.mk "Ready" b
+        (@List.nil Harmonia.Applications.Kadmos.Generated.BalanceRecord)
+        (@Option.none Harmonia.Applications.Kadmos.Generated.BalanceSaved) b Bool.true))) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_prefix_view
+
+example : (∀ (b n : Int),
+  @Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.ExprOutcome)
+    (Harmonia.Applications.Kadmos.Generated.balanceStepGuardRun Harmonia.Applications.Kadmos.Generated.TargetLang.python
+      b n)
+    (@Bind.bind (Except Harmonia.Applications.Kadmos.Generated.TargetError)
+      (@Monad.toBind (Except Harmonia.Applications.Kadmos.Generated.TargetError)
+        (@Except.instMonad Harmonia.Applications.Kadmos.Generated.TargetError))
+      Harmonia.Applications.Kadmos.Generated.StmtOutcome Harmonia.Applications.Kadmos.Generated.ExprOutcome
+      (Harmonia.Applications.Kadmos.Generated.execStmt (@OfNat.ofNat Nat 59 (instOfNatNat 59))
+        (Harmonia.Applications.Kadmos.Generated.balanceProgram Harmonia.Applications.Kadmos.Generated.TargetLang.python)
+        (Harmonia.Applications.Kadmos.Generated.balanceStep_py_tokenized_machine b n)
+        Harmonia.Applications.Kadmos.Generated.balanceStep_py_tokenized_frame
+        (Harmonia.Applications.Kadmos.Generated.dropStmts (@OfNat.ofNat Nat 5 (instOfNatNat 5))
+          (Harmonia.Applications.Kadmos.Generated.balanceSourceBody
+            (Harmonia.Applications.Kadmos.Generated.balanceProgram
+              Harmonia.Applications.Kadmos.Generated.TargetLang.python)
+            "module.evaluate_world")))
+      fun out =>
+      Harmonia.Applications.Kadmos.Generated.closureResult Harmonia.Applications.Kadmos.Generated.TargetLang.python out)) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_py_guard_after_tokens
+
+example : (∀ (b n : Int),
+  @Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.ArgsOutcome)
+    (Harmonia.Applications.Kadmos.Generated.evalArgValues (@OfNat.ofNat Nat 64 (instOfNatNat 64))
+      (Harmonia.Applications.Kadmos.Generated.balanceProgram Harmonia.Applications.Kadmos.Generated.TargetLang.python)
+      (Harmonia.Applications.Kadmos.Generated.balanceStepPyPrefix b n)
+      Harmonia.Applications.Kadmos.Generated.balanceStepPyPrefixFrame
+      Harmonia.Applications.Kadmos.Generated.balanceStep_py_guard_args)
+    (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.ArgsOutcome
+      (Harmonia.Applications.Kadmos.Generated.ArgsOutcome.mk
+        (Harmonia.Applications.Kadmos.Generated.balanceStep_py_guard_argument_machine b n)
+        (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetValue
+          (List Harmonia.Applications.Kadmos.Generated.TargetValue)
+          (@List.cons Harmonia.Applications.Kadmos.Generated.TargetValue
+            (Harmonia.Applications.Kadmos.Generated.TargetValue.string "event.amount > 0")
+            (@List.cons Harmonia.Applications.Kadmos.Generated.TargetValue
+              (Harmonia.Applications.Kadmos.Generated.TargetValue.object
+                (@OfNat.ofNat Harmonia.Applications.Kadmos.Generated.ObjRef 124 (instOfNatNat 124)))
+              (@List.nil Harmonia.Applications.Kadmos.Generated.TargetValue))))))) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_py_guard_arguments
+
+example : (∀ (b n : Int),
+  @Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.BindOutcome)
+    (Harmonia.Applications.Kadmos.Generated.bindCallParams (@OfNat.ofNat Nat 64 (instOfNatNat 64))
+      (Harmonia.Applications.Kadmos.Generated.balanceProgram Harmonia.Applications.Kadmos.Generated.TargetLang.python)
+      (Harmonia.Applications.Kadmos.Generated.balanceStep_py_guard_argument_machine b n)
+      (Harmonia.Applications.Kadmos.Generated.closureFrame
+        Harmonia.Applications.Kadmos.Generated.balanceStep_py_evaluate_closure)
+      Harmonia.Applications.Kadmos.Generated.balanceStep_py_evaluate_closure.params
+      Harmonia.Applications.Kadmos.Generated.balanceStep_py_evaluate_closure.pythonDefaults
+      (@List.cons Harmonia.Applications.Kadmos.Generated.TargetValue
+        (Harmonia.Applications.Kadmos.Generated.TargetValue.string "event.amount > 0")
+        (@List.cons Harmonia.Applications.Kadmos.Generated.TargetValue
+          (Harmonia.Applications.Kadmos.Generated.TargetValue.object
+            (@OfNat.ofNat Harmonia.Applications.Kadmos.Generated.ObjRef 124 (instOfNatNat 124)))
+          (@List.nil Harmonia.Applications.Kadmos.Generated.TargetValue))))
+    (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.BindOutcome
+      (Harmonia.Applications.Kadmos.Generated.BindOutcome.mk
+        (Harmonia.Applications.Kadmos.Generated.balanceStep_py_guard_body_machine b n)
+        Harmonia.Applications.Kadmos.Generated.balanceStep_py_guard_body_frame
+        (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetValue Unit Unit.unit)))) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_py_guard_bind
+
+example : (∀ (b n : Int),
+  @Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.ExprOutcome)
+    (Harmonia.Applications.Kadmos.Generated.balanceStepGuardRun Harmonia.Applications.Kadmos.Generated.TargetLang.python
+      b n)
+    (Harmonia.Applications.Kadmos.Generated.evalExpr (@OfNat.ofNat Nat 65 (instOfNatNat 65))
+      (Harmonia.Applications.Kadmos.Generated.balanceProgram Harmonia.Applications.Kadmos.Generated.TargetLang.python)
+      (Harmonia.Applications.Kadmos.Generated.balanceStepPyPrefix b n)
+      Harmonia.Applications.Kadmos.Generated.balanceStepPyPrefixFrame
+      Harmonia.Applications.Kadmos.Generated.balanceStepPyGuardSyntax)) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_py_guard_call
+
+example : (∀ (b n : Int),
+  @Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.TargetClosure)
+    (Harmonia.Applications.Kadmos.Generated.closureAt
+      (Harmonia.Applications.Kadmos.Generated.balanceStep_py_guard_argument_machine b n)
+      (@OfNat.ofNat Harmonia.Applications.Kadmos.Generated.ClosureRef 5 (instOfNatNat 5)))
+    (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.TargetClosure
+      Harmonia.Applications.Kadmos.Generated.balanceStep_py_evaluate_closure)) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_py_guard_closure
+
+example : (∀ (b n : Int),
+  @LE.le Nat instLENat n.natAbs (@OfNat.ofNat Nat 9007199254740991 (instOfNatNat 9007199254740991)) →
+    @Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.ExprOutcome)
+      (Harmonia.Applications.Kadmos.Generated.balanceStepGuardRun
+        Harmonia.Applications.Kadmos.Generated.TargetLang.python b n)
+      (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.ExprOutcome
+        (Harmonia.Applications.Kadmos.Generated.ExprOutcome.mk
+          (Harmonia.Applications.Kadmos.Generated.balanceStepPyGuard b n)
+          (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetValue
+            Harmonia.Applications.Kadmos.Generated.TargetValue
+            (Harmonia.Applications.Kadmos.Generated.TargetValue.bool
+              (@Decidable.decide (@LT.lt Int Int.instLTInt (@OfNat.ofNat Int 0 (@instOfNat 0)) n)
+                (Int.decLt (@OfNat.ofNat Int 0 (@instOfNat 0)) n))))))) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_py_guard_execute
+
+example : (∀ (b n : Int),
+  @Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.ExprOutcome)
+    (Harmonia.Applications.Kadmos.Generated.balanceStepGuardRun Harmonia.Applications.Kadmos.Generated.TargetLang.python
+      b n)
+    (@Bind.bind (Except Harmonia.Applications.Kadmos.Generated.TargetError)
+      (@Monad.toBind (Except Harmonia.Applications.Kadmos.Generated.TargetError)
+        (@Except.instMonad Harmonia.Applications.Kadmos.Generated.TargetError))
+      Harmonia.Applications.Kadmos.Generated.StmtOutcome Harmonia.Applications.Kadmos.Generated.ExprOutcome
+      (Harmonia.Applications.Kadmos.Generated.execStmt (@OfNat.ofNat Nat 64 (instOfNatNat 64))
+        (Harmonia.Applications.Kadmos.Generated.balanceProgram Harmonia.Applications.Kadmos.Generated.TargetLang.python)
+        (Harmonia.Applications.Kadmos.Generated.balanceStep_py_guard_body_machine b n)
+        Harmonia.Applications.Kadmos.Generated.balanceStep_py_guard_body_frame
+        (Harmonia.Applications.Kadmos.Generated.balanceSourceBody
+          (Harmonia.Applications.Kadmos.Generated.balanceProgram
+            Harmonia.Applications.Kadmos.Generated.TargetLang.python)
+          "module.evaluate_world"))
+      fun out =>
+      Harmonia.Applications.Kadmos.Generated.closureResult Harmonia.Applications.Kadmos.Generated.TargetLang.python out)) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_py_guard_open
+
+example : (∀ (b n : Int),
+  And (@LE.le Int Int.instLEInt (@Neg.neg Int Int.instNegInt Harmonia.Applications.Kadmos.S) n)
+      (@LE.le Int Int.instLEInt n Harmonia.Applications.Kadmos.S) →
+    @LE.le Int Int.instLEInt n (@OfNat.ofNat Int 0 (@instOfNat 0)) →
+      @Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.ExprOutcome)
+        (Harmonia.Applications.Kadmos.Generated.evalExpr (@OfNat.ofNat Nat 100 (instOfNatNat 100))
+          (Harmonia.Applications.Kadmos.Generated.balanceProgram
+            Harmonia.Applications.Kadmos.Generated.TargetLang.python)
+          (@Prod.fst Harmonia.Applications.Kadmos.Generated.TargetMachine
+            Harmonia.Applications.Kadmos.Generated.TargetFrame
+            (Harmonia.Applications.Kadmos.Generated.debitCallEntry
+              Harmonia.Applications.Kadmos.Generated.TargetLang.python
+              (Harmonia.Applications.Kadmos.Generated.balanceCanonicalConstructed
+                Harmonia.Applications.Kadmos.Generated.TargetLang.python b)
+              n))
+          (@Prod.snd Harmonia.Applications.Kadmos.Generated.TargetMachine
+            Harmonia.Applications.Kadmos.Generated.TargetFrame
+            (Harmonia.Applications.Kadmos.Generated.debitCallEntry
+              Harmonia.Applications.Kadmos.Generated.TargetLang.python
+              (Harmonia.Applications.Kadmos.Generated.balanceCanonicalConstructed
+                Harmonia.Applications.Kadmos.Generated.TargetLang.python b)
+              n))
+          (Harmonia.Applications.Kadmos.Generated.debitCallExpression
+            Harmonia.Applications.Kadmos.Generated.TargetLang.python))
+        (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError
+          Harmonia.Applications.Kadmos.Generated.ExprOutcome
+          (Harmonia.Applications.Kadmos.Generated.ExprOutcome.mk
+            (Harmonia.Applications.Kadmos.Generated.balanceStepPyRejected b n)
+            (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetValue
+              Harmonia.Applications.Kadmos.Generated.TargetValue
+              (Harmonia.Applications.Kadmos.Generated.TargetValue.object
+                (@OfNat.ofNat Harmonia.Applications.Kadmos.Generated.ObjRef 142 (instOfNatNat 142))))))) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_py_guard_reject_execute
+
+example : (@Eq Harmonia.Applications.Kadmos.Generated.TargetExpr
+  (Harmonia.Applications.Kadmos.Generated.balanceStepGuardExpression
+    Harmonia.Applications.Kadmos.Generated.TargetLang.python)
+  Harmonia.Applications.Kadmos.Generated.balanceStepPyGuardSyntax) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_py_guard_source
+
+example : (∀ (b n : Int),
+  @LE.le Nat instLENat n.natAbs (@OfNat.ofNat Nat 9007199254740991 (instOfNatNat 9007199254740991)) →
+    @Eq
+      (Option
+        (Except Harmonia.Applications.Kadmos.Generated.TargetValue Harmonia.Applications.Kadmos.Generated.TargetValue))
+      (@Option.map Harmonia.Applications.Kadmos.Generated.ExprOutcome
+        (Except Harmonia.Applications.Kadmos.Generated.TargetValue Harmonia.Applications.Kadmos.Generated.TargetValue)
+        Harmonia.Applications.Kadmos.Generated.ExprOutcome.result
+        (@Except.toOption Harmonia.Applications.Kadmos.Generated.TargetError
+          Harmonia.Applications.Kadmos.Generated.ExprOutcome
+          (Harmonia.Applications.Kadmos.Generated.balanceStepGuardRun
+            Harmonia.Applications.Kadmos.Generated.TargetLang.python b n)))
+      (@Option.some
+        (Except Harmonia.Applications.Kadmos.Generated.TargetValue Harmonia.Applications.Kadmos.Generated.TargetValue)
+        (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetValue
+          Harmonia.Applications.Kadmos.Generated.TargetValue
+          (Harmonia.Applications.Kadmos.Generated.TargetValue.bool
+            (@Decidable.decide (@LT.lt Int Int.instLTInt (@OfNat.ofNat Int 0 (@instOfNat 0)) n)
+              (Int.decLt (@OfNat.ofNat Int 0 (@instOfNat 0)) n)))))) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_py_guard_value
+
+example : (∀ (b : Int),
+  @Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.ExprOutcome)
+    (Harmonia.Applications.Kadmos.Generated.evalExpr (@OfNat.ofNat Nat 100 (instOfNatNat 100))
+      (Harmonia.Applications.Kadmos.Generated.balanceProgram Harmonia.Applications.Kadmos.Generated.TargetLang.python)
+      (@Prod.fst Harmonia.Applications.Kadmos.Generated.TargetMachine Harmonia.Applications.Kadmos.Generated.TargetFrame
+        (Harmonia.Applications.Kadmos.Generated.debitCallEntry Harmonia.Applications.Kadmos.Generated.TargetLang.python
+          (Harmonia.Applications.Kadmos.Generated.balanceCanonicalConstructed
+            Harmonia.Applications.Kadmos.Generated.TargetLang.python b)
+          (@OfNat.ofNat Int 0 (@instOfNat 0))))
+      (@Prod.snd Harmonia.Applications.Kadmos.Generated.TargetMachine Harmonia.Applications.Kadmos.Generated.TargetFrame
+        (Harmonia.Applications.Kadmos.Generated.debitCallEntry Harmonia.Applications.Kadmos.Generated.TargetLang.python
+          (Harmonia.Applications.Kadmos.Generated.balanceCanonicalConstructed
+            Harmonia.Applications.Kadmos.Generated.TargetLang.python b)
+          (@OfNat.ofNat Int 0 (@instOfNat 0))))
+      (Harmonia.Applications.Kadmos.Generated.debitCallExpression
+        Harmonia.Applications.Kadmos.Generated.TargetLang.python))
+    (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.ExprOutcome
+      (Harmonia.Applications.Kadmos.Generated.ExprOutcome.mk
+        (Harmonia.Applications.Kadmos.Generated.balanceStepPyRejected b (@OfNat.ofNat Int 0 (@instOfNat 0)))
+        (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetValue
+          Harmonia.Applications.Kadmos.Generated.TargetValue
+          (Harmonia.Applications.Kadmos.Generated.TargetValue.object
+            (@OfNat.ofNat Harmonia.Applications.Kadmos.Generated.ObjRef 142 (instOfNatNat 142))))))) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_py_guard_zero_execute
+
+example : (∀ (b n : Int),
+  @Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.StmtOutcome)
+    (Harmonia.Applications.Kadmos.Generated.balanceStepPrefixRun
+      Harmonia.Applications.Kadmos.Generated.TargetLang.python b n)
+    (Harmonia.Applications.Kadmos.Generated.execStmt (@OfNat.ofNat Nat 90 (instOfNatNat 90))
+      (Harmonia.Applications.Kadmos.Generated.balanceProgram Harmonia.Applications.Kadmos.Generated.TargetLang.python)
+      (Harmonia.Applications.Kadmos.Generated.balanceStepPySnapshots b n)
+      Harmonia.Applications.Kadmos.Generated.balanceStepPySnapshotsFrame
+      Harmonia.Applications.Kadmos.Generated.balanceStepPyPrefixSyntax)) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_py_prefix_entry
+
+example : (∀ (b n : Int),
+  @LE.le Nat instLENat n.natAbs (@OfNat.ofNat Nat 9007199254740991 (instOfNatNat 9007199254740991)) →
+    @Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.StmtOutcome)
+      (Harmonia.Applications.Kadmos.Generated.balanceStepPrefixRun
+        Harmonia.Applications.Kadmos.Generated.TargetLang.python b n)
+      (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.StmtOutcome
+        (Harmonia.Applications.Kadmos.Generated.StmtOutcome.mk
+          (Harmonia.Applications.Kadmos.Generated.balanceStepPyPrefix b n)
+          Harmonia.Applications.Kadmos.Generated.balanceStepPyPrefixFrame
+          Harmonia.Applications.Kadmos.Generated.ControlResult.normal))) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_py_prefix_execute
+
+example : (@Eq Harmonia.Applications.Kadmos.Generated.TargetStmt
+  (Harmonia.Applications.Kadmos.Generated.takeStepStmts (@OfNat.ofNat Nat 21 (instOfNatNat 21))
+    (Harmonia.Applications.Kadmos.Generated.balanceStepProtected
+        Harmonia.Applications.Kadmos.Generated.TargetLang.python).body)
+  Harmonia.Applications.Kadmos.Generated.balanceStepPyPrefixSyntax) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_py_prefix_source
+
+example : (∀ (b n : Int),
+  @Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.StmtOutcome)
+    (Harmonia.Applications.Kadmos.Generated.balanceStepSnapshotRun
+      Harmonia.Applications.Kadmos.Generated.TargetLang.python b n)
+    (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.StmtOutcome
+      (Harmonia.Applications.Kadmos.Generated.StmtOutcome.mk
+        (Harmonia.Applications.Kadmos.Generated.balanceStepPySnapshots b n)
+        Harmonia.Applications.Kadmos.Generated.balanceStepPySnapshotsFrame
+        Harmonia.Applications.Kadmos.Generated.ControlResult.normal))) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_py_snapshots_execute
+
+example : (@Eq Bool
+  (Harmonia.Applications.Kadmos.Generated.stepPrefixShape (@OfNat.ofNat Nat 5 (instOfNatNat 5))
+    (Harmonia.Applications.Kadmos.Generated.balanceSourceBody
+      (Harmonia.Applications.Kadmos.Generated.balanceProgram Harmonia.Applications.Kadmos.Generated.TargetLang.python)
+      "module.evaluate_world"))
+  Bool.true) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_py_token_prefix_shape
+
+example : (∀ (b n : Int),
+  @Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.StmtOutcome)
+    (Harmonia.Applications.Kadmos.Generated.execStmt (@OfNat.ofNat Nat 64 (instOfNatNat 64))
+      (Harmonia.Applications.Kadmos.Generated.balanceProgram Harmonia.Applications.Kadmos.Generated.TargetLang.python)
+      (Harmonia.Applications.Kadmos.Generated.balanceStep_py_guard_body_machine b n)
+      Harmonia.Applications.Kadmos.Generated.balanceStep_py_guard_body_frame
+      (Harmonia.Applications.Kadmos.Generated.takeStepStmts (@OfNat.ofNat Nat 5 (instOfNatNat 5))
+        (Harmonia.Applications.Kadmos.Generated.balanceSourceBody
+          (Harmonia.Applications.Kadmos.Generated.balanceProgram
+            Harmonia.Applications.Kadmos.Generated.TargetLang.python)
+          "module.evaluate_world")))
+    (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.StmtOutcome
+      (Harmonia.Applications.Kadmos.Generated.StmtOutcome.mk
+        (Harmonia.Applications.Kadmos.Generated.balanceStep_py_tokenized_machine b n)
+        Harmonia.Applications.Kadmos.Generated.balanceStep_py_tokenized_frame
+        Harmonia.Applications.Kadmos.Generated.ControlResult.normal))) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_py_tokenization
+
+example : (∀ (lang : Harmonia.Applications.Kadmos.Generated.TargetLang) (b n : Int),
+  let p := Harmonia.Applications.Kadmos.Generated.balanceStepCanonicalSnapshots lang b n;
+  And
+    (@Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError Int)
+      (Harmonia.Applications.Kadmos.Generated.balanceContextValue lang
+        (@Prod.fst Harmonia.Applications.Kadmos.Generated.TargetMachine
+          Harmonia.Applications.Kadmos.Generated.TargetFrame p)
+        (@ite Harmonia.Applications.Kadmos.Generated.ObjRef
+          (@Eq Bool
+            (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+              (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+              lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+            Bool.true)
+          (instDecidableEqBool
+            (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+              (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+              lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+            Bool.true)
+          (@OfNat.ofNat Harmonia.Applications.Kadmos.Generated.ObjRef 48 (instOfNatNat 48))
+          (@OfNat.ofNat Harmonia.Applications.Kadmos.Generated.ObjRef 104 (instOfNatNat 104))))
+      (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError Int b))
+    (And
+      (@Eq
+        (Except Harmonia.Applications.Kadmos.Generated.TargetError
+          (List Harmonia.Applications.Kadmos.Generated.BalanceRecord))
+        (Harmonia.Applications.Kadmos.Generated.decodeBalanceHistory lang
+          (@Prod.fst Harmonia.Applications.Kadmos.Generated.TargetMachine
+            Harmonia.Applications.Kadmos.Generated.TargetFrame p)
+          (@ite Harmonia.Applications.Kadmos.Generated.ObjRef
+            (@Eq Bool
+              (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+                (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                  Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+                lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+              Bool.true)
+            (instDecidableEqBool
+              (@BEq.beq Harmonia.Applications.Kadmos.Generated.TargetLang
+                (@instBEqOfDecidableEq Harmonia.Applications.Kadmos.Generated.TargetLang
+                  Harmonia.Applications.Kadmos.Generated.instDecidableEqTargetLang)
+                lang Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+              Bool.true)
+            (@OfNat.ofNat Harmonia.Applications.Kadmos.Generated.ObjRef 49 (instOfNatNat 49))
+            (@OfNat.ofNat Harmonia.Applications.Kadmos.Generated.ObjRef 105 (instOfNatNat 105))))
+        (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError
+          (List Harmonia.Applications.Kadmos.Generated.BalanceRecord)
+          (@List.nil Harmonia.Applications.Kadmos.Generated.BalanceRecord)))
+      (@Eq Harmonia.Applications.Kadmos.Generated.TargetLang lang
+          Harmonia.Applications.Kadmos.Generated.TargetLang.python →
+        @Eq
+          (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.TargetValue)
+          (Harmonia.Applications.Kadmos.Generated.localValue
+            (@Prod.fst Harmonia.Applications.Kadmos.Generated.TargetMachine
+              Harmonia.Applications.Kadmos.Generated.TargetFrame p)
+            (@Prod.snd Harmonia.Applications.Kadmos.Generated.TargetMachine
+              Harmonia.Applications.Kadmos.Generated.TargetFrame p)
+            "previous_undo")
+          (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError
+            Harmonia.Applications.Kadmos.Generated.TargetValue
+            Harmonia.Applications.Kadmos.Generated.TargetValue.null)))) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_snapshot_values
+
+example : (∀ (lang : Harmonia.Applications.Kadmos.Generated.TargetLang),
+  @Eq Harmonia.Applications.Kadmos.Generated.TargetStmt
+    (@Prod.snd Harmonia.Applications.Kadmos.Generated.ClosureRef Harmonia.Applications.Kadmos.Generated.TargetClosure
+        (Harmonia.Applications.Kadmos.Generated.balanceStoredStep lang)).body
+    (Harmonia.Applications.Kadmos.Generated.balanceSourceBody
+      (Harmonia.Applications.Kadmos.Generated.balanceProgram lang) "WorldChecker.step")) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_stored_source
+
+example : (∀ (b n : Int),
+  @Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.ExprOutcome)
+    (Harmonia.Applications.Kadmos.Generated.balanceStepGuardRun Harmonia.Applications.Kadmos.Generated.TargetLang.ts b
+      n)
+    (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.ExprOutcome
+      (Harmonia.Applications.Kadmos.Generated.ExprOutcome.mk
+        (Harmonia.Applications.Kadmos.Generated.balanceStepTsGuard b n)
+        (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetValue
+          Harmonia.Applications.Kadmos.Generated.TargetValue
+          (Harmonia.Applications.Kadmos.Generated.TargetValue.bool
+            (@Decidable.decide (@LT.lt Int Int.instLTInt (@OfNat.ofNat Int 0 (@instOfNat 0)) n)
+              (Int.decLt (@OfNat.ofNat Int 0 (@instOfNat 0)) n))))))) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_ts_guard_execute
+
+example : (∀ (b n : Int),
+  @LE.le Int Int.instLEInt n (@OfNat.ofNat Int 0 (@instOfNat 0)) →
+    @Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.ExprOutcome)
+      (Harmonia.Applications.Kadmos.Generated.evalExpr (@OfNat.ofNat Nat 100 (instOfNatNat 100))
+        (Harmonia.Applications.Kadmos.Generated.balanceProgram Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+        (@Prod.fst Harmonia.Applications.Kadmos.Generated.TargetMachine
+          Harmonia.Applications.Kadmos.Generated.TargetFrame
+          (Harmonia.Applications.Kadmos.Generated.debitCallEntry Harmonia.Applications.Kadmos.Generated.TargetLang.ts
+            (Harmonia.Applications.Kadmos.Generated.balanceCanonicalConstructed
+              Harmonia.Applications.Kadmos.Generated.TargetLang.ts b)
+            n))
+        (@Prod.snd Harmonia.Applications.Kadmos.Generated.TargetMachine
+          Harmonia.Applications.Kadmos.Generated.TargetFrame
+          (Harmonia.Applications.Kadmos.Generated.debitCallEntry Harmonia.Applications.Kadmos.Generated.TargetLang.ts
+            (Harmonia.Applications.Kadmos.Generated.balanceCanonicalConstructed
+              Harmonia.Applications.Kadmos.Generated.TargetLang.ts b)
+            n))
+        (Harmonia.Applications.Kadmos.Generated.debitCallExpression
+          Harmonia.Applications.Kadmos.Generated.TargetLang.ts))
+      (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.ExprOutcome
+        (Harmonia.Applications.Kadmos.Generated.ExprOutcome.mk
+          (Harmonia.Applications.Kadmos.Generated.balanceStepTsRejected b n)
+          (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetValue
+            Harmonia.Applications.Kadmos.Generated.TargetValue
+            (Harmonia.Applications.Kadmos.Generated.TargetValue.object
+              (@OfNat.ofNat Harmonia.Applications.Kadmos.Generated.ObjRef 71 (instOfNatNat 71))))))) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_ts_guard_reject_execute
+
+example : (@Eq Harmonia.Applications.Kadmos.Generated.TargetExpr
+  (Harmonia.Applications.Kadmos.Generated.balanceStepGuardExpression
+    Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+  Harmonia.Applications.Kadmos.Generated.balanceStepTsGuardSyntax) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_ts_guard_source
+
+example : (∀ (b n : Int),
+  @Eq
+    (Option
+      (Except Harmonia.Applications.Kadmos.Generated.TargetValue Harmonia.Applications.Kadmos.Generated.TargetValue))
+    (@Option.map Harmonia.Applications.Kadmos.Generated.ExprOutcome
+      (Except Harmonia.Applications.Kadmos.Generated.TargetValue Harmonia.Applications.Kadmos.Generated.TargetValue)
+      Harmonia.Applications.Kadmos.Generated.ExprOutcome.result
+      (@Except.toOption Harmonia.Applications.Kadmos.Generated.TargetError
+        Harmonia.Applications.Kadmos.Generated.ExprOutcome
+        (Harmonia.Applications.Kadmos.Generated.balanceStepGuardRun Harmonia.Applications.Kadmos.Generated.TargetLang.ts
+          b n)))
+    (@Option.some
+      (Except Harmonia.Applications.Kadmos.Generated.TargetValue Harmonia.Applications.Kadmos.Generated.TargetValue)
+      (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetValue Harmonia.Applications.Kadmos.Generated.TargetValue
+        (Harmonia.Applications.Kadmos.Generated.TargetValue.bool
+          (@Decidable.decide (@LT.lt Int Int.instLTInt (@OfNat.ofNat Int 0 (@instOfNat 0)) n)
+            (Int.decLt (@OfNat.ofNat Int 0 (@instOfNat 0)) n)))))) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_ts_guard_value
+
+example : (∀ (b n : Int),
+  @Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.ExprOutcome)
+    (Harmonia.Applications.Kadmos.Generated.evalExpr (@OfNat.ofNat Nat 100 (instOfNatNat 100))
+      (Harmonia.Applications.Kadmos.Generated.balanceProgram Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+      (@Prod.fst Harmonia.Applications.Kadmos.Generated.TargetMachine Harmonia.Applications.Kadmos.Generated.TargetFrame
+        (Harmonia.Applications.Kadmos.Generated.debitCallEntry Harmonia.Applications.Kadmos.Generated.TargetLang.ts
+          (Harmonia.Applications.Kadmos.Generated.balanceCanonicalConstructed
+            Harmonia.Applications.Kadmos.Generated.TargetLang.ts b)
+          n))
+      (@Prod.snd Harmonia.Applications.Kadmos.Generated.TargetMachine Harmonia.Applications.Kadmos.Generated.TargetFrame
+        (Harmonia.Applications.Kadmos.Generated.debitCallEntry Harmonia.Applications.Kadmos.Generated.TargetLang.ts
+          (Harmonia.Applications.Kadmos.Generated.balanceCanonicalConstructed
+            Harmonia.Applications.Kadmos.Generated.TargetLang.ts b)
+          n))
+      (Harmonia.Applications.Kadmos.Generated.debitCallExpression Harmonia.Applications.Kadmos.Generated.TargetLang.ts))
+    (Harmonia.Applications.Kadmos.Generated.balanceStepPrefixContinuation
+      Harmonia.Applications.Kadmos.Generated.TargetLang.ts b n)) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_ts_prefix_continuation
+
+example : (∀ (b n : Int),
+  @Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.StmtOutcome)
+    (Harmonia.Applications.Kadmos.Generated.balanceStepPrefixRun Harmonia.Applications.Kadmos.Generated.TargetLang.ts b
+      n)
+    (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.StmtOutcome
+      (Harmonia.Applications.Kadmos.Generated.StmtOutcome.mk
+        (Harmonia.Applications.Kadmos.Generated.balanceStepTsPrefix b n)
+        Harmonia.Applications.Kadmos.Generated.balanceStepTsPrefixFrame
+        Harmonia.Applications.Kadmos.Generated.ControlResult.normal))) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_ts_prefix_execute
+
+example : (∀ (b n : Int),
+  @Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.StmtOutcome)
+    (Harmonia.Applications.Kadmos.Generated.balanceStepSnapshotRun Harmonia.Applications.Kadmos.Generated.TargetLang.ts
+      b n)
+    (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.StmtOutcome
+      (Harmonia.Applications.Kadmos.Generated.StmtOutcome.mk
+        (Harmonia.Applications.Kadmos.Generated.balanceStepTsSnapshots b n)
+        Harmonia.Applications.Kadmos.Generated.balanceStepTsSnapshotsFrame
+        Harmonia.Applications.Kadmos.Generated.ControlResult.normal))) :=
+  @Harmonia.Applications.Kadmos.Generated.balanceStep_ts_snapshots_execute
+
+example : (∀ (n k : Nat) (program : Harmonia.Applications.Kadmos.Generated.TargetProgram)
+  (m : Harmonia.Applications.Kadmos.Generated.TargetMachine) (f : Harmonia.Applications.Kadmos.Generated.TargetFrame)
+  (s : Harmonia.Applications.Kadmos.Generated.TargetStmt) (final : Harmonia.Applications.Kadmos.Generated.TargetMachine)
+  (ff : Harmonia.Applications.Kadmos.Generated.TargetFrame),
+  @Eq Bool (Harmonia.Applications.Kadmos.Generated.stepPrefixShape n s) Bool.true →
+    @Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.StmtOutcome)
+        (Harmonia.Applications.Kadmos.Generated.execStmt
+          (@HAdd.hAdd Nat Nat Nat (@instHAdd Nat instAddNat) (@HAdd.hAdd Nat Nat Nat (@instHAdd Nat instAddNat) k n)
+            (@OfNat.ofNat Nat 1 (instOfNatNat 1)))
+          program m f (Harmonia.Applications.Kadmos.Generated.takeStepStmts n s))
+        (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError
+          Harmonia.Applications.Kadmos.Generated.StmtOutcome
+          (Harmonia.Applications.Kadmos.Generated.StmtOutcome.mk final ff
+            Harmonia.Applications.Kadmos.Generated.ControlResult.normal)) →
+      @Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.StmtOutcome)
+        (Harmonia.Applications.Kadmos.Generated.execStmt
+          (@HAdd.hAdd Nat Nat Nat (@instHAdd Nat instAddNat) (@HAdd.hAdd Nat Nat Nat (@instHAdd Nat instAddNat) k n)
+            (@OfNat.ofNat Nat 1 (instOfNatNat 1)))
+          program m f s)
+        (Harmonia.Applications.Kadmos.Generated.execStmt
+          (@HAdd.hAdd Nat Nat Nat (@instHAdd Nat instAddNat) k (@OfNat.ofNat Nat 1 (instOfNatNat 1))) program final ff
+          (Harmonia.Applications.Kadmos.Generated.dropStmts n s))) :=
+  @Harmonia.Applications.Kadmos.Generated.execStepPrefix_normal
+
+example : (∀ {n : Nat} {s : Harmonia.Applications.Kadmos.Generated.TargetStmt},
+  @Eq Bool (Harmonia.Applications.Kadmos.Generated.snapshotTryCheck n s) Bool.true →
+    @Eq Bool (Harmonia.Applications.Kadmos.Generated.stepPrefixShape n s) Bool.true) :=
+  @Harmonia.Applications.Kadmos.Generated.stepPrefixShape_of_snapshot
+
+example : (∀ (lang : Harmonia.Applications.Kadmos.Generated.TargetLang) (b n : Int),
+  And (@LE.le Int Int.instLEInt (@OfNat.ofNat Int 0 (@instOfNat 0)) b)
+      (@LE.le Int Int.instLEInt b Harmonia.Applications.Kadmos.S) →
+    And (@LE.le Int Int.instLEInt (@Neg.neg Int Int.instNegInt Harmonia.Applications.Kadmos.S) n)
+        (@LE.le Int Int.instLEInt n Harmonia.Applications.Kadmos.S) →
+      @LE.le Int Int.instLEInt n (@OfNat.ofNat Int 0 (@instOfNat 0)) →
+        And
+          (@Eq
+            (Except Harmonia.Applications.Kadmos.Generated.TargetError
+              Harmonia.Applications.Kadmos.Generated.TargetOutcome)
+            (Harmonia.Applications.Kadmos.Generated.targetStep
+              (Harmonia.Applications.Kadmos.Generated.balanceProgram lang)
+              (Harmonia.Applications.Kadmos.Generated.balanceCanonicalConstructed lang b)
+              (Harmonia.Applications.Kadmos.Generated.canonicalDebitRequest lang n))
+            (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError
+              Harmonia.Applications.Kadmos.Generated.TargetOutcome
+              (Harmonia.Applications.Kadmos.Generated.balanceStepGuardRejected lang b n)))
+          (And
+            (@Eq
+              (Except Harmonia.Applications.Kadmos.Generated.TargetError
+                Harmonia.Applications.Kadmos.Generated.Normalized)
+              (Harmonia.Applications.Kadmos.Generated.targetProjection lang
+                (Harmonia.Applications.Kadmos.Generated.balanceStepGuardRejected lang b n))
+              (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError
+                Harmonia.Applications.Kadmos.Generated.Normalized
+                (Harmonia.Applications.Kadmos.Generated.Normalized.mk Bool.false "Ready"
+                  (@List.cons (Prod String Int) (@Prod.mk String Int "balance" b) (@List.nil (Prod String Int)))
+                  (@Option.none String))))
+            (And
+              (@Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError (Option String))
+                (Harmonia.Applications.Kadmos.Generated.targetViolationCode
+                  (Harmonia.Applications.Kadmos.Generated.balanceStepGuardRejected lang b n))
+                (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError (Option String)
+                  (@Option.some String "GUARD_FAILED")))
+              (And
+                (Harmonia.Applications.Kadmos.Generated.HeapWF lang
+                  (Harmonia.Applications.Kadmos.Generated.balanceStepGuardRejected lang b n).machine)
+                (And
+                  (@Eq
+                    (Except Harmonia.Applications.Kadmos.Generated.TargetError
+                      Harmonia.Applications.Kadmos.Generated.BalanceView)
+                    (Harmonia.Applications.Kadmos.Generated.balanceView lang
+                      (Harmonia.Applications.Kadmos.Generated.balanceStepGuardRejected lang b n).machine)
+                    (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError
+                      Harmonia.Applications.Kadmos.Generated.BalanceView
+                      (Harmonia.Applications.Kadmos.Generated.BalanceView.mk "Ready" b
+                        (@List.nil Harmonia.Applications.Kadmos.Generated.BalanceRecord)
+                        (@Option.none Harmonia.Applications.Kadmos.Generated.BalanceSaved) b Bool.false)))
+                  (@Eq
+                    (Except Harmonia.Applications.Kadmos.Generated.TargetError
+                      Harmonia.Applications.Kadmos.Generated.BalanceView)
+                    (Harmonia.Applications.Kadmos.Generated.balanceView lang
+                      (Harmonia.Applications.Kadmos.Generated.balanceStepGuardRejected lang b n).machine)
+                    (Harmonia.Applications.Kadmos.Generated.balanceView lang
+                      (Harmonia.Applications.Kadmos.Generated.balanceCanonicalConstructed lang b)))))))) :=
+  @Harmonia.Applications.Kadmos.Generated.step_guard_reject
+
+example : (∀ (lang : Harmonia.Applications.Kadmos.Generated.TargetLang) (b n : Int),
+  And (@LE.le Int Int.instLEInt (@Neg.neg Int Int.instNegInt Harmonia.Applications.Kadmos.S) n)
+      (@LE.le Int Int.instLEInt n Harmonia.Applications.Kadmos.S) →
+    @LE.le Int Int.instLEInt n (@OfNat.ofNat Int 0 (@instOfNat 0)) →
+      @Eq
+        (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.TargetOutcome)
+        (Harmonia.Applications.Kadmos.Generated.targetStep (Harmonia.Applications.Kadmos.Generated.balanceProgram lang)
+          (Harmonia.Applications.Kadmos.Generated.balanceCanonicalConstructed lang b)
+          (Harmonia.Applications.Kadmos.Generated.canonicalDebitRequest lang n))
+        (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError
+          Harmonia.Applications.Kadmos.Generated.TargetOutcome
+          (Harmonia.Applications.Kadmos.Generated.balanceStepGuardRejected lang b n))) :=
+  @Harmonia.Applications.Kadmos.Generated.targetStep_guard_reject
+
+example : (∀ (b : Int),
+  @Eq (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.TargetOutcome)
+    (Harmonia.Applications.Kadmos.Generated.targetStep
+      (Harmonia.Applications.Kadmos.Generated.balanceProgram Harmonia.Applications.Kadmos.Generated.TargetLang.python)
+      (Harmonia.Applications.Kadmos.Generated.balanceCanonicalConstructed
+        Harmonia.Applications.Kadmos.Generated.TargetLang.python b)
+      (Harmonia.Applications.Kadmos.Generated.canonicalDebitRequest
+        Harmonia.Applications.Kadmos.Generated.TargetLang.python (@OfNat.ofNat Int 0 (@instOfNat 0))))
+    (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.TargetOutcome
+      (Harmonia.Applications.Kadmos.Generated.balanceStepGuardRejected
+        Harmonia.Applications.Kadmos.Generated.TargetLang.python b (@OfNat.ofNat Int 0 (@instOfNat 0))))) :=
+  @Harmonia.Applications.Kadmos.Generated.targetStep_py_guard_zero
+
+example : (∀ (b n : Int),
+  And (@LE.le Int Int.instLEInt (@Neg.neg Int Int.instNegInt Harmonia.Applications.Kadmos.S) n)
+      (@LE.le Int Int.instLEInt n Harmonia.Applications.Kadmos.S) →
+    @LE.le Int Int.instLEInt n (@OfNat.ofNat Int 0 (@instOfNat 0)) →
+      @Eq
+        (Except Harmonia.Applications.Kadmos.Generated.TargetError Harmonia.Applications.Kadmos.Generated.TargetOutcome)
+        (Harmonia.Applications.Kadmos.Generated.targetStep
+          (Harmonia.Applications.Kadmos.Generated.balanceProgram Harmonia.Applications.Kadmos.Generated.TargetLang.ts)
+          (Harmonia.Applications.Kadmos.Generated.balanceCanonicalConstructed
+            Harmonia.Applications.Kadmos.Generated.TargetLang.ts b)
+          (Harmonia.Applications.Kadmos.Generated.canonicalDebitRequest
+            Harmonia.Applications.Kadmos.Generated.TargetLang.ts n))
+        (@Except.ok Harmonia.Applications.Kadmos.Generated.TargetError
+          Harmonia.Applications.Kadmos.Generated.TargetOutcome
+          (Harmonia.Applications.Kadmos.Generated.balanceStepGuardRejected
+            Harmonia.Applications.Kadmos.Generated.TargetLang.ts b n))) :=
+  @Harmonia.Applications.Kadmos.Generated.targetStep_ts_guard_reject
+
+namespace Batch17Endpoints
+open Harmonia.Applications.Kadmos.Generated
+
+-- The full rejection bundle at every balance/rejected-amount endpoint.
+example (lang : TargetLang) :
+ targetStep (balanceProgram lang) (balanceCanonicalConstructed lang 0)
+   (canonicalDebitRequest lang (-Harmonia.Applications.Kadmos.S)) = .ok (balanceStepGuardRejected lang 0 (-Harmonia.Applications.Kadmos.S)) ∧
+ targetProjection lang (balanceStepGuardRejected lang 0 (-Harmonia.Applications.Kadmos.S)) =
+   .ok ⟨false, "Ready", [("balance", 0)], none⟩ ∧
+ targetViolationCode (balanceStepGuardRejected lang 0 (-Harmonia.Applications.Kadmos.S)) = .ok (some "GUARD_FAILED") ∧
+ HeapWF lang (balanceStepGuardRejected lang 0 (-Harmonia.Applications.Kadmos.S)).machine ∧
+ balanceView lang (balanceStepGuardRejected lang 0 (-Harmonia.Applications.Kadmos.S)).machine =
+   .ok ⟨"Ready", 0, [], none, 0, false⟩ ∧
+ balanceView lang (balanceStepGuardRejected lang 0 (-Harmonia.Applications.Kadmos.S)).machine =
+   balanceView lang (balanceCanonicalConstructed lang 0) :=
+ step_guard_reject lang 0 (-Harmonia.Applications.Kadmos.S) (by decide) (by decide) (by decide)
+
+example (lang : TargetLang) :
+ targetStep (balanceProgram lang) (balanceCanonicalConstructed lang 0)
+   (canonicalDebitRequest lang 0) = .ok (balanceStepGuardRejected lang 0 0) ∧
+ targetProjection lang (balanceStepGuardRejected lang 0 0) =
+   .ok ⟨false, "Ready", [("balance", 0)], none⟩ ∧
+ targetViolationCode (balanceStepGuardRejected lang 0 0) = .ok (some "GUARD_FAILED") ∧
+ HeapWF lang (balanceStepGuardRejected lang 0 0).machine ∧
+ balanceView lang (balanceStepGuardRejected lang 0 0).machine =
+   .ok ⟨"Ready", 0, [], none, 0, false⟩ ∧
+ balanceView lang (balanceStepGuardRejected lang 0 0).machine =
+   balanceView lang (balanceCanonicalConstructed lang 0) :=
+ step_guard_reject lang 0 0 (by decide) (by decide) (by decide)
+
+example (lang : TargetLang) :
+ targetStep (balanceProgram lang) (balanceCanonicalConstructed lang Harmonia.Applications.Kadmos.S)
+   (canonicalDebitRequest lang (-Harmonia.Applications.Kadmos.S)) = .ok (balanceStepGuardRejected lang Harmonia.Applications.Kadmos.S (-Harmonia.Applications.Kadmos.S)) ∧
+ targetProjection lang (balanceStepGuardRejected lang Harmonia.Applications.Kadmos.S (-Harmonia.Applications.Kadmos.S)) =
+   .ok ⟨false, "Ready", [("balance", Harmonia.Applications.Kadmos.S)], none⟩ ∧
+ targetViolationCode (balanceStepGuardRejected lang Harmonia.Applications.Kadmos.S (-Harmonia.Applications.Kadmos.S)) = .ok (some "GUARD_FAILED") ∧
+ HeapWF lang (balanceStepGuardRejected lang Harmonia.Applications.Kadmos.S (-Harmonia.Applications.Kadmos.S)).machine ∧
+ balanceView lang (balanceStepGuardRejected lang Harmonia.Applications.Kadmos.S (-Harmonia.Applications.Kadmos.S)).machine =
+   .ok ⟨"Ready", Harmonia.Applications.Kadmos.S, [], none, Harmonia.Applications.Kadmos.S, false⟩ ∧
+ balanceView lang (balanceStepGuardRejected lang Harmonia.Applications.Kadmos.S (-Harmonia.Applications.Kadmos.S)).machine =
+   balanceView lang (balanceCanonicalConstructed lang Harmonia.Applications.Kadmos.S) :=
+ step_guard_reject lang Harmonia.Applications.Kadmos.S (-Harmonia.Applications.Kadmos.S) (by decide) (by decide) (by decide)
+
+example (lang : TargetLang) :
+ targetStep (balanceProgram lang) (balanceCanonicalConstructed lang Harmonia.Applications.Kadmos.S)
+   (canonicalDebitRequest lang 0) = .ok (balanceStepGuardRejected lang Harmonia.Applications.Kadmos.S 0) ∧
+ targetProjection lang (balanceStepGuardRejected lang Harmonia.Applications.Kadmos.S 0) =
+   .ok ⟨false, "Ready", [("balance", Harmonia.Applications.Kadmos.S)], none⟩ ∧
+ targetViolationCode (balanceStepGuardRejected lang Harmonia.Applications.Kadmos.S 0) = .ok (some "GUARD_FAILED") ∧
+ HeapWF lang (balanceStepGuardRejected lang Harmonia.Applications.Kadmos.S 0).machine ∧
+ balanceView lang (balanceStepGuardRejected lang Harmonia.Applications.Kadmos.S 0).machine =
+   .ok ⟨"Ready", Harmonia.Applications.Kadmos.S, [], none, Harmonia.Applications.Kadmos.S, false⟩ ∧
+ balanceView lang (balanceStepGuardRejected lang Harmonia.Applications.Kadmos.S 0).machine =
+   balanceView lang (balanceCanonicalConstructed lang Harmonia.Applications.Kadmos.S) :=
+ step_guard_reject lang Harmonia.Applications.Kadmos.S 0 (by decide) (by decide) (by decide)
+
+example (lang : TargetLang) :
+ balanceStepPrefixRun lang Harmonia.Applications.Kadmos.S (-Harmonia.Applications.Kadmos.S) =
+   .ok ⟨(balanceStepCanonicalPrefix lang Harmonia.Applications.Kadmos.S (-Harmonia.Applications.Kadmos.S)).1,
+        (balanceStepCanonicalPrefix lang Harmonia.Applications.Kadmos.S (-Harmonia.Applications.Kadmos.S)).2, .normal⟩ :=
+ balanceStep_canonical_prefix_execute lang _ _ (by decide)
+
+example (lang : TargetLang) :
+ (balanceStepGuardRun lang Harmonia.Applications.Kadmos.S (-Harmonia.Applications.Kadmos.S)).toOption.map ExprOutcome.result =
+   some (.ok (.bool (decide (0 < ((-Harmonia.Applications.Kadmos.S) : Int))))) :=
+ balanceStep_canonical_guard_value lang _ _ (by decide)
+
+example (lang : TargetLang) :
+ balanceStepPrefixRun lang Harmonia.Applications.Kadmos.S 0 =
+   .ok ⟨(balanceStepCanonicalPrefix lang Harmonia.Applications.Kadmos.S 0).1,
+        (balanceStepCanonicalPrefix lang Harmonia.Applications.Kadmos.S 0).2, .normal⟩ :=
+ balanceStep_canonical_prefix_execute lang _ _ (by decide)
+
+example (lang : TargetLang) :
+ (balanceStepGuardRun lang Harmonia.Applications.Kadmos.S 0).toOption.map ExprOutcome.result =
+   some (.ok (.bool (decide (0 < (0 : Int))))) :=
+ balanceStep_canonical_guard_value lang _ _ (by decide)
+
+example (lang : TargetLang) :
+ balanceStepPrefixRun lang Harmonia.Applications.Kadmos.S Harmonia.Applications.Kadmos.S =
+   .ok ⟨(balanceStepCanonicalPrefix lang Harmonia.Applications.Kadmos.S Harmonia.Applications.Kadmos.S).1,
+        (balanceStepCanonicalPrefix lang Harmonia.Applications.Kadmos.S Harmonia.Applications.Kadmos.S).2, .normal⟩ :=
+ balanceStep_canonical_prefix_execute lang _ _ (by decide)
+
+example (lang : TargetLang) :
+ (balanceStepGuardRun lang Harmonia.Applications.Kadmos.S Harmonia.Applications.Kadmos.S).toOption.map ExprOutcome.result =
+   some (.ok (.bool (decide (0 < (Harmonia.Applications.Kadmos.S : Int))))) :=
+ balanceStep_canonical_guard_value lang _ _ (by decide)
+
+example (lang : TargetLang) :
+ balanceStepPrefixRun lang 0 (-Harmonia.Applications.Kadmos.S) =
+   .ok ⟨(balanceStepCanonicalPrefix lang 0 (-Harmonia.Applications.Kadmos.S)).1,
+        (balanceStepCanonicalPrefix lang 0 (-Harmonia.Applications.Kadmos.S)).2, .normal⟩ :=
+ balanceStep_canonical_prefix_execute lang _ _ (by decide)
+
+example (lang : TargetLang) :
+ (balanceStepGuardRun lang 0 (-Harmonia.Applications.Kadmos.S)).toOption.map ExprOutcome.result =
+   some (.ok (.bool (decide (0 < ((-Harmonia.Applications.Kadmos.S) : Int))))) :=
+ balanceStep_canonical_guard_value lang _ _ (by decide)
+
+example (lang : TargetLang) :
+ balanceStepPrefixRun lang 0 0 =
+   .ok ⟨(balanceStepCanonicalPrefix lang 0 0).1,
+        (balanceStepCanonicalPrefix lang 0 0).2, .normal⟩ :=
+ balanceStep_canonical_prefix_execute lang _ _ (by decide)
+
+example (lang : TargetLang) :
+ (balanceStepGuardRun lang 0 0).toOption.map ExprOutcome.result =
+   some (.ok (.bool (decide (0 < (0 : Int))))) :=
+ balanceStep_canonical_guard_value lang _ _ (by decide)
+
+example (lang : TargetLang) :
+ balanceStepPrefixRun lang 0 Harmonia.Applications.Kadmos.S =
+   .ok ⟨(balanceStepCanonicalPrefix lang 0 Harmonia.Applications.Kadmos.S).1,
+        (balanceStepCanonicalPrefix lang 0 Harmonia.Applications.Kadmos.S).2, .normal⟩ :=
+ balanceStep_canonical_prefix_execute lang _ _ (by decide)
+
+example (lang : TargetLang) :
+ (balanceStepGuardRun lang 0 Harmonia.Applications.Kadmos.S).toOption.map ExprOutcome.result =
+   some (.ok (.bool (decide (0 < (Harmonia.Applications.Kadmos.S : Int))))) :=
+ balanceStep_canonical_guard_value lang _ _ (by decide)
+
+end Batch17Endpoints

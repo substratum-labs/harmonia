@@ -1,0 +1,25 @@
+{
+  "certificate_sha256": "b40d064ecaafab58b80d5b1c7e918405e322fa01ec9fe51c4842b91c1609c1af",
+  "parameters": [
+    {
+      "name": "b",
+      "type": "Int",
+      "type_dependencies": []
+    },
+    {
+      "name": "n",
+      "type": "Int",
+      "type_dependencies": []
+    },
+    {
+      "name": "hfloat",
+      "type": "\u2200 (m : TargetMachine) (tag : NumberTag), hostCall BalancePrograms.balancePyProgram.lang m .float none [.number tag n] = .ok \u27e8m, .ok (.number .pyFloat n)\u27e9",
+      "type_dependencies": [
+        "n"
+      ]
+    }
+  ],
+  "aux_prefix": "pyPrefixAux",
+  "macro_name": "balance_step_py_prefix_term",
+  "helper_prefix": "pyPrefixPack"
+}

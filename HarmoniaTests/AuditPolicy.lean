@@ -62,6 +62,22 @@ def kadmosWorldSourceModules : Array Name := #[
   `Harmonia.Applications.Kadmos.Generated.BalanceModel,
   `Harmonia.Applications.Kadmos.Generated.BalancePrograms,
   `Harmonia.Applications.Kadmos.Generated.BalanceSimulation,
+  `Harmonia.Applications.Kadmos.Generated.BalanceStepContinuation,
+  `Harmonia.Applications.Kadmos.Generated.BalanceStepLexemes,
+  `Harmonia.Applications.Kadmos.Generated.BalanceStepModels,
+  `Harmonia.Applications.Kadmos.Generated.BalanceStepPythonGuard,
+  `Harmonia.Applications.Kadmos.Generated.BalanceStepPythonGuardStages,
+  `Harmonia.Applications.Kadmos.Generated.BalanceStepPythonPrefix,
+  `Harmonia.Applications.Kadmos.Generated.BalanceStepPythonPrefixEntry,
+  `Harmonia.Applications.Kadmos.Generated.BalanceStepPythonReject,
+  `Harmonia.Applications.Kadmos.Generated.BalanceStepPythonZero,
+  `Harmonia.Applications.Kadmos.Generated.BalanceStepSimulation,
+  `Harmonia.Applications.Kadmos.Generated.BalanceStepSnapshots,
+  `Harmonia.Applications.Kadmos.Generated.BalanceStepSource,
+  `Harmonia.Applications.Kadmos.Generated.BalanceStepSyntax,
+  `Harmonia.Applications.Kadmos.Generated.BalanceStepTSGuard,
+  `Harmonia.Applications.Kadmos.Generated.BalanceStepTSPrefix,
+  `Harmonia.Applications.Kadmos.Generated.BalanceStepTSReject,
   `Harmonia.Applications.Kadmos.Generated.BalanceInvariantCertificate,
   `Harmonia.Applications.Kadmos.Generated.Fixtures,
   `Harmonia.Applications.Kadmos.Generated.SourceGrammar,
@@ -108,12 +124,17 @@ def auditSelected (select : Name → Bool) (label : String) (allObserved : Bool 
   if names.isEmpty then throwError "axiom audit found no {label} theorems"
   let mut observed : Array Name := #[]
   let mut count := 0
+  let mut bulkState : CollectAxioms.State := {}
   for (n, info) in declarations do
     if select n && !info.isUnsafe then
-      let axioms ← checkDeclaration n allowChoice
+      let (_, s') := ((CollectAxioms.collect n).run env).run bulkState
+      bulkState := s'
+      for ax in bulkState.axioms do
+        unless allowed ax && (allowChoice || ax != ``Classical.choice) do
+          throwError "axiom audit rejected {n}: {ax}"
       count := count + 1
       if allObserved then
-        for ax in axioms do
+        for ax in bulkState.axioms do
           if !observed.contains ax then observed := observed.push ax
   for n in names do
     let axioms ← checkDeclaration n allowChoice
@@ -183,6 +204,22 @@ def kadmosGeneratedK02SourceModules : Array Name := #[
   `Harmonia.Applications.Kadmos.Generated.BalanceModel,
   `Harmonia.Applications.Kadmos.Generated.BalancePrograms,
   `Harmonia.Applications.Kadmos.Generated.BalanceSimulation,
+  `Harmonia.Applications.Kadmos.Generated.BalanceStepContinuation,
+  `Harmonia.Applications.Kadmos.Generated.BalanceStepLexemes,
+  `Harmonia.Applications.Kadmos.Generated.BalanceStepModels,
+  `Harmonia.Applications.Kadmos.Generated.BalanceStepPythonGuard,
+  `Harmonia.Applications.Kadmos.Generated.BalanceStepPythonGuardStages,
+  `Harmonia.Applications.Kadmos.Generated.BalanceStepPythonPrefix,
+  `Harmonia.Applications.Kadmos.Generated.BalanceStepPythonPrefixEntry,
+  `Harmonia.Applications.Kadmos.Generated.BalanceStepPythonReject,
+  `Harmonia.Applications.Kadmos.Generated.BalanceStepPythonZero,
+  `Harmonia.Applications.Kadmos.Generated.BalanceStepSimulation,
+  `Harmonia.Applications.Kadmos.Generated.BalanceStepSnapshots,
+  `Harmonia.Applications.Kadmos.Generated.BalanceStepSource,
+  `Harmonia.Applications.Kadmos.Generated.BalanceStepSyntax,
+  `Harmonia.Applications.Kadmos.Generated.BalanceStepTSGuard,
+  `Harmonia.Applications.Kadmos.Generated.BalanceStepTSPrefix,
+  `Harmonia.Applications.Kadmos.Generated.BalanceStepTSReject,
   `Harmonia.Applications.Kadmos.Generated.BalanceInvariantCertificate,
   `Harmonia.Applications.Kadmos.Generated.Fixtures,
   `Harmonia.Applications.Kadmos.Generated.SourceGrammar,

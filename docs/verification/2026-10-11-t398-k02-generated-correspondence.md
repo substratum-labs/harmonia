@@ -2259,3 +2259,181 @@ The following ten code/configuration/tool hashes were stable across every final 
 | `docs/verification/2026-10-12-t398-generated-axioms.txt` | `ddc5003fc8603ca2ec0363a95437182948741668e1b9d67df9b4b29cd73a11c5` |
 
 The actual independent read-only `codex exec` source review (`/tmp/t398-b16/review-source.txt`) found **0 Critical / 0 Important** issues, independently validated the certificate transformation and scope, and confirmed all six original proof/test hashes. Its Minor maintenance suggestion is addressed by the retained normalization/validation tool and mutation checks. The final actual independent read-only `codex exec` review (`/tmp/t398-b16/review-final.txt`) returned **ACCEPT FOR LOCAL COMMIT — 0 Critical / 0 Important / 1 Minor**. It independently checked all 62 exits and serial intervals, all ten frozen hashes, successful fresh preflight builds, the exact 10,417-pair listing, all twelve intended paths, certificate structure, mirrored examples, resource capacity and strengthened inventory checks. Its Minor wording correction is applied above: the no-`omega` statement concerns Batch 16 additions. Only this factual review receipt and documentation wording changed after review; the ten frozen code/configuration/tool files and axiom listing remain unchanged. Final review report SHA-256: `45617f918a2ea634e68505de80163ef4cabe72ada005ffcd2f57db9e2793721b`. The reviewed receipt preimage SHA-256 is `b591331eb199407d7cd0ba4f869adcaa8ea77e85540e2427677b5c80f4b6c4bc`. Branch and worktree remain preserved; no push or PR #5 merge is performed.
+
+## T-398 Batch 17 canonical DEBIT execution verification (2026-10-15)
+
+Base `6304ef3803f2bbe435941c7b4c3911c53e91aeb4`; preserved isolated worktree
+`5b89`, branch `feat/t396-generated-correspondence`. The implementation follows
+`docs/superpowers/plans/2026-10-15-t398-batch17-debit-prefix.md`. The physical
+integration owner holds exclusive product-edit and Lake-build ownership;
+the coordinating parent owns the final independent review and local commit.
+No push or PR #5 merge is performed.
+
+The public canonical domain is `0 ≤ b ≤ S`, `-S ≤ n ≤ S`,
+`S = 9007199254740991`, from `balanceCanonicalConstructed lang b` and the
+one-key `canonicalDebitRequest lang n`. The request specifies `DEBIT`, omits
+`proposedDirective`, and carries `eventPayload = {"amount": n}`.
+These are universal canonical one-call contracts, not arbitrary heap/history,
+malformed-request, or native hosted-execution claims.
+
+The checked contracts cover actual method-table and closure provenance,
+provided-argument call opening, busy acquisition, snapshots of state/context/
+history and Python undo, rollback and security-rejection closures, request
+admission, actual sanitization, record and rejection closure installation,
+transition selection, directive checking, and environment installation.
+TS retains `.jsNumber n`; Python converts `.pyInt n` to exact `.pyFloat n`
+using the proved `host_float_exact_tag` bound. Literal postmodels retain the
+constructor heap, source bodies, all intermediate allocations and frames.
+Normal-prefix composition reconnects to the stored source continuation with
+the original catch handler, finally cleanup and return path.
+
+Actual stored guard execution returns `decide (0 < n)` throughout the safe
+signed interval. `step_guard_reject` proves the complete `n ≤ 0` call:
+exact `targetStep` outcome (TS result object 71, Python result object 142),
+false/Ready/unchanged-balance projection, exact `GUARD_FAILED` code, `HeapWF`,
+and complete `balanceView` equality with the canonical initial machine.
+The frame includes empty history, absent undo, unchanged constructor seed,
+and released busy flag. There is no helper-success or subtraction premise.
+Positive-amount bounds rejection and acceptance remain deferred; this batch
+makes no complete `step_bounds_reject` or `step_accept` claim.
+
+Both requested regression roots directly instantiate all 79 new public
+theorems, including shared structural helpers. Their generated example blocks
+are identical. The exact Generated and World audit inventories include every
+new module; World imports the API to retain the complete audited closure.
+No executor, fixture, toolchain, Core/Distributed/legacy semantics or whitelist
+change is made. Product imports remain Init and project-only; scratch proof
+search and example-generation tools are excluded from certified imports.
+
+### Certificate representation and reproduction
+
+The Python prefix and guard proofs use ordinary private definition families
+(`BalanceStepPythonPrefix.lean` and `BalanceStepPythonGuard.lean`). Each
+original serialized right-hand-side syntax tree and parameter list is
+preserved; the maximum transformed RHS syntax depth is 65. The syntax
+macro builds terms using Init facilities, and the normal kernel checks
+every definition and the final numeric-bound theorems. Python guard rejection
+(`BalanceStepPythonReject.lean`) is proved compositionally in 72 lines from
+`balanceStep_canonical_prefix_continuation`, `balanceStep_py_guard_execute`,
+and post-guard concrete reduction without a third certificate family. Proof
+search and export success are not acceptance evidence.
+
+Repository-owned inputs, SHA-pinned schemas, product templates and Python
+standard-library tooling live in `scripts/balance_step_certificates`.
+`check_certificates.py` checks byte-exact product regeneration and independent
+syntax round trips; the final serial suite includes that check. The frozen
+source timestamp is `2026-10-18T05:27:01.363313+00:00`.
+
+### Final serial verification
+
+All 81 commands below exited 0 against frozen source hashes. Each Lake
+command ran through the shared one-target serial wrapper and compiler lock;
+new product targets were ordered by their import graph. The suite includes
+the full prior 62-command baseline, all new module targets, default build,
+foundation/distributed/world/bridge/generated/quorum/CAP tests, positive and
+negative axiom audits, and inventory/artifact mutation checks.
+
+| # | Command | Exit |
+|---|---|---|
+| 1 | `lake build Harmonia.Applications.Kadmos.Generated.TargetSemantics` | 0 |
+| 2 | `lake build Harmonia.Applications.Kadmos.Generated.BalanceSimulation` | 0 |
+| 3 | `lake build Harmonia.Applications.Kadmos.Generated.BalanceStepLexemes` | 0 |
+| 4 | `lake build Harmonia.Applications.Kadmos.Generated.BalanceStepModels` | 0 |
+| 5 | `lake build Harmonia.Applications.Kadmos.Generated.BalanceStepSyntax` | 0 |
+| 6 | `lake build Harmonia.Applications.Kadmos.Generated.BalanceStepPythonZero` | 0 |
+| 7 | `lake build Harmonia.Applications.Kadmos.Generated.BalanceStepSnapshots` | 0 |
+| 8 | `lake build Harmonia.Applications.Kadmos.Generated.BalanceStepSource` | 0 |
+| 9 | `lake build Harmonia.Applications.Kadmos.Generated.BalanceStepTSReject` | 0 |
+| 10 | `lake build Harmonia.Applications.Kadmos.Generated.BalanceStepPythonGuardStages` | 0 |
+| 11 | `lake build Harmonia.Applications.Kadmos.Generated.BalanceStepPythonPrefixEntry` | 0 |
+| 12 | `lake build Harmonia.Applications.Kadmos.Generated.BalanceStepTSGuard` | 0 |
+| 13 | `lake build Harmonia.Applications.Kadmos.Generated.BalanceStepTSPrefix` | 0 |
+| 14 | `lake build Harmonia.Applications.Kadmos.Generated.BalanceStepPythonGuard` | 0 |
+| 15 | `lake build Harmonia.Applications.Kadmos.Generated.BalanceStepPythonPrefix` | 0 |
+| 16 | `lake build Harmonia.Applications.Kadmos.Generated.BalanceStepContinuation` | 0 |
+| 17 | `lake build Harmonia.Applications.Kadmos.Generated.BalanceStepPythonReject` | 0 |
+| 18 | `lake build Harmonia.Applications.Kadmos.Generated.BalanceStepSimulation` | 0 |
+| 19 | `python3 scripts/balance_step_certificates/test_certificate_packaging.py` | 0 |
+| 20 | `python3 scripts/balance_step_certificates/check_certificates.py` | 0 |
+| 21 | `lean scripts/balance_step_certificates/certificate_fixtures/ApplicationRegression.lean` | 0 |
+| 22 | `lake build` | 0 |
+| 23 | `lake build HarmoniaTests.KadmosGeneratedK02ConstructorProofTS` | 0 |
+| 24 | `lake build HarmoniaTests.KadmosGeneratedK02ConstructorProofPython` | 0 |
+| 25 | `lake build kadmosGeneratedK02ConstructorProofTest` | 0 |
+| 26 | `lake build HarmoniaTests.KadmosGeneratedK02BalanceStepProofCases` | 0 |
+| 27 | `lake build HarmoniaTests.KadmosGeneratedK02BalanceStepProofTS` | 0 |
+| 28 | `lake build HarmoniaTests.KadmosGeneratedK02BalanceStepProofPython` | 0 |
+| 29 | `lake build kadmosGeneratedK02BalanceStepProofTest` | 0 |
+| 30 | `lake build foundationsTest` | 0 |
+| 31 | `lake build foundationsAudit` | 0 |
+| 32 | `lake build foundationsAuditRejection` | 0 |
+| 33 | `lake build distributedTest` | 0 |
+| 34 | `lake build distributedAudit` | 0 |
+| 35 | `lake build distributedAuditRejection` | 0 |
+| 36 | `lake build kadmosWorldTest` | 0 |
+| 37 | `lake build kadmosWorldAudit` | 0 |
+| 38 | `lake build kadmosWorldAuditRejection` | 0 |
+| 39 | `lake build kadmosBridgeSyntaxTest` | 0 |
+| 40 | `lake build kadmosBridgeCertificateTest` | 0 |
+| 41 | `lake build kadmosBridgeFixturesTest` | 0 |
+| 42 | `lake build kadmosBridgeAudit` | 0 |
+| 43 | `lake build kadmosBridgeAuditRejection` | 0 |
+| 44 | `lake build kadmosGeneratedK02LexerTest` | 0 |
+| 45 | `lake build kadmosGeneratedK02SourceGrammarTest` | 0 |
+| 46 | `lake build kadmosGeneratedK02SourceLexTest` | 0 |
+| 47 | `lake build kadmosGeneratedK02SourceValidatorTest` | 0 |
+| 48 | `lake build kadmosGeneratedK02SourceModuleTest` | 0 |
+| 49 | `lake build kadmosGeneratedK02PythonBooleanSyntaxTest` | 0 |
+| 50 | `lake build kadmosGeneratedK02StatementCertificateTest` | 0 |
+| 51 | `lake build kadmosGeneratedK02PythonLinesTest` | 0 |
+| 52 | `lake build kadmosGeneratedK02SimulationTest` | 0 |
+| 53 | `lake build kadmosGeneratedK02ClosedProgramsTest` | 0 |
+| 54 | `lake build kadmosGeneratedK02MachineTest` | 0 |
+| 55 | `lake build kadmosGeneratedK02ExpressionParserTest` | 0 |
+| 56 | `lake build kadmosGeneratedK02StatementParserTest` | 0 |
+| 57 | `lake build kadmosGeneratedK02TSParserTest` | 0 |
+| 58 | `lake build kadmosGeneratedK02SemanticsTest` | 0 |
+| 59 | `lake build kadmosGeneratedK02ProgramParserTest` | 0 |
+| 60 | `lake build kadmosGeneratedK02BalanceTSParseTest` | 0 |
+| 61 | `lake build kadmosGeneratedK02BalancePythonParseTest` | 0 |
+| 62 | `lake build kadmosGeneratedK02OrderTSParseTest` | 0 |
+| 63 | `lake build kadmosGeneratedK02OrderPythonParseTest` | 0 |
+| 64 | `lake build kadmosGeneratedK02CertificateTest` | 0 |
+| 65 | `lake build kadmosGeneratedK02BalanceTSCertificateTest` | 0 |
+| 66 | `lake build kadmosGeneratedK02BalancePythonCertificateTest` | 0 |
+| 67 | `lake build kadmosGeneratedK02BalanceTSStepTest` | 0 |
+| 68 | `lake build kadmosGeneratedK02Audit` | 0 |
+| 69 | `lake build kadmosGeneratedK02AuditRejection` | 0 |
+| 70 | `lake build kadmosGeneratedK02JSONTest` | 0 |
+| 71 | `lake build kadmosGeneratedK02RegexTest` | 0 |
+| 72 | `lake build quorumTest` | 0 |
+| 73 | `lake build quorumAudit` | 0 |
+| 74 | `lake build quorumAuditRejection` | 0 |
+| 75 | `lake build capTest` | 0 |
+| 76 | `lake build capAudit` | 0 |
+| 77 | `lake build capAuditRejection` | 0 |
+| 78 | `python3 scripts/check_kadmos_generated_k02_audit.py` | 0 |
+| 79 | `python3 scripts/test_kadmos_generated_k02_audit.py` | 0 |
+| 80 | `python3 scripts/check_kadmos_generated_k02_artifacts.py` | 0 |
+| 81 | `python3 scripts/test_kadmos_generated_k02_artifacts.py` | 0 |
+
+The strict Generated audit reports **10,818 theorems** and
+**58,105 declarations**, with observed axioms and whitelist
+both exactly `[propext, Quot.sound]`. The portable listing was regenerated
+from this successful audit and checked for exact sorted, unique theorem/
+dependency-pair equality. Its SHA-256 is
+`647603eea75441b070ef959bac36506c32fc4eb1d6d10a30b881a2a0213af59c`.
+
+Machine-readable evidence, per-command logs, UTC intervals, frozen source
+hashes and audit summary are in `/tmp/t398-b17/final`. Shared compiler intervals
+are in `/tmp/t398-b17/compiler-results.jsonl`. The integration receipt is
+`/tmp/t398-b17/worker-integration2/report.md`. Failed, interrupted and
+error-recovery artifacts are excluded from all acceptance claims. The first
+Snapshots draft failed its continuation congruence step; an explicit execution
+equality fixed it and the subsequent actual product build passed.
+
+Acceptance requires a fresh-context independent read-only `codex exec` review
+of the frozen exact diff and artifacts with zero Critical/Important findings,
+followed by a local commit. The coordinator records review receipts in
+`/tmp/t398-b17/final-review*` and reports the commit to the user. Integration
+verification does not substitute for that review.

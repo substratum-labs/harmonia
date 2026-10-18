@@ -1,0 +1,37 @@
+{
+  "certificate_sha256": "df8d6439266f60e64167592afb472614b86c46808398069fa609107cef2d3f04",
+  "parameters": [
+    {
+      "name": "b",
+      "type": "Int",
+      "type_dependencies": []
+    },
+    {
+      "name": "n",
+      "type": "Int",
+      "type_dependencies": []
+    },
+    {
+      "name": "hgt",
+      "type": "\u2200 (m : TargetMachine) (lt rt : NumberTag), binaryValue BalancePrograms.balancePyProgram.lang m .gt (.number lt n) (.number rt 0) = .ok (.ok (.bool (decide (0 < n))))",
+      "type_dependencies": [
+        "n"
+      ]
+    },
+    {
+      "name": "hfloat",
+      "type": "\u2200 (m : TargetMachine) (tag : NumberTag), hostCall .python m .float none [.number tag n] = .ok \u27e8m, .ok (.number .pyFloat n)\u27e9",
+      "type_dependencies": [
+        "n"
+      ]
+    },
+    {
+      "name": "hzero",
+      "type": "\u2200 (m : TargetMachine) (tag : NumberTag), hostCall .python m .float none [.number tag 0] = .ok \u27e8m, .ok (.number .pyFloat 0)\u27e9",
+      "type_dependencies": []
+    }
+  ],
+  "aux_prefix": "pyGuardAux",
+  "macro_name": "balance_step_py_guard_term",
+  "helper_prefix": "pyGuardPack"
+}

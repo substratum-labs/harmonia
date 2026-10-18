@@ -1,0 +1,6 @@
+import Init
+{{PACKAGING_PRELUDE}}
+{{PRIVATE_DECLARATIONS}}
+theorem fixture_toy (n : Int) (h : n = n) : (fun x : Int => (n, x)) = (fun x : Int => (n, x)) := by
+ exact {{CERTIFICATE_TERM}}
+#print axioms fixture_toy

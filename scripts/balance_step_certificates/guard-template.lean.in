@@ -1,0 +1,59 @@
+import Harmonia.Applications.Kadmos.Generated.BalanceStepPythonGuardStages
+import Harmonia.Applications.Kadmos.Generated.BalanceStepLexemes
+{{PACKAGING_PRELUDE}}
+namespace Harmonia.Applications.Kadmos.Generated
+set_option maxRecDepth 200000
+set_option maxHeartbeats 10000000
+set_option smartUnfolding false
+set_option pp.maxSteps 100
+set_option Elab.async false
+private theorem pyGuardCompareValue (m : TargetMachine) (lt rt : NumberTag) (n : Int) :
+    binaryValue .python m .gt (.number lt n) (.number rt 0) =
+    .ok (.ok (.bool (decide (0 < n)))) := by rfl
+
+attribute [local irreducible] hostCall binaryValue
+open BalanceStepLexemes
+
+{{PRIVATE_DECLARATIONS}}
+private theorem pyGuardAux6573_eq (b n : Int) :
+    pyGuardAux6573 b n = .ok ⟨balanceStepPyGuard b n, .ok (.bool (decide (0 < n)))⟩ := by
+  simp only [balanceStepPyGuard, balanceStep_py_tokenized_machine, balanceStep_py_tokenized_frame,
+    balanceStep_py_guard_body_machine, balanceStep_py_guard_body_frame, balanceStep_py_evaluate_closure,
+    balanceStep_py_guard_argument_machine, balanceStepPyPrefix, balanceStepPyPrefixFrame,
+    balanceCanonicalConstructed, balanceInvariantPyCopied, balanceInvariantPyReset,
+    balanceInvariantPyBound, balanceInvariantPyFinal]
+  simp only [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]
+  with_unfolding_all rfl
+
+set_option Elab.async true in
+theorem balanceStep_py_guard_execute (b n : Int) (hn : n.natAbs ≤ 9007199254740991) :
+ balanceStepGuardRun .python b n =
+   .ok ⟨balanceStepPyGuard b n, .ok (.bool (decide (0 < n)))⟩ := by
+  have hgt (m : TargetMachine) (lt rt : NumberTag) :
+      binaryValue BalancePrograms.balancePyProgram.lang m .gt (.number lt n) (.number rt 0) =
+        .ok (.ok (.bool (decide (0 < n)))) := pyGuardCompareValue m lt rt n
+  have hfloat (m : TargetMachine) (tag : NumberTag) :
+      hostCall .python m .float none [.number tag n] =
+        .ok ⟨m, .ok (.number .pyFloat n)⟩ := host_float_exact_tag m tag n hn
+  have hzero (m : TargetMachine) (tag : NumberTag) :
+      hostCall .python m .float none [.number tag 0] =
+        .ok ⟨m, .ok (.number .pyFloat 0)⟩ := host_float_exact_tag m tag 0 (by decide)
+  have hrun : balanceStepGuardRun .python b n = pyGuardAux6573 b n := by
+    simp only [balanceStep_py_guard_after_tokens]
+    simp only [balanceStep_py_tokenized_machine, balanceStep_py_tokenized_frame,
+      balanceStep_py_guard_body_machine, balanceStep_py_guard_body_frame, balanceStep_py_evaluate_closure,
+      balanceStep_py_guard_argument_machine, balanceStepPyPrefix, balanceStepPyPrefixFrame,
+      balanceCanonicalConstructed, balanceInvariantPyCopied, balanceInvariantPyReset,
+      balanceInvariantPyBound, balanceInvariantPyFinal]
+    simp only [balanceProgram_of_parse BalancePrograms.balancePyProgram_source]
+    exact balance_step_py_guard_term "gpyGuardAux20780:0,1,2,3,4" [b, n, hgt, hfloat, hzero]
+  -- Original value-projection certificate root: {{CERTIFICATE_TERM}}
+  exact hrun.trans (pyGuardAux6573_eq b n)
+
+theorem balanceStep_py_guard_value (b n : Int) (hn : n.natAbs ≤ 9007199254740991) :
+ (balanceStepGuardRun .python b n).toOption.map ExprOutcome.result =
+   some (.ok (.bool (decide (0 < n)))) := by
+ rw [balanceStep_py_guard_execute b n hn]
+ rfl
+
+end Harmonia.Applications.Kadmos.Generated
