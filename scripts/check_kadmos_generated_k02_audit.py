@@ -12,6 +12,7 @@ from check_distributed_audit import (AuditInventoryError, scrub, parse_manifest,
     module_name, import_closure, parse_imports)
 
 TEST_TARGETS = (
+    'kadmosGeneratedK02CorrespondenceTest',
     'kadmosGeneratedK02LexerTest',
     'kadmosGeneratedK02SourceGrammarTest',
     'kadmosGeneratedK02SourceLexTest',
@@ -77,6 +78,7 @@ def checked_lake_roots_source(lake):
     for target, label in (
         ('kadmosGeneratedK02PythonLinesTest', 'Python line-certificate'),
         ('kadmosGeneratedK02ClosedProgramsTest', 'closed-program certificate'),
+        ('kadmosGeneratedK02CorrespondenceTest', 'one-call correspondence'),
     ):
         match = re.search(
             r'(?ms)^lean_lib ' + re.escape(target) + r' where\n(.*?)(?=^lean_lib |\Z)',

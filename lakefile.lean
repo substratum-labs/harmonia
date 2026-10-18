@@ -182,3 +182,7 @@ lean_lib capAudit where
 
 lean_lib capAuditRejection where
   roots := #[`HarmoniaTests.CAPRejection]
+
+lean_lib kadmosGeneratedK02CorrespondenceTest where
+  roots := #[`HarmoniaTests.KadmosGeneratedK02Correspondence]
+  moreLeanArgs := #["--tstack=131072"]

@@ -1,3 +1,4 @@
+import Harmonia.Applications.Kadmos.Generated.BalanceCorrespondence
 import Harmonia.Applications.Kadmos.Bridge.Fixtures
 import Harmonia.Applications.Kadmos.Bridge.Certificate
 import Harmonia.Applications.Kadmos.Bridge.Syntax

@@ -1,3 +1,4 @@
+import HarmoniaTests.KadmosGeneratedK02Correspondence
 import HarmoniaTests.AuditPolicy
 import Harmonia.Applications.Kadmos.Generated.TargetObservation
 import HarmoniaTests.KadmosGeneratedK02Lexer

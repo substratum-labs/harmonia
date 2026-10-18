@@ -2460,3 +2460,26 @@ Batch 18 completes the positive safe-integer `DEBIT` execution branch (`0 ≤ b 
    - `KADMOS WORLD AUDIT PASS`: **12,384 theorems**; **60,511 declarations**; observed axioms `[propext, Quot.sound, Classical.choice]`.
    - `KADMOS GENERATED K-02 INVENTORY PASS`: `{'generated_modules': 42, 'generated_tests': 37, 'certified_closure': 85, 'test_targets': 28, 'world_inventory': 54}`.
    - Portable axiom listing `docs/verification/2026-10-12-t398-generated-axioms.txt` regenerated (11,378 unique theorem entries, SHA-256 `d309348622cb9078f6d839bc5b9b0fe9f21dd6407949701aa7f11afa69ca4dd5`).
+
+## Batch 19: Universal Source-Bound One-Call Correspondence (`k02_balance_one_call`) and `KadmosGeneratedK02Correspondence`
+
+Batch 19 completes the universal source-bound one-call correspondence theorem and its dedicated regression/audit test root for `T-398`:
+
+1. **Universal Source-Bound One-Call Correspondence (`Harmonia/Applications/Kadmos/Generated/BalanceCorrespondence.lean`)**:
+   - Proves `k02_balance_one_call` with the exact specification from `docs/superpowers/specs/2026-10-11-t398-k02-checked-syntax-and-simulation-design.md` (lines 192–215):
+     - Quantifies universally over `lang : TargetLang`, `source : String`, `program : TargetProgram`, `b n : Int` with `hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S`, `hn : -Harmonia.Applications.Kadmos.S ≤ n ∧ n ≤ Harmonia.Applications.Kadmos.S`, and `hCert : checkGenerated lang source balanceRaw balanceCandidate = .ok program`.
+     - Establishes constructor soundness (`targetConstruct 100 program b = .ok (m0, c0)`, `HeapWF m0.heap`, `BalanceRep lang b [] none b m0 c0`, `balanceView lang m0 c0 = .some before`) via `targetConstruct_sound` and exhaustively dispatches all three `DEBIT` regimes (`n ≤ 0` guard rejection via `step_guard_reject`, `0 < n ∧ n ≤ b` step acceptance via `step_accept`, and `n > b` bounds rejection via `step_bounds_reject`) to `targetProjection (lang := lang) ((interpret balanceCandidate).step (generatedBalanceState b) (debitEvent n))` while preserving `HeapWF`, `BalanceRep`, and `balanceView`.
+   - Proves 5 corollaries: `k02_balance_one_call_guard_reject`, `k02_balance_one_call_accept`, `k02_balance_one_call_bounds_reject`, `k02_balance_ts_one_call`, and `k02_balance_python_one_call` (`[propext, Quot.sound]`).
+
+2. **Correspondence Regression Root & Audit Registrations (`HarmoniaTests/KadmosGeneratedK02Correspondence.lean`)**:
+   - Registers `lean_lib kadmosGeneratedK02CorrespondenceTest` in `lakefile.lean` (with `--tstack=131072`) and adds `BalanceCorrespondence` and `KadmosGeneratedK02Correspondence` to `HarmoniaTests/AuditPolicy.lean`, `HarmoniaTests/KadmosWorldAxiomAudit.lean`, `HarmoniaTests/KadmosGeneratedK02AxiomAudit.lean`, `scripts/check_kadmos_generated_k02_audit.py`, and `scripts/test_kadmos_generated_k02_audit.py`.
+   - Audits and pins the exact signatures of all 5 required universal declarations (`targetConstruct_sound`, `step_guard_reject`, `step_accept`, `step_bounds_reject`, `k02_balance_one_call`) and the 5 corollaries (`[propext, Quot.sound]`).
+   - Proves unconditional closed-source theorems `kadmos_k02_balance_ts_one_call_unconditional` and `kadmos_k02_balance_python_one_call_unconditional` (discharging `checkGenerated` on `balanceTsSource` and `balancePySource` via `kadmos_k02_balance_ts_certificate_nonvacuous` and `kadmos_k02_balance_python_certificate_nonvacuous`), 16 concrete boundary endpoints (`b ∈ {0, S}`, `n ∈ {-S, 0, 1, S}` across TS and Python), and 14 hostile source mutation rejection theorems (`mutated_{ts,python}_{guard,effect,bounds,world,defaults,seed,busy}_source`).
+
+3. **Batch 19 Serial Verification & Axiom Audit**:
+   - All **84 serial verification commands** in `/tmp/t398-b17/verify.py` (including `Harmonia.Applications.Kadmos.Generated.BalanceCorrespondence`, `kadmosGeneratedK02CorrespondenceTest`, `kadmosGeneratedK02ConstructorProofTest`, `kadmosGeneratedK02BalanceStepProofTest`, `kadmosWorldAudit`, `kadmosGeneratedK02Audit`, and the 19-test inventory + 8-test artifact mutation suites) exited `0`.
+   - `KADMOS GENERATED K-02 AUDIT PASS`: **11,386 theorems**; **59,011 declarations**; observed axioms `[propext, Quot.sound]`; whitelist `[propext, Quot.sound]`.
+   - `KADMOS WORLD AUDIT PASS`: **12,390 theorems**; **60,517 declarations**; observed axioms `[propext, Quot.sound, Classical.choice]`; whitelist `[propext, Quot.sound, Classical.choice]`.
+   - `KADMOS GENERATED K-02 INVENTORY PASS`: `{'generated_modules': 43, 'generated_tests': 38, 'certified_closure': 87, 'test_targets': 29, 'world_inventory': 55}`.
+   - Portable axiom listing `docs/verification/2026-10-12-t398-generated-axioms.txt` regenerated (11,386 unique theorem entries, SHA-256 `de27cbd27b3812201d09d7a48b9bf7d6ef88eeacdf0d6378c9e4ce0d3e90865d`).
+

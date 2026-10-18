@@ -60,6 +60,7 @@ def kadmosWorldSourceModules : Array Name := #[
   `Harmonia.Applications.Kadmos.Bridge.Certificate,
   `Harmonia.Applications.Kadmos.Bridge.Fixtures,
   `Harmonia.Applications.Kadmos.Generated.BalanceModel,
+  `Harmonia.Applications.Kadmos.Generated.BalanceCorrespondence,
   `Harmonia.Applications.Kadmos.Generated.BalancePrograms,
   `Harmonia.Applications.Kadmos.Generated.BalanceSimulation,
   `Harmonia.Applications.Kadmos.Generated.BalanceStepContinuation,
@@ -206,6 +207,7 @@ namespace HarmoniaAudit
 
 def kadmosGeneratedK02SourceModules : Array Name := #[
   `Harmonia.Applications.Kadmos.Generated.BalanceModel,
+  `Harmonia.Applications.Kadmos.Generated.BalanceCorrespondence,
   `Harmonia.Applications.Kadmos.Generated.BalancePrograms,
   `Harmonia.Applications.Kadmos.Generated.BalanceSimulation,
   `Harmonia.Applications.Kadmos.Generated.BalanceStepContinuation,
@@ -263,6 +265,7 @@ def kadmosGeneratedK02SourceModules : Array Name := #[
   `HarmoniaTests.KadmosGeneratedK02ConstructorProof,
   `HarmoniaTests.KadmosGeneratedK02ConstructorProofTS,
   `HarmoniaTests.KadmosGeneratedK02ConstructorProofPython,
+  `HarmoniaTests.KadmosGeneratedK02Correspondence,
   `HarmoniaTests.KadmosGeneratedK02BalanceStepProof,
   `HarmoniaTests.KadmosGeneratedK02BalanceStepProofCases,
   `HarmoniaTests.KadmosGeneratedK02BalanceStepProofTS,
