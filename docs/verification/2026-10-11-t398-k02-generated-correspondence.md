@@ -2437,3 +2437,26 @@ of the frozen exact diff and artifacts with zero Critical/Important findings,
 followed by a local commit. The coordinator records review receipts in
 `/tmp/t398-b17/final-review*` and reports the commit to the user. Integration
 verification does not substitute for that review.
+
+## Batch 18: Positive `DEBIT` Bounds Rejection, Invariant Check, and Step Acceptance (`0 < n ≤ S`)
+
+Batch 18 completes the positive safe-integer `DEBIT` execution branch (`0 ≤ b ≤ S`, `0 < n ≤ S`) for both generated TypeScript (`world_checker.ts`) and generated Python (`world_checker.py`) checkers:
+
+1. **TypeScript Positive `DEBIT` Models & Execution**:
+   - `Harmonia/Applications/Kadmos/Generated/BalanceStepPositiveModels.lean`: defines the exact post-state machines and outcomes `balanceStepTsBoundsRejected`, `balanceStepTsBoundsRejectedOutcome` (verdict `.object 86`), `balanceStepTsAccepted`, and `balanceStepTsAcceptedOutcome` (verdict `.object 95`), and proves all 12 projection, violation-code, view-frame, and `HeapWF` theorems (`[propext]`).
+   - `Harmonia/Applications/Kadmos/Generated/BalanceStepTSPositive.lean`: proves compositional stage-sliced execution across `evaluateWorld("balance - event.amount")`, `checkBounds`, `checkInvariants`, commit (`history.push`, `undo`, `state`, `context`), and `finally { this.busy = false; }`, exporting `balanceStep_ts_bounds_reject_execute`, `balanceStep_ts_accept_execute`, `targetStep_ts_bounds_reject`, and `targetStep_ts_accept` (`[propext, Quot.sound]`).
+
+2. **Python Positive `DEBIT` Models & Execution**:
+   - `Harmonia/Applications/Kadmos/Generated/BalanceStepPythonPositiveModels.lean`: defines `balanceStepPyBoundsRejected`, `balanceStepPyBoundsRejectedOutcome` (verdict `.object 157`), `balanceStepPyAccepted`, `balanceStepPyAcceptedOutcome` (verdict `.object 167`), and the language-indexed outcomes `balanceStepBoundsRejected` and `balanceStepAccepted`, proving all 12 Python-specific and 8 unified `TargetLang` projection, violation-code, view-frame, and `HeapWF` theorems (`[propext]`).
+   - `Harmonia/Applications/Kadmos/Generated/BalanceStepPythonPositive.lean`: proves compositional stage-sliced execution across `_eval_world("balance - event.amount")`, `_bounds`, `_invariant`, commit, and `finally: self._busy = False`, exporting `balanceStep_py_bounds_reject_execute`, `balanceStep_py_accept_execute`, `targetStep_py_bounds_reject`, and `targetStep_py_accept` (`[propext, Quot.sound]`).
+
+3. **Unified Cross-Language Contracts & Regression Suite**:
+   - `Harmonia/Applications/Kadmos/Generated/BalanceStepSimulation.lean`: exports `balanceStep_boundsRejected_preserves_view`, `targetStep_bounds_reject`, `step_bounds_reject`, `targetStep_accept`, `step_accept`, and `balanceStep_canonical_guard_positive` across both `TargetLang.ts` and `TargetLang.python`.
+   - `HarmoniaTests/AuditPolicy.lean`, `HarmoniaTests/KadmosGeneratedK02ConstructorProof.lean`, and `HarmoniaTests/KadmosGeneratedK02BalanceStepProof.lean`: register all 4 new modules in the World and Generated K-02 audit manifests and add mirrored declaration audits, type-signature pins, and boundary endpoint checks (`Batch18Endpoints`).
+
+4. **Batch 18 Serial Verification & Axiom Audit**:
+   - All **82 serial verification commands** in `/tmp/t398-b17/verify.py` (including all product modules, `kadmosGeneratedK02ConstructorProofTest`, `kadmosGeneratedK02BalanceStepProofTest`, `kadmosWorldAudit`, `kadmosGeneratedK02Audit`, and the Python inventory/artifact self-tests) exited `0`.
+   - `KADMOS GENERATED K-02 AUDIT PASS`: **11,378 theorems**; **58,989 declarations**; observed axioms `[propext, Quot.sound]`; whitelist `[propext, Quot.sound]`.
+   - `KADMOS WORLD AUDIT PASS`: **12,384 theorems**; **60,511 declarations**; observed axioms `[propext, Quot.sound, Classical.choice]`.
+   - `KADMOS GENERATED K-02 INVENTORY PASS`: `{'generated_modules': 42, 'generated_tests': 37, 'certified_closure': 85, 'test_targets': 28, 'world_inventory': 54}`.
+   - Portable axiom listing `docs/verification/2026-10-12-t398-generated-axioms.txt` regenerated (11,378 unique theorem entries, SHA-256 `d309348622cb9078f6d839bc5b9b0fe9f21dd6407949701aa7f11afa69ca4dd5`).

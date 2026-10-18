@@ -1,3 +1,7 @@
+import Harmonia.Applications.Kadmos.Generated.BalanceStepPositiveModels
+import Harmonia.Applications.Kadmos.Generated.BalanceStepTSPositive
+import Harmonia.Applications.Kadmos.Generated.BalanceStepPythonPositiveModels
+import Harmonia.Applications.Kadmos.Generated.BalanceStepPythonPositive
 import Harmonia.Applications.Kadmos.Generated.BalanceStepPythonReject
 import Harmonia.Applications.Kadmos.Generated.BalanceStepPythonGuard
 import Harmonia.Applications.Kadmos.Generated.BalanceStepLexemes
@@ -93,5 +97,80 @@ theorem balanceStep_canonical_guard_nonpositive (lang : TargetLang) (b n : Int)
  (balanceStepGuardRun lang b n).toOption.map ExprOutcome.result =
    some (.ok (.bool false)) := by
  rw [balanceStep_canonical_guard_value lang b n hn, decide_eq_false (Int.not_lt.mpr hle)]
+
+
+/-- Bounds rejection preserves the complete canonical initial observation. -/
+theorem balanceStep_boundsRejected_preserves_view (lang : TargetLang) (b n : Int) :
+ balanceView lang (balanceStepBoundsRejected lang b n).machine =
+   balanceView lang (balanceCanonicalConstructed lang b) :=
+ (balanceStep_boundsRejected_frame lang b n).trans
+   (BalanceRep.view (balanceCanonicalConstructed_rep lang b)).symm
+
+/-- Exact target execution of positive overdrafts in either language. -/
+theorem targetStep_bounds_reject (lang : TargetLang) (b n : Int)
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S)
+    (hn : 0 < n ∧ n ≤ Harmonia.Applications.Kadmos.S) (hlt : b < n) :
+ targetStep (balanceProgram lang) (balanceCanonicalConstructed lang b)
+   (canonicalDebitRequest lang n) = .ok (balanceStepBoundsRejected lang b n) := by
+ cases lang
+ · exact targetStep_ts_bounds_reject b n hb hn hlt
+ · exact targetStep_py_bounds_reject b n hb.1 hb.2 hn.1 hn.2 hlt
+
+/-- Positive overdrafts reject with the exact violation and preserve the view. -/
+theorem step_bounds_reject (lang : TargetLang) (b n : Int)
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S)
+    (hn : 0 < n ∧ n ≤ Harmonia.Applications.Kadmos.S) (hlt : b < n) :
+ targetStep (balanceProgram lang) (balanceCanonicalConstructed lang b)
+   (canonicalDebitRequest lang n) = .ok (balanceStepBoundsRejected lang b n) ∧
+ targetProjection lang (balanceStepBoundsRejected lang b n) =
+   .ok ⟨false, "Ready", [("balance", b)], none⟩ ∧
+ targetViolationCode (balanceStepBoundsRejected lang b n) = .ok (some "INVALID_BOUNDS") ∧
+ HeapWF lang (balanceStepBoundsRejected lang b n).machine ∧
+ balanceView lang (balanceStepBoundsRejected lang b n).machine =
+   .ok ⟨"Ready", b, [], none, b, false⟩ ∧
+ balanceView lang (balanceStepBoundsRejected lang b n).machine =
+   balanceView lang (balanceCanonicalConstructed lang b) :=
+ ⟨targetStep_bounds_reject lang b n hb hn hlt,
+  balanceStep_boundsRejected_projection lang b n,
+  balanceStep_boundsRejected_code lang b n,
+  balanceStep_boundsRejected_WF lang b n,
+  balanceStep_boundsRejected_frame lang b n,
+  balanceStep_boundsRejected_preserves_view lang b n⟩
+
+/-- Exact target execution of accepted positive DEBIT in either language. -/
+theorem targetStep_accept (lang : TargetLang) (b n : Int)
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S)
+    (hn : 0 < n ∧ n ≤ Harmonia.Applications.Kadmos.S) (hle : n ≤ b) :
+ targetStep (balanceProgram lang) (balanceCanonicalConstructed lang b)
+   (canonicalDebitRequest lang n) = .ok (balanceStepAccepted lang b n) := by
+ cases lang
+ · exact targetStep_ts_accept b n hb hn hle
+ · exact targetStep_py_accept b n hb.1 hb.2 hn.1 hn.2 hle
+
+/-- Accepted DEBIT commits the balance, history and undo, and releases busy. -/
+theorem step_accept (lang : TargetLang) (b n : Int)
+    (hb : 0 ≤ b ∧ b ≤ Harmonia.Applications.Kadmos.S)
+    (hn : 0 < n ∧ n ≤ Harmonia.Applications.Kadmos.S) (hle : n ≤ b) :
+ targetStep (balanceProgram lang) (balanceCanonicalConstructed lang b)
+   (canonicalDebitRequest lang n) = .ok (balanceStepAccepted lang b n) ∧
+ targetProjection lang (balanceStepAccepted lang b n) =
+   .ok ⟨true, "Ready", [("balance", b - n)], none⟩ ∧
+ targetViolationCode (balanceStepAccepted lang b n) = .ok none ∧
+ HeapWF lang (balanceStepAccepted lang b n).machine ∧
+ balanceView lang (balanceStepAccepted lang b n).machine =
+   .ok ⟨"Ready", b - n, [expectedRecord lang n], some ⟨"Ready", b, []⟩, b, false⟩ :=
+ ⟨targetStep_accept lang b n hb hn hle,
+  balanceStep_accepted_projection lang b n,
+  balanceStep_accepted_code lang b n,
+  balanceStep_accepted_WF lang b n,
+  balanceStep_accepted_frame lang b n⟩
+
+/-- Every safe positive amount passes the actual stored guard. -/
+theorem balanceStep_canonical_guard_positive (lang : TargetLang) (b n : Int)
+    (hn : -Harmonia.Applications.Kadmos.S ≤ n ∧ n ≤ Harmonia.Applications.Kadmos.S)
+    (hp : 0 < n) :
+ (balanceStepGuardRun lang b n).toOption.map ExprOutcome.result =
+   some (.ok (.bool true)) := by
+ rw [balanceStep_canonical_guard_value lang b n hn, decide_eq_true hp]
 
 end Harmonia.Applications.Kadmos.Generated
