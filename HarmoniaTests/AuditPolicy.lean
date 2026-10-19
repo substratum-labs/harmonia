@@ -363,3 +363,107 @@ def auditCap : CommandElabM Unit := do
 end HarmoniaAudit
 
 elab "#audit_cap" : command => HarmoniaAudit.auditCap
+
+namespace HarmoniaAudit
+
+def flpSourceModules : Array Name := #[
+  `Harmonia.Theorems.FLP, `Harmonia.Theorems.FLPInitial,
+  `Harmonia.Theorems.FLPIndistinguishability,
+  `Harmonia.Theorems.FLPInputs, `Harmonia.Theorems.FLPExtension,
+  `Harmonia.Theorems.FLPBounds,
+  `HarmoniaTests.FLPTest,
+  `HarmoniaTests.FLPAxiomAudit]
+
+def flpDeclaration (env : Environment) (n : Name) : Bool :=
+  (`Harmonia.FLP).isPrefixOf n ||
+  flpSourceModules.contains (sourceModule env n)
+
+def checkFlpDeclaration (n : Name) : CommandElabM (Array Name) := do
+  unless (← getEnv).contains n do
+    throwError "FLP audit declaration does not exist: {n}"
+  let axioms ← collectAxioms n
+  for ax in axioms do
+    unless ax == ``propext || ax == ``Quot.sound do
+      throwError "FLP audit rejected {n}: {ax}"
+  return axioms
+
+def auditFlp : CommandElabM Unit := do
+  let env ← getEnv
+  let select := flpDeclaration env
+  let declarations := env.constants.toList.toArray.qsort (fun a b => a.1.toString < b.1.toString)
+  let names := theoremNames env select
+  if names.isEmpty then throwError "FLP audit found no theorems"
+  let mut observed : Array Name := #[]
+  let mut count := 0
+  for (n, info) in declarations do
+    if select n then
+      let range ← findDeclarationRanges? n
+      if info.isUnsafe && range.isSome then
+        throwError "FLP audit rejected unsafe source declaration {n}"
+      match info with
+      | .axiomInfo _ =>
+        if range.isSome then
+          discard <| checkFlpDeclaration n
+      | _ => pure ()
+      unless info.isUnsafe do
+        let axioms ← checkFlpDeclaration n
+        count := count + 1
+        for ax in axioms do
+          if !observed.contains ax then observed := observed.push ax
+  logInfo m!"FLP AUDIT PASS: {names.size} theorems; {count} declarations; observed axioms {observed}; whitelist [propext, Quot.sound]"
+
+end HarmoniaAudit
+
+elab "#audit_flp" : command => HarmoniaAudit.auditFlp
+
+namespace HarmoniaAudit
+
+def causalSourceModules : Array Name := #[
+  `Harmonia.Theorems.Causal, `Harmonia.Theorems.Lamport,
+  `Harmonia.Theorems.VectorClock, `HarmoniaTests.CausalTest,
+  `HarmoniaTests.CausalAxiomAudit]
+
+def causalDeclaration (env : Environment) (n : Name) : Bool :=
+  (`Harmonia.Causal).isPrefixOf n ||
+  causalSourceModules.contains (sourceModule env n)
+
+def checkCausalDeclaration (n : Name) : CommandElabM (Array Name) := do
+  unless (← getEnv).contains n do
+    throwError "CAUSAL audit declaration does not exist: {n}"
+  let axioms ← collectAxioms n
+  for ax in axioms do
+    unless ax == ``propext || ax == ``Quot.sound do
+      throwError "CAUSAL audit rejected {n}: {ax}"
+  return axioms
+
+def auditCausal : CommandElabM Unit := do
+  let env ← getEnv
+  let select := causalDeclaration env
+  let declarations := env.constants.toList.toArray.qsort (fun a b => a.1.toString < b.1.toString)
+  let names := theoremNames env select
+  if names.isEmpty then throwError "CAUSAL audit found no theorems"
+  let mut observed : Array Name := #[]
+  let mut count := 0
+  for (n, info) in declarations do
+    if select n then
+      let range ← findDeclarationRanges? n
+      if info.isUnsafe && range.isSome then
+        throwError "CAUSAL audit rejected unsafe source declaration {n}"
+      match info with
+      | .axiomInfo _ =>
+        if range.isSome then
+          discard <| checkCausalDeclaration n
+      | _ => pure ()
+      unless info.isUnsafe do
+        let axioms ← checkCausalDeclaration n
+        count := count + 1
+        for ax in axioms do
+          if !observed.contains ax then observed := observed.push ax
+  logInfo m!"CAUSAL AUDIT PASS: {names.size} theorems; {count} declarations; observed axioms {observed}; whitelist [propext, Quot.sound]"
+
+end HarmoniaAudit
+
+elab "#audit_causal" : command => HarmoniaAudit.auditCausal
+
+elab "#audit_causal_declaration " n:ident : command => do
+  discard <| HarmoniaAudit.checkCausalDeclaration n.getId

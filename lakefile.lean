@@ -186,3 +186,22 @@ lean_lib capAuditRejection where
 lean_lib kadmosGeneratedK02CorrespondenceTest where
   roots := #[`HarmoniaTests.KadmosGeneratedK02Correspondence]
   moreLeanArgs := #["--tstack=131072"]
+
+lean_lib flpTest where
+  roots := #[`HarmoniaTests.FLPTest]
+
+lean_lib flpAudit where
+  roots := #[`HarmoniaTests.AuditPolicy, `HarmoniaTests.FLPAxiomAudit]
+
+lean_lib flpAuditRejection where
+  roots := #[`HarmoniaTests.FLPRejection]
+
+lean_lib causalTest where
+  roots := #[`HarmoniaTests.CausalTest]
+
+lean_lib causalAudit where
+  roots := #[`HarmoniaTests.AuditPolicy, `HarmoniaTests.CausalAxiomAudit]
+
+lean_lib causalAuditRejection where
+  roots := #[`HarmoniaTests.CausalRejection]
+
