@@ -1,0 +1,57 @@
+name: Formal foundations
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  lean:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install elan
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - name: Verify toolchain pin
+        run: test "$(cat lean-toolchain)" = "leanprover/lean4:v4.16.0"
+      - name: Verify running Lean version
+        run: lake env lean --version | grep -F 'version 4.16.0,'
+      - name: Build certified library umbrella
+        run: lake build Harmonia
+      - name: Formal regression probes
+        run: lake build foundationsTest
+      - name: Certified comprehensive theorem axiom audit
+        run: lake build foundationsAudit
+      - name: Isolated adversarial audit rejection tests
+        run: lake build foundationsAuditRejection
+      - name: Distributed source and import inventory
+        run: python3 scripts/check_distributed_audit.py --self-test && python3 scripts/check_distributed_audit.py
+      - name: Distributed formal regression probes
+        run: lake build distributedTest
+      - name: Distributed certified axiom audit
+        run: lake build distributedAudit
+      - name: Distributed adversarial audit rejection probes
+        run: lake build distributedAuditRejection
+      - name: Quorum theorem probes and certified audit
+        run: lake build quorumTest quorumAudit quorumAuditRejection
+      - name: Quorum source and axiom audit check
+        run: python3 scripts/check_quorum_audit.py --self-test && python3 scripts/check_quorum_audit.py
+      - name: CAP theorem probes and certified audit
+        run: lake build capTest capAudit capAuditRejection
+      - name: CAP source and axiom audit check
+        run: python3 scripts/test_cap_audit.py && python3 scripts/check_cap_audit.py
+      - name: FLP theorem probes and certified audit
+        run: lake build flpTest flpAudit flpAuditRejection
+      - name: FLP source and axiom audit check
+        run: python3 scripts/test_flp_audit.py && python3 scripts/check_flp_audit.py
+      - name: Causal clocks theorem probes and certified audit
+        run: lake build causalTest causalAudit causalAuditRejection
+      - name: Causal clocks source and axiom audit check
+        run: python3 scripts/test_causal_audit.py && python3 scripts/check_causal_audit.py
+      - name: Verified protocols source and audit policy mutation tests
+        run: python3 scripts/check_verified_protocols_audit.py --self-test
+      - name: Verified protocols certified and rejection audit
+        run: python3 scripts/check_verified_protocols_audit.py
+      - name: Isolated external consumer and clean build latency
+        run: python3 scripts/check_external_consumer.py
