@@ -23,7 +23,7 @@ axiom unused : True
 /-- error: axiom audit rejected QuorumAuditTrap.unused: QuorumAuditTrap.unused -/
 #guard_msgs in
 #audit_declaration QuorumAuditTrap.unused
-/-- warning: declaration uses 'sorry' -/
+/-- warning: declaration uses `sorry` -/
 #guard_msgs in
 theorem placeholder : True := sorryAx True false
 /-- error: axiom audit rejected QuorumAuditTrap.placeholder: sorryAx -/

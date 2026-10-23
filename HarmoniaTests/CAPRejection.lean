@@ -28,7 +28,7 @@ axiom unused : True
 /-- error: axiom audit rejected CAPAuditTrap.unused: CAPAuditTrap.unused -/
 #guard_msgs in
 #audit_declaration CAPAuditTrap.unused
-/-- warning: declaration uses 'sorry' -/
+/-- warning: declaration uses `sorry` -/
 #guard_msgs in
 theorem placeholder : True := sorryAx True false
 /-- error: axiom audit rejected CAPAuditTrap.placeholder: sorryAx -/

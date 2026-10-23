@@ -408,7 +408,7 @@ private theorem past_le_clock {t : Trace} {N : Nat} (h : History t N)
   intro p _
   by_cases hp : p ≠ f ∧ h.nodeIndex p = i ∧ h.knows p f = true
   · have hc : h.nodeIndex p = i ∧ h.knows p f = true := ⟨hp.2.1, hp.2.2⟩
-    simp [pastContribution, contribution, hp, hc]
+    simp [pastContribution, contribution, hp]
   · simp [pastContribution, hp]
 
 private theorem clock_decompose {t : Trace} {N : Nat} (h : History t N)
@@ -422,9 +422,9 @@ private theorem clock_decompose {t : Trace} {N : Nat} (h : History t N)
     · subst p
       by_cases hi : h.nodeIndex f = i
       · have hk : h.knows f f = true := (h.knows_correct f f).2 (Or.inl rfl)
-        simp [contribution, pastContribution, hi, hk]
+        simp [contribution, hi, hk]
         exact Nat.le_max_right _ _
-      · simp [contribution, pastContribution, hi]
+      · simp [contribution, hi]
     · have hpc : pastContribution h p f i = contribution h p f i := by
         simp [pastContribution, contribution, hpf]
       rw [← hpc]

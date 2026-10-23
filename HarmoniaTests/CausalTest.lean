@@ -80,7 +80,7 @@ private def sampleTrace : Trace where
       by_cases h : e = 1
       · exact h
       · by_cases h2 : e = 2
-        · simp [sampleKind, h, h2] at hs
+        · simp [sampleKind, h2] at hs
         · simp [sampleKind, h, h2] at hs
     have hf : f = 2 := by
       by_cases h : f = 2
@@ -97,13 +97,13 @@ private def sampleTrace : Trace where
       by_cases h : e = 1
       · exact h
       · by_cases h2 : e = 2
-        · simp [sampleKind, h, h2] at hs
+        · simp [sampleKind, h2] at hs
         · simp [sampleKind, h, h2] at hs
     have hf' : f = 1 := by
       by_cases h : f = 1
       · exact h
       · by_cases h2 : f = 2
-        · simp [sampleKind, h, h2] at hf
+        · simp [sampleKind, h2] at hf
         · simp [sampleKind, h, h2] at hf
     exact he.trans hf'.symm
 
@@ -156,7 +156,7 @@ private def messageTrace : Trace where
       by_cases h0 : e = 0
       · exact h0
       · by_cases h1 : e = 1
-        · simp [messageKind, h0, h1] at hs
+        · simp [messageKind, h1] at hs
         · simp [messageKind, h0, h1] at hs
     have hf : f = 1 := by
       by_cases h0 : f = 0
@@ -171,13 +171,13 @@ private def messageTrace : Trace where
       by_cases h0 : e = 0
       · exact h0
       · by_cases h1 : e = 1
-        · simp [messageKind, h0, h1] at hs
+        · simp [messageKind, h1] at hs
         · simp [messageKind, h0, h1] at hs
     have hf' : f = 0 := by
       by_cases h0 : f = 0
       · exact h0
       · by_cases h1 : f = 1
-        · simp [messageKind, h0, h1] at hf
+        · simp [messageKind, h1] at hf
         · simp [messageKind, h0, h1] at hf
     exact he.trans hf'.symm
 

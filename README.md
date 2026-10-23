@@ -15,11 +15,11 @@ Use Harmonia to:
 
 ### 1. Add Harmonia to your `lakefile.lean`
 
-Pin `leanprover/lean4:v4.16.0` in your `lean-toolchain`, then add to `lakefile.lean`:
+Pin `leanprover/lean4:v4.35.0` in your `lean-toolchain`, then add to `lakefile.lean`:
 
 ```lean
 require harmonia from git
-  "https://github.com/substratum-labs/harmonia" @ "v0.1.0"
+  "https://github.com/substratum-labs/harmonia" @ "v0.2.0"
 ```
 
 *(If using `lakefile.toml`:)*
@@ -27,7 +27,7 @@ require harmonia from git
 [[require]]
 name = "harmonia"
 git = "https://github.com/substratum-labs/harmonia"
-rev = "v0.1.0"
+rev = "v0.2.0"
 ```
 
 ### 2. Import and use

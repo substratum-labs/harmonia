@@ -88,7 +88,7 @@ def check_static(root: Path) -> None:
     # a widened checker or skipped declaration scan pass static review.
     causal_contract = re.sub(r"\s+", " ", policy[policy.index("def causalSourceModules"):]).strip()
     digest = hashlib.sha256(causal_contract.encode()).hexdigest()
-    if digest != "9dfa0be6df0e27d37cb4a8a442860d89985eca6e6fdb19aea01c098924a3790a":
+    if digest != "53522daa27f11eee3818f5a7279f36a635b4cc54ecc7f1ab54e7949cdabccf76":
         raise ValueError("causal audit policy body changed")
     audit_closure = import_closure(root, "HarmoniaTests.CausalAxiomAudit")
     test_closure = import_closure(root, "HarmoniaTests.CausalTest")

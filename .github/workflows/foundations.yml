@@ -14,9 +14,9 @@ jobs:
           curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain none
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
       - name: Verify toolchain pin
-        run: test "$(cat lean-toolchain)" = "leanprover/lean4:v4.16.0"
+        run: test "$(cat lean-toolchain)" = "leanprover/lean4:v4.35.0"
       - name: Verify running Lean version
-        run: lake env lean --version | grep -F 'version 4.16.0,'
+        run: lake env lean --version | grep -F 'version 4.35.0,'
       - name: Build certified library umbrella
         run: lake build Harmonia
       - name: Formal regression probes

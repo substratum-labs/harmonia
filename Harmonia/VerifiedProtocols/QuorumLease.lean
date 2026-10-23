@@ -279,9 +279,9 @@ theorem reaction_preserved {c : Config N} {f : Nat} {s : LeaseState c Val}
         Certified c f t k leader value := by
       intro k leader value he
       by_cases hk : k = e
-      · subst k; simp only [if_pos rfl, Option.some.injEq, Prod.mk.injEq] at he
+      · subst k; simp only at he
         rcases he with ⟨rfl, rfl⟩; exact fresh
-      · simp only [if_neg hk] at he
+      · simp only [ite_eq_right hk] at he
         exact certified_mono mono (h.leader_commit_has_quorum.2 actor k leader value he)
     apply finish (fun _ _ he => he) cm (h.votes_nodup actor)
     · intro k voter hv; exact mono.1 _ _ _ (h.collected_votes_valid actor k voter hv)
@@ -309,9 +309,9 @@ theorem reaction_preserved {c : Config N} {f : Nat} {s : LeaseState c Val}
     · intro k
       by_cases hk : k = e
       · subst k
-        simp only [if_pos rfl]
+        simp only
         by_cases hn : sender ∈ (s.nodes actor).volatile.collectedVotes e
-        · simpa only [if_pos hn] using h.votes_nodup actor e
+        · simpa only [ite_eq_left hn, ite_true] using h.votes_nodup actor e
         · simp only [hn, ↓reduceIte, List.map_cons, List.nodup_cons]
           refine ⟨?_, h.votes_nodup actor e⟩
           intro hm
@@ -321,15 +321,15 @@ theorem reaction_preserved {c : Config N} {f : Nat} {s : LeaseState c Val}
       · simpa [hk] using h.votes_nodup actor k
     · intro k voter hv
       by_cases hk : k = e
-      · subst k; simp only [if_pos rfl] at hv
+      · subst k; simp only at hv
         by_cases hn : sender ∈ (s.nodes actor).volatile.collectedVotes e
-        · simp only [if_pos hn] at hv
+        · simp only [ite_eq_left hn] at hv
           exact mono.1 _ _ _ (h.collected_votes_valid actor e voter hv)
-        · simp only [if_neg hn] at hv
+        · simp only [ite_eq_right hn] at hv
           rcases List.mem_cons.mp hv with rfl | hv
           · exact mono.1 _ _ _ grant
           · exact mono.1 _ _ _ (h.collected_votes_valid actor e voter hv)
-      · simp only [if_neg hk] at hv
+      · simp only [ite_eq_right hk] at hv
         exact mono.1 _ _ _ (h.collected_votes_valid actor k voter hv)
     · intro k leader val he; exact certified_mono mono (h.leader_commit_has_quorum.2 actor k leader val he)
     · intro x hx; simp [allocate] at hx
@@ -349,9 +349,9 @@ theorem reaction_preserved {c : Config N} {f : Nat} {s : LeaseState c Val}
     · intro k voter hv; exact mono.1 _ _ _ (h.collected_votes_valid actor k voter hv)
     · intro k lead value he
       by_cases hk : k = e
-      · subst k; simp only [if_pos rfl, Option.some.injEq, Prod.mk.injEq] at he
+      · subst k; simp only at he
         rcases he with ⟨rfl, rfl⟩; exact certified_mono mono cert
-      · simp only [if_neg hk] at he
+      · simp only [ite_eq_right hk] at he
         exact certified_mono mono (h.leader_commit_has_quorum.2 actor k lead value he)
     · intro x hx; simp [allocate] at hx
 

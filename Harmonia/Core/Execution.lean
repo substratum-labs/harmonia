@@ -10,7 +10,8 @@ inductive Execution (T : TransitionSystem S A O) : S → List (A × O) → S →
 def observations (labels : List (A × O)) : List O := labels.map Prod.snd
 
 theorem observations_append (xs ys : List (A × O)) :
-    observations (xs ++ ys) = observations xs ++ observations ys := List.map_append Prod.snd xs ys
+    observations (xs ++ ys) = observations xs ++ observations ys := by
+      simp [observations, List.map_append]
 
 namespace Execution
 variable {T : TransitionSystem S A O}

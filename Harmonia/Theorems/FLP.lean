@@ -83,7 +83,7 @@ theorem nonnegative_buffer_advance (p : Protocol Node Msg Local)
     Int.ofNat (p.send e.target (c.state e.target) e.msg n m) -
       (if e.msg = some m ∧ e.target = n then 1 else 0)
   have hsend : 0 ≤ Int.ofNat (p.send e.target (c.state e.target) e.msg n m) :=
-    Int.ofNat_nonneg _
+    Int.natCast_nonneg _
   by_cases hconsumed : e.msg = some m ∧ e.target = n
   · obtain ⟨hmsg, htarget⟩ := hconsumed
     have hpositive : 0 < c.buffer n m := by
@@ -108,7 +108,7 @@ theorem enabled_after_other (p : Protocol Node Msg Local) (c : Config Node Msg L
       intro h; exact hdisjoint h.2
     simp [h]
     have hn : 0 ≤ Int.ofNat (p.send e.target (c.state e.target) e.msg f.target m) :=
-      Int.ofNat_nonneg _
+      Int.natCast_nonneg _
     omega
 
 /-- Independent process events commute exactly, including concurrent sends
@@ -127,7 +127,7 @@ theorem flp_lemma1_diamond (p : Protocol Node Msg Local)
     have he : ¬ (e.target = f.target) := hdisjoint
     have hf : ¬ (f.target = e.target) := hfe
     simp only [advance]
-    simp only [if_neg he, if_neg hf]
+    simp only [ite_eq_right he, ite_eq_right hf]
     omega
   · intro n
     by_cases hn : n = e.target <;> by_cases hm : n = f.target

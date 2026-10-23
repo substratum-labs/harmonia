@@ -2,7 +2,7 @@ import Lake
 open Lake DSL
 
 package "harmonia" where
-  version := v!"0.1.0"
+  version := v!"0.2.0"
   keywords := #["distributed-systems", "formal-methods", "lean4", "consensus"]
 
 @[default_target]

@@ -43,7 +43,7 @@ theorem enabled_after_different_event (protocol : Protocol Node Msg Local)
       simp [hnot]
       have hsend : 0 ≤ Int.ofNat
           (protocol.send f.target (c.state f.target) f.msg e.target m) :=
-        Int.ofNat_nonneg _
+        Int.natCast_nonneg _
       omega
   · exact enabled_after_other protocol c f e htarget he
 

@@ -11,7 +11,7 @@ axiom unused : True
 /-- error: axiom audit rejected VerifiedProtocolsAuditTrap.unused: VerifiedProtocolsAuditTrap.unused -/
 #guard_msgs in
 #audit_declaration VerifiedProtocolsAuditTrap.unused
-/-- warning: declaration uses 'sorry' -/
+/-- warning: declaration uses `sorry` -/
 #guard_msgs in
 theorem placeholder : True := sorryAx True false
 /-- error: axiom audit rejected VerifiedProtocolsAuditTrap.placeholder: sorryAx -/

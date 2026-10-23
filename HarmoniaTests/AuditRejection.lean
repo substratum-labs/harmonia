@@ -8,7 +8,7 @@ theorem indirect : True := protocol
 #audit_declaration AuditFixtures.indirect
 
 -- Direct construction deliberately tests detection without a sorry tactic.
-/-- warning: declaration uses 'sorry' -/
+/-- warning: declaration uses `sorry` -/
 #guard_msgs in
 theorem contaminated : True := sorryAx True false
 /-- error: axiom audit rejected AuditFixtures.contaminated: sorryAx -/

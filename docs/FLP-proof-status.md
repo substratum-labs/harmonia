@@ -1,6 +1,6 @@
 # FLP impossibility proof status
 
-Toolchain: `leanprover/lean4:v4.16.0`. The theorem modules import Lean `Init`
+Toolchain: `leanprover/lean4:v4.35.0`. The theorem modules import Lean `Init`
 through `Harmonia.Core.Execution`; they do not import Mathlib.
 
 ## Model

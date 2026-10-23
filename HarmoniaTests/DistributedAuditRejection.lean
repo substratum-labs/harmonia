@@ -7,7 +7,7 @@ theorem indirect : True := protocol
 /-- error: axiom audit rejected DistributedAuditFixtures.indirect: DistributedAuditFixtures.protocol -/
 #guard_msgs in
 #audit_declaration DistributedAuditFixtures.indirect
-/-- warning: declaration uses 'sorry' -/
+/-- warning: declaration uses `sorry` -/
 #guard_msgs in
 theorem contaminated : True := sorryAx True false
 /-- error: axiom audit rejected DistributedAuditFixtures.contaminated: sorryAx -/

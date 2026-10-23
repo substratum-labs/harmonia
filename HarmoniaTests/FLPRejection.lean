@@ -11,7 +11,7 @@ axiom unused : True
 /-- error: axiom audit rejected FLPAuditTrap.unused: FLPAuditTrap.unused -/
 #guard_msgs in
 #audit_declaration FLPAuditTrap.unused
-/-- warning: declaration uses 'sorry' -/
+/-- warning: declaration uses `sorry` -/
 #guard_msgs in
 theorem placeholder : True := sorryAx True false
 /-- error: axiom audit rejected FLPAuditTrap.placeholder: sorryAx -/

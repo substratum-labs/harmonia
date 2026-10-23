@@ -16,7 +16,7 @@ def diff (A B : List N) : List N := A.filter (fun x => decide (x ∉ B))
 theorem partition_length (A B : List N) :
     (inter A B).length + (diff A B).length = A.length := by
   simp only [inter, diff, ← List.countP_eq_length_filter]
-  have h := List.length_eq_countP_add_countP (fun x => decide (x ∈ B)) A
+  have h := List.length_eq_countP_add_countP (fun x => decide (x ∈ B)) (l := A)
   simpa using h.symm
 
 /-- A union represented as B followed by A's nodes outside B obeys inclusion-exclusion. -/

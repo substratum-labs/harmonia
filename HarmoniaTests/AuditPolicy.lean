@@ -70,18 +70,16 @@ def auditSelected (select : Name → Bool) (label : String) (allObserved : Bool 
   let names := theoremNames env select
   if names.isEmpty then throwError "axiom audit found no {label} theorems"
   let mut observed : Array Name := #[]
-  let mut count := 0
-  let mut bulkState : CollectAxioms.State := {}
+  let mut count : Nat := 0
   for (n, info) in declarations do
     if select n && !info.isUnsafe then
-      let (_, s') := ((CollectAxioms.collect n).run env).run bulkState
-      bulkState := s'
-      for ax in bulkState.axioms do
+      let axioms ← collectAxioms n
+      for ax in axioms do
         unless allowed ax && (allowChoice || ax != ``Classical.choice) do
           throwError "axiom audit rejected {n}: {ax}"
       count := count + 1
       if allObserved then
-        for ax in bulkState.axioms do
+        for ax in axioms do
           if !observed.contains ax then observed := observed.push ax
   for n in names do
     let axioms ← checkDeclaration n allowChoice
@@ -161,7 +159,7 @@ def auditCap : CommandElabM Unit := do
   let names := theoremNames env select
   if names.isEmpty then throwError "CAP audit found no theorems"
   let mut observed : Array Name := #[]
-  let mut count := 0
+  let mut count : Nat := 0
   for (n, info) in declarations do
     if select n then
       match info with
@@ -211,7 +209,7 @@ def auditFlp : CommandElabM Unit := do
   let names := theoremNames env select
   if names.isEmpty then throwError "FLP audit found no theorems"
   let mut observed : Array Name := #[]
-  let mut count := 0
+  let mut count : Nat := 0
   for (n, info) in declarations do
     if select n then
       let range ← findDeclarationRanges? n
@@ -280,7 +278,7 @@ def auditCausal : CommandElabM Unit := do
   let names := theoremNames env select
   if names.isEmpty then throwError "CAUSAL audit found no theorems"
   let mut observed : Array Name := #[]
-  let mut count := 0
+  let mut count : Nat := 0
   for (n, info) in declarations do
     if select n then
       let range ← findDeclarationRanges? n

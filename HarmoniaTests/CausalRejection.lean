@@ -4,12 +4,12 @@ import HarmoniaTests.AuditPolicy
 open Harmonia.Causal
 
 -- The scalar converse would turn the independent witness into causality.
-/-- error: type mismatch
+/-- error: Type mismatch
   Lamport.scalar_incomplete.right.left
 has type
-  ¬HappensBefore Lamport.independentTrace 0 1 : Prop
+  ¬HappensBefore Lamport.independentTrace 0 1
 but is expected to have type
-  HappensBefore Lamport.independentTrace 0 1 : Prop -/
+  HappensBefore Lamport.independentTrace 0 1 -/
 #guard_msgs in
 example : HappensBefore Lamport.independentTrace 0 1 := by
   exact Lamport.scalar_incomplete.2.1
@@ -24,7 +24,7 @@ end Harmonia.Causal.AuditTrap
 
 namespace Harmonia.Causal.AuditTrap
 
-/-- warning: declaration uses 'sorry' -/
+/-- warning: declaration uses `sorry` -/
 #guard_msgs in
 theorem placeholder : True := sorryAx True false
 /-- error: CAUSAL audit rejected Harmonia.Causal.AuditTrap.placeholder: sorryAx -/
