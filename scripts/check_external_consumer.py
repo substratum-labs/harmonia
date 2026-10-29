@@ -22,6 +22,13 @@ THEOREMS = (
     "Harmonia.VerifiedProtocols.QuorumLease.quorum_lease_mutual_exclusion",
     "Harmonia.VerifiedProtocols.QuorumLease.fenced_commit_safety",
     "Harmonia.VerifiedProtocols.QuorumLease.quorum_lease_refines_spec",
+    "Harmonia.VerifiedProtocols.TwoPhaseCommit.twoPC_atomic_agreement",
+    "Harmonia.VerifiedProtocols.TwoPhaseCommit.twoPC_commit_validity",
+    "Harmonia.VerifiedProtocols.TwoPhaseCommit.twoPC_refines_spec",
+    "Harmonia.VerifiedProtocols.BFTQuorumCommit.bft_qc_unique",
+    "Harmonia.VerifiedProtocols.BFTQuorumCommit.bft_commit_safety",
+    "Harmonia.VerifiedProtocols.BFTQuorumCommit.bft_commit_refines_spec",
+
 )
 ALLOWED_AXIOMS = {"propext", "Quot.sound"}
 

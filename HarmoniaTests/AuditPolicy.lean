@@ -236,6 +236,8 @@ namespace HarmoniaAudit
 def verifiedProtocolsSourceModules : Array Name := #[
   `Harmonia.VerifiedProtocols,
   `Harmonia.VerifiedProtocols.QuorumLease,
+  `Harmonia.VerifiedProtocols.TwoPhaseCommit,
+  `Harmonia.VerifiedProtocols.BFTQuorumCommit,
   `HarmoniaTests.VerifiedProtocolsTest,
   `HarmoniaTests.VerifiedProtocolsAxiomAudit
 ]

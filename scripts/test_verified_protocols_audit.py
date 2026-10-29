@@ -22,10 +22,14 @@ class VerifiedProtocolsAuditTests(unittest.TestCase):
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(audit.ROOT / name, target)
         self.write("Harmonia/VerifiedProtocols.lean",
-                   "import Harmonia.VerifiedProtocols.QuorumLease\n")
+                   "import Harmonia.VerifiedProtocols.QuorumLease\n"
+                   "import Harmonia.VerifiedProtocols.TwoPhaseCommit\n"
+                   "import Harmonia.VerifiedProtocols.BFTQuorumCommit\n")
         self.write("Harmonia/VerifiedProtocols/QuorumLease.lean",
                    "import Init\nnamespace Harmonia.VerifiedProtocols.QuorumLease\n"
                    "theorem witness : True := True.intro\nend Harmonia.VerifiedProtocols.QuorumLease\n")
+        for module in ("TwoPhaseCommit", "BFTQuorumCommit"):
+            self.write(f"Harmonia/VerifiedProtocols/{module}.lean", "import Init\n")
         self.write("HarmoniaTests/VerifiedProtocolsTest.lean", "import Harmonia.VerifiedProtocols\n")
 
     def write(self, name, text):

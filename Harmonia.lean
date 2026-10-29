@@ -18,7 +18,7 @@ import Harmonia.VerifiedProtocols
 
 namespace Harmonia
 
-def version : String := "0.1.0"
+def version : String := "0.3.0"
 
 def welcomeBanner : String :=
   s!"Harmonia {version} - Formal Foundations of Distributed Systems (Lean 4)"

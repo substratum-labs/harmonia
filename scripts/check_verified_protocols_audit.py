@@ -16,6 +16,8 @@ ROOT = Path(__file__).resolve().parents[1]
 CERTIFIED = {
     "Harmonia.VerifiedProtocols",
     "Harmonia.VerifiedProtocols.QuorumLease",
+    "Harmonia.VerifiedProtocols.TwoPhaseCommit",
+    "Harmonia.VerifiedProtocols.BFTQuorumCommit",
     "HarmoniaTests.VerifiedProtocolsTest",
     "HarmoniaTests.VerifiedProtocolsAxiomAudit",
 }
